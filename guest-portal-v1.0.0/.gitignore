@@ -1,0 +1,23 @@
+# Ignore sensitive and runtime files
+uploads/
+server.log
+*.log
+
+# Node dependencies
+node_modules/
+
+# Configuration and secrets
+config.json
+/etc/guest-portal/config.json
+/etc/guest-portal/storage.json
+/etc/guest-portal/sessions.json
+
+# OS or editor specific
+.DS_Store
+Thumbs.db
+
+# Optional additions
+*.env
+nohup.out
+*.zip
+*.tar.gz
