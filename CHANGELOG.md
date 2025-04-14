@@ -4,6 +4,30 @@ All notable changes to this project will be documented here.
 
 ---
 
+
+---
+
+## [v1.1.0] - Feature Expansion & Admin Enhancements
+
+### Added
+- Admin UI support for session expiration configuration (UI only in this version)
+- Session code generation now triggers visual display in guest UI
+- Cross-device session code usage via guest input form
+- Photo upload UI now displays session code for logged-in guests
+- Session code viewer + revoke support in Admin UI
+- Upload base directory configurable from Admin Panel
+- LXC setup script improved with firewall detection and secure prompts
+
+### Changed
+- Admin room list now supports live editing and delete
+- Setup script supports multiple guest room initialization
+- Session expiration now enforced at 10-minute default (static backend)
+
+### Known Gaps
+- Session expiration setting in Admin UI is not yet enforced backend-side
+- Session codes can currently be reused
+- Dark mode toggle, health check endpoint, and guest photo preview pending
+
 ## [v1.0.0] - Initial Release
 
 ### Added
