@@ -2,7 +2,7 @@
 
 A self-hosted, mobile-friendly landing portal for guest Wi-Fi networks. Provides Smart Home access, secure photo uploads, and cross-device session continuity.
 
-[![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)](https://github.com/<your-user>/guest-portal/releases/tag/v1.0.0)
+[![Version](https://img.shields.io/badge/version-1.2.0-blue.svg)](https://github.com/<your-user>/guest-portal/releases/tag/v1.0.0)
 
 ---
 
@@ -10,11 +10,11 @@ A self-hosted, mobile-friendly landing portal for guest Wi-Fi networks. Provides
 
 - 🛏️ Guest registration with room selection
 - 📸 Photo uploads saved by guest name and date
-- 🔁 Session continuity using cookies and 6-character session codes
+- 🔁 Session continuity using cookies and 6-character session codes (one-time use)
 - 🔐 Admin panel with:
   - Room management
   - Upload base path configuration
-  - Session expiration setting
+  - Session expiration setting (admin-configurable)
   - View & revoke session codes
 - 🔐 Secure uploads directory with Basic Auth
 - 🧱 Proxmox LXC container deployment
