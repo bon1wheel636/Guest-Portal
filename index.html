@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Guest Portal Registration</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="container">
+    <h1>Welcome to the Guest Portal</h1>
+    <form id="registrationForm">
+      <label for="name">Your Name</label>
+      <input type="text" id="name" name="name" required />
+      <label for="room">Select Your Room</label>
+      <select id="room" name="room" required>
+        <option value="" disabled selected>Select a room</option>
+      </select>
+      <button type="submit">Register</button>
+    </form>
+
+    <p>Have a session code?</p>
+    <form id="codeForm">
+      <input type="text" id="sessionCode" placeholder="Enter Code" required />
+      <button type="submit">Use Code</button>
+    </form>
+  </div>
+
+  <script>
+    fetch('/admin-api/rooms').then(res => res.json()).then(rooms => {
+      const roomSelect = document.getElementById('room');
+      rooms.forEach(r => {
+        const opt = document.createElement('option');
+        opt.value = r.name;
+        opt.textContent = r.name;
+        roomSelect.appendChild(opt);
+      });
+    });
+
+    const guestData = JSON.parse(localStorage.getItem('guestData'));
+    if (guestData?.name && guestData?.room) window.location.href = 'photo.html';
+
+    document.getElementById('registrationForm').addEventListener('submit', function (e) {
+      e.preventDefault();
+      const name = document.getElementById('name').value.trim();
+      const room = document.getElementById('room').value;
+      fetch('/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, room })
+      });
+      const dashboardUrl = `/dashboard/${room.toLowerCase().replace(/\s+/g, '')}`;
+      localStorage.setItem('guestData', JSON.stringify({ name, room, dashboardUrl }));
+      window.location.href = 'photo.html';
+    });
+
+    document.getElementById('codeForm').addEventListener('submit', async function (e) {
+      e.preventDefault();
+      const code = document.getElementById('sessionCode').value.trim();
+      const res = await fetch(`/session/${code}`);
+      if (res.ok) {
+        const guest = await res.json();
+        localStorage.setItem('guestData', JSON.stringify(guest));
+        window.location.href = 'photo.html';
+      } else {
+        alert("Invalid or expired session code.");
+      }
+    });
+  </script>
+</body>
+</html>

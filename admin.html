@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Guest Portal Admin</title>
+  <link rel="stylesheet" href="styles.css"/>
+</head>
+<body>
+  <div class="container">
+    <h1>Admin Panel</h1>
+    <h2>Add or Update Room</h2>
+    <form id="roomForm">
+      <label for="roomName">Room Name:</label>
+      <input type="text" id="roomName" required />
+      <label for="dashboardUrl">Dashboard URL:</label>
+      <input type="text" id="dashboardUrl" required />
+      <button type="submit">Save Room</button>
+    </form>
+    <h2>Current Rooms</h2>
+    <ul id="roomList"></ul>
+<h2>Session Settings</h2>
+<form id="expirationForm">
+  <label>Session Code Expiration (minutes):</label>
+  <input type="number" id="expirationMinutes" min="1" value="10" required />
+  <button type="submit">Update Expiration</button>
+</form>
+
+<h2>Active Sessions</h2>
+<ul id="sessionList"></ul>
+
+  </div>
+  <script>
+    async function loadRooms() {
+      const res = await fetch('/admin-api/rooms');
+      const rooms = await res.json();
+      const list = document.getElementById('roomList');
+      list.innerHTML = '';
+      rooms.forEach(room => {
+        const li = document.createElement('li');
+        li.innerHTML = `<strong>${room.name}</strong>: ${room.dashboardUrl}
+          <button onclick="deleteRoom('${room.name}')">Delete</button>`;
+        list.appendChild(li);
+      });
+    }
+    async function deleteRoom(name) {
+      await fetch('/admin-api/rooms/' + encodeURIComponent(name), { method: 'DELETE' });
+      loadRooms();
+    }
+    document.getElementById('roomForm').addEventListener('submit', async e => {
+      e.preventDefault();
+      const name = document.getElementById('roomName').value;
+      const dashboardUrl = document.getElementById('dashboardUrl').value;
+      await fetch('/admin-api/rooms', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, dashboardUrl })
+      });
+      document.getElementById('roomForm').reset();
+      loadRooms();
+    });
+    loadRooms();
+  
+document.getElementById('expirationForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const minutes = parseInt(document.getElementById('expirationMinutes').value);
+  await fetch('/admin-api/session-expiration', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ minutes })
+  });
+  alert('Updated expiration time.');
+});
+
+async function loadSessions() {
+  const res = await fetch('/admin-api/sessions');
+  const sessions = await res.json();
+  const ul = document.getElementById('sessionList');
+  ul.innerHTML = '';
+  sessions.forEach(sess => {
+    const li = document.createElement('li');
+    li.textContent = `${sess.code} → ${sess.guest.name} (${sess.guest.room}) [${Math.ceil(sess.minutesLeft)}m]`;
+    const btn = document.createElement('button');
+    btn.textContent = 'Revoke';
+    btn.onclick = async () => {
+      await fetch('/admin-api/sessions/' + sess.code, { method: 'DELETE' });
+      loadSessions();
+    };
+    li.appendChild(btn);
+    ul.appendChild(li);
+  });
+}
+loadSessions();
+
+</script>
+</body>
+</html>
