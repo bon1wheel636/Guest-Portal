@@ -4,6 +4,20 @@ All notable changes to this project will be documented here.
 
 ---
 
+## [v1.0.2] - Patch Release
+
+### Added
+- Update-safe deployment logic: `setup.sh` now preserves `config.json` and `storage.json` if they already exist in the container
+- Dynamic container ID suggestion: `setup.sh` checks for existing container IDs and recommends the next available to avoid conflicts
+
+
+
+## [v1.0.2] - Patch Release
+
+### Added
+- Update-safe deployment logic: `setup.sh` now skips overwriting `config.json` and `storage.json` if they already exist
+- Dynamic container ID suggestion: `setup.sh` recommends the next available LXC ID based on current host usage
+
 ## [v1.0.0] - Initial Release
 
 ### Added

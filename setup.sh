@@ -12,7 +12,12 @@ echo ""
 read -p "Enter container name for nodejs (default: guest-portal-nodejs): " nodejs_container
 nodejs_container=${nodejs_container:-"guest-portal-nodejs"}
 
-read -p "Enter container ID for nodejs (default: 101): " nodejs_id
+# Recommend next available container ID
+next_id=$(pct list | awk 'NR>1 {print $1}' | sort -n | tail -n1)
+next_id=$((next_id+1))
+echo "Suggested next available container ID: $next_id"
+read -p "Enter container ID for nodejs (default: $next_id): " nodejs_id
+nodejs_id=${nodejs_id:-$next_id}
 nodejs_id=${nodejs_id:-101}
 
 read -p "Enter number of cores for nodejs container (default: 1): " nodejs_cores
@@ -80,11 +85,19 @@ echo "Copying project files..."
 pct push "$nodejs_id" "$(pwd)/.." /root/guest-portal -r
 
 echo "Writing config to nodejs container..."
-pct exec "$nodejs_id" -- bash -c "
-  mkdir -p /etc/guest-portal &&
-  echo '{"adminUser": "$ADMIN_USER", "adminHash": "$ADMIN_HASH"}' > /etc/guest-portal/config.json &&
-  echo '{"rooms": [$(IFS=,; echo "${ROOMS[*]}")], "guests": []}' > /etc/guest-portal/storage.json
-"
+pct exec "$nodejs_id" -- bash -c '
+  mkdir -p /etc/guest-portal
+  if [ ! -f /etc/guest-portal/config.json ]; then
+    echo "{\"adminUser\": \"'$ADMIN_USER'\", \"adminHash\": \"'$ADMIN_HASH'\"}" > /etc/guest-portal/config.json
+  else
+    echo "✔ Existing config.json found — skipping overwrite"
+  fi
+  if [ ! -f /etc/guest-portal/storage.json ]; then
+    echo "{\"rooms\": [$(IFS=,; echo "${ROOMS[*]}")], \"guests\": []}" > /etc/guest-portal/storage.json
+  else
+    echo "✔ Existing storage.json found — skipping overwrite"
+  fi
+'
 
 echo "Launching nodejs server..."
 pct exec "$nodejs_id" -- bash -c "cd /root/guest-portal/nodejs && npm install && nohup node server.js > server.log 2>&1 &"
