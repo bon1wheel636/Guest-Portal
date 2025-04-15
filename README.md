@@ -40,9 +40,10 @@ Use `setup.sh` inside your Proxmox LXC container or deploy manually. Configure N
 ## 📄 Documentation
 
 - [Deployment Guide](DEPLOY.md)
-- [Admin Panel](frontend/admin.html)
-- [Guest Registration](frontend/index.html)
-- [Photo Upload Page](frontend/photo.html)
+- [Admin Panel](admin.html)
+- [Guest Registration](index.html)
+- [Photo Upload Page](photo.html)
+
 
 ---
 
