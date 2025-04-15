@@ -9,6 +9,50 @@ const basicAuth = require('basic-auth');
 const bcrypt = require('bcrypt');
 const rateLimit = require('express-rate-limit');
 const app = express();
+
+// PATCH: Load session timeout from config
+function getExpirationMinutes() {
+  return config.sessionExpirationMinutes || 10;
+}
+
+function getAdminTimeoutMinutes() {
+  return config.adminSessionTimeoutMinutes || 15;
+}
+
+// PATCH: Save config
+function saveConfig() {
+  fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
+}
+
+// PATCH: Admin login check
+app.post('/admin-api/login', (req, res) => {
+  const user = basicAuth(req);
+  if (!user || user.name !== config.adminUser) {
+    res.set('WWW-Authenticate', 'Basic realm="Admin Login"');
+    return res.status(401).send('Login required.');
+  }
+  bcrypt.compare(user.pass, config.adminHash, (err, result) => {
+    if (result) return res.sendStatus(200);
+    else {
+      res.set('WWW-Authenticate', 'Basic realm="Admin Login"');
+      return res.status(401).send('Invalid credentials.');
+    }
+  });
+});
+
+// PATCH: Save admin session timeout
+app.post('/admin-api/admin-timeout', (req, res) => {
+  const { minutes } = req.body;
+  config.adminSessionTimeoutMinutes = minutes;
+  saveConfig();
+  res.sendStatus(200);
+});
+
+// PATCH: Health check
+app.get('/health', (req, res) => {
+  res.json({ status: 'ok' });
+});
+
 const port = 3000;
 
 const configPath = '/etc/guest-portal/config.json';
@@ -19,7 +63,7 @@ const config = fs.existsSync(configPath) ? require(configPath) : {};
 const guestData = fs.existsSync(dbPath) ? JSON.parse(fs.readFileSync(dbPath)) : { rooms: [], guests: [] };
 let sessionCodes = fs.existsSync(sessionFile) ? JSON.parse(fs.readFileSync(sessionFile)) : {};
 
-const sessionExpirationMinutes = 10;
+// REMOVED: static session expiration, replaced with dynamic config
 
 function saveSessions() {
   fs.writeFileSync(sessionFile, JSON.stringify(sessionCodes, null, 2));
@@ -112,7 +156,7 @@ app.post('/session', (req, res) => {
   const { name, room } = req.body;
   const code = generateCode();
   const guest = { name, room };
-  const expires = Date.now() + sessionExpirationMinutes * 60 * 1000;
+  const expires = Date.now() + getExpirationMinutes() * 60 * 1000;
   sessionCodes[code] = { guest, expires };
   saveSessions();
   res.json({ code });

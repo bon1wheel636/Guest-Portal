@@ -8,6 +8,17 @@
 </head>
 <body>
   <div class="container">
+<div id="adminLoginForm">
+  <h2>Admin Login</h2>
+  <form id="loginForm">
+    <label>Username:</label>
+    <input type="text" id="adminUser" required />
+    <label>Password:</label>
+    <input type="password" id="adminPass" required />
+    <button type="submit">Login</button>
+  </form>
+</div>
+<div id="adminContent" style="display:none;">
     <h1>Admin Panel</h1>
     <h2>Add or Update Room</h2>
     <form id="roomForm">
@@ -20,6 +31,11 @@
     <h2>Current Rooms</h2>
     <ul id="roomList"></ul>
 <h2>Session Settings</h2>
+<form id="timeoutForm">
+  <label>Admin Auto-Logout Timeout (minutes):</label>
+  <input type="number" id="adminTimeoutMinutes" min="1" value="15" required />
+  <button type="submit">Update Timeout</button>
+</form>
 <form id="expirationForm">
   <label>Session Code Expiration (minutes):</label>
   <input type="number" id="expirationMinutes" min="1" value="10" required />
@@ -92,6 +108,118 @@ async function loadSessions() {
 }
 loadSessions();
 
+
+const loginForm = document.getElementById('loginForm');
+const loginBox = document.getElementById('adminLoginForm');
+const adminContent = document.getElementById('adminContent');
+let authHeader = '';
+
+function getAuthHeader() {
+  return localStorage.getItem('authHeader') || '';
+}
+
+function setAuthHeader(user, pass) {
+  const encoded = btoa(`${user}:${pass}`);
+  localStorage.setItem('authHeader', 'Basic ' + encoded);
+}
+
+function clearAuth() {
+  localStorage.removeItem('authHeader');
+  location.reload();
+}
+
+async function verifyLogin() {
+  const res = await fetch('/admin-api/login', {
+    method: 'POST',
+    headers: { 'Authorization': getAuthHeader() }
+  });
+  return res.ok;
+}
+
+async function initAdmin() {
+  const isLoggedIn = await verifyLogin();
+  if (!isLoggedIn) {
+    loginBox.style.display = 'block';
+    adminContent.style.display = 'none';
+    return;
+  }
+  loginBox.style.display = 'none';
+  adminContent.style.display = 'block';
+  loadRooms();
+  loadSessions();
+  loadTimeout();
+  loadGuests();
+  startInactivityTimer();
+}
+
+loginForm?.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const user = document.getElementById('adminUser').value;
+  const pass = document.getElementById('adminPass').value;
+  setAuthHeader(user, pass);
+  initAdmin();
+});
+
+// PATCH: Auto-logout
+let timeoutMinutes = 15;
+let activityTimeout;
+
+function resetTimer() {
+  clearTimeout(activityTimeout);
+  activityTimeout = setTimeout(() => {
+    clearAuth();
+    alert("Session expired due to inactivity.");
+  }, timeoutMinutes * 60 * 1000);
+}
+
+function startInactivityTimer() {
+  document.addEventListener('mousemove', resetTimer);
+  document.addEventListener('keydown', resetTimer);
+  resetTimer();
+}
+
+async function loadTimeout() {
+  const res = await fetch('/admin-api/uploadDir', { headers: { 'Authorization': getAuthHeader() }});
+  if (res.ok) {
+    document.getElementById('adminTimeoutMinutes').value = timeoutMinutes;
+  }
+}
+
+document.getElementById('timeoutForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const minutes = parseInt(document.getElementById('adminTimeoutMinutes').value);
+  timeoutMinutes = minutes;
+  await fetch('/admin-api/admin-timeout', {
+    method: 'POST',
+    headers: {
+      'Authorization': getAuthHeader(),
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({ minutes })
+  });
+  alert("Admin timeout updated.");
+  resetTimer();
+});
+
+// PATCH: load guests
+async function loadGuests() {
+  const res = await fetch('/api/guests', {
+    headers: { 'Authorization': getAuthHeader() }
+  });
+  const guests = await res.json();
+  const ul = document.createElement('ul');
+  guests.forEach(g => {
+    const li = document.createElement('li');
+    li.textContent = `${g.name} (${g.room}) at ${new Date(g.timestamp).toLocaleString()}`;
+    ul.appendChild(li);
+  });
+  const guestSection = document.createElement('div');
+  guestSection.innerHTML = '<h2>Registered Guests</h2>';
+  guestSection.appendChild(ul);
+  adminContent.appendChild(guestSection);
+}
+
+initAdmin();
 </script>
 </body>
 </html>
