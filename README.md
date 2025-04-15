@@ -33,17 +33,36 @@ A self-hosted, mobile-friendly landing portal for guest Wi-Fi networks. Provides
 
 ## 🚀 Setup
 
-Use `setup.sh` inside your Proxmox LXC container or deploy manually. Configure NGINX to proxy `guestportal.<yourdomain>` to port 3000 of the Node.js container.
+To deploy the Guest Portal, run the setup script directly from your **Proxmox host shell**. It will create the required containers and push the project files automatically.
 
----
+### 1. Clone or unzip the project
 
+```bash
+git clone https://github.com/<your-user>/guest-portal.git
+cd guest-portal
+```
+
+### 2. Run the setup script from the host
+
+```bash
+cd lxc-setup
+bash setup.sh
+```
+
+- This script creates and configures:
+  - A Node.js container for the backend server
+  - Optionally, an NGINX container for reverse proxying
+- It supports:
+  - DHCP or static IP network configuration
+  - Smart Home dashboard links per room
+  - Secure admin password hashing (bcrypt)
+  - Session expiration and upload directory settings
 ## 📄 Documentation
 
 - [Deployment Guide](DEPLOY.md)
 - [Admin Panel](admin.html)
 - [Guest Registration](index.html)
 - [Photo Upload Page](photo.html)
-
 
 ---
 
