@@ -2,7 +2,7 @@
 
 A self-hosted, mobile-friendly landing portal for guest Wi-Fi networks. Provides Smart Home access, secure photo uploads, and cross-device session continuity.
 
-[![Version](https://img.shields.io/badge/version-1.2.1-blue.svg)](https://github.com/<your-user>/guest-portal/releases/tag/v1.0.0)
+[![Version](https://img.shields.io/badge/version-1.2.1-blue.svg)](https://github.com/bon1wheel636/guest-portal/releases/tag/v1.0.0)
 
 ---
 
