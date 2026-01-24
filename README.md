@@ -24,10 +24,14 @@ A self-hosted, mobile-friendly landing portal for guest Wi-Fi networks. Provides
 
 ## 🛠️ Requirements
 
+### For Proxmox Deployment
 - Proxmox host with storage and bridge access
 - Debian 12 template for containers
 - NGINX reverse proxy (container or manual)
-- Node.js + bcrypt inside backend container
+
+### For Local Development
+- Node.js (v18+ recommended)
+- npm
 
 ---
 
@@ -45,7 +49,6 @@ cd guest-portal
 ### 2. Run the setup script from the host
 
 ```bash
-cd lxc-setup
 bash setup.sh
 ```
 
@@ -71,3 +74,25 @@ bash setup.sh
 - Admin uploads protected with bcrypt-authenticated Basic Auth
 - Uploads stored in a configurable path
 - Session codes are one-time and time-limited
+
+---
+
+## 💻 Local Development
+
+To run the portal locally without Proxmox:
+
+```bash
+# Install dependencies
+npm install
+
+# Create config directory and files
+sudo mkdir -p /etc/guest-portal
+sudo bash -c 'echo "{\"adminUser\": \"admin\", \"adminHash\": \"$(node -e "require(\"bcrypt\").hash(\"password\", 10).then(console.log)")\"}" > /etc/guest-portal/config.json'
+sudo bash -c 'echo "{\"rooms\": [], \"guests\": []}" > /etc/guest-portal/storage.json'
+sudo bash -c 'echo "{}" > /etc/guest-portal/sessions.json'
+
+# Start the server
+npm start
+```
+
+Access the portal at `http://localhost:3000`

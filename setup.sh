@@ -82,7 +82,7 @@ echo "Hashing admin password..."
 ADMIN_HASH=$(pct exec "$nodejs_id" -- bash -c "node -e \"require('bcrypt').hash('$ADMIN_PASS', 10).then(console.log)\"")
 
 echo "Copying project files..."
-pct push "$nodejs_id" "$(pwd)/.." /root/guest-portal -r
+pct push "$nodejs_id" "$(pwd)" /root/guest-portal -r
 
 echo "Writing config to nodejs container..."
 pct exec "$nodejs_id" -- bash -c '
@@ -100,7 +100,7 @@ pct exec "$nodejs_id" -- bash -c '
 '
 
 echo "Launching nodejs server..."
-pct exec "$nodejs_id" -- bash -c "cd /root/guest-portal/nodejs && npm install && nohup node server.js > server.log 2>&1 &"
+pct exec "$nodejs_id" -- bash -c "cd /root/guest-portal && npm install && nohup node server.js > server.log 2>&1 &"
 
 echo ""
 read -p "Do you want to set up a new NGINX container? (y/n, default: n): " setup_nginx
@@ -134,7 +134,7 @@ if [[ "$setup_nginx" == "y" ]]; then
 
   pct start "$nginx_id"
   pct exec "$nginx_id" -- bash -c "apt update && apt install -y nginx"
-  pct push "$nginx_id" "$(pwd)/../nginx/guestportal.conf" /etc/nginx/conf.d/guestportal.conf
+  pct push "$nginx_id" "$(pwd)/nginx/guestportal.conf" /etc/nginx/conf.d/guestportal.conf
   pct exec "$nginx_id" -- systemctl restart nginx
 else
   echo ""

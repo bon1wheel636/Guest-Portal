@@ -8,21 +8,21 @@ This document provides complete instructions for installing and deploying the Gu
 
 | Version | Changes |
 |---------|---------|
+| v1.2.1  | Added local development support, fixed deployment paths |
 | v1.0.0  | Initial secure and functional release with bcrypt auth, LXC setup, Smart Home access, photo upload, and admin panel |
 
 ---
 
 ## 📦 Setup Instructions
 
-1. **Extract the ZIP:**
+1. **Clone or Extract the Project:**
 ```bash
-unzip guest-portal-v1.0.0-final.zip
-cd guest-portal-final
+git clone https://github.com/<your-user>/guest-portal.git
+cd guest-portal
 ```
 
 2. **Run the Setup Script on Proxmox Host:**
 ```bash
-cd lxc-setup
 bash setup.sh
 ```
 
