@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Guest Portal Admin</title>
+  <link rel="stylesheet" href="styles.css"/>
+</head>
+<body>
+  <div class="container">
+<div id="adminLoginForm">
+  <h2>Admin Login</h2>
+  <form id="loginForm">
+    <label>Username:</label>
+    <input type="text" id="adminUser" required />
+    <label>Password:</label>
+    <input type="password" id="adminPass" required />
+    <button type="submit">Login</button>
+  </form>
+</div>
+<div id="adminContent" style="display:none;">
+    <h1>Admin Panel</h1>
+    <h2>Add or Update Room</h2>
+    <form id="roomForm">
+      <label for="roomName">Room Name:</label>
+      <input type="text" id="roomName" required />
+      <label for="dashboardUrl">Dashboard URL:</label>
+      <input type="text" id="dashboardUrl" required />
+      <button type="submit">Save Room</button>
+    </form>
+    <h2>Current Rooms</h2>
+    <ul id="roomList"></ul>
+<h2>Session Settings</h2>
+<form id="timeoutForm">
+  <label>Admin Auto-Logout Timeout (minutes):</label>
+  <input type="number" id="adminTimeoutMinutes" min="1" value="15" required />
+  <button type="submit">Update Timeout</button>
+</form>
+<form id="expirationForm">
+  <label>Session Code Expiration (minutes):</label>
+  <input type="number" id="expirationMinutes" min="1" value="10" required />
+  <button type="submit">Update Expiration</button>
+</form>
+
+<h2>Active Sessions</h2>
+<ul id="sessionList"></ul>
+
+  </div>
+  <script>
+    async function loadRooms() {
+      const res = await fetch('/admin-api/rooms');
+      const rooms = await res.json();
+      const list = document.getElementById('roomList');
+      list.innerHTML = '';
+      rooms.forEach(room => {
+        const li = document.createElement('li');
+        li.innerHTML = `<strong>${room.name}</strong>: ${room.dashboardUrl}
+          <button onclick="deleteRoom('${room.name}')">Delete</button>`;
+        list.appendChild(li);
+      });
+    }
+    async function deleteRoom(name) {
+      await fetch('/admin-api/rooms/' + encodeURIComponent(name), { method: 'DELETE' });
+      loadRooms();
+    }
+    document.getElementById('roomForm').addEventListener('submit', async e => {
+      e.preventDefault();
+      const name = document.getElementById('roomName').value;
+      const dashboardUrl = document.getElementById('dashboardUrl').value;
+      await fetch('/admin-api/rooms', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, dashboardUrl })
+      });
+      document.getElementById('roomForm').reset();
+      loadRooms();
+    });
+    loadRooms();
+  
+document.getElementById('expirationForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const minutes = parseInt(document.getElementById('expirationMinutes').value);
+  await fetch('/admin-api/session-expiration', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ minutes })
+  });
+  alert('Updated expiration time.');
+});
+
+async function loadSessions() {
+  const res = await fetch('/admin-api/sessions');
+  const sessions = await res.json();
+  const ul = document.getElementById('sessionList');
+  ul.innerHTML = '';
+  sessions.forEach(sess => {
+    const li = document.createElement('li');
+    li.textContent = `${sess.code} → ${sess.guest.name} (${sess.guest.room}) [${Math.ceil(sess.minutesLeft)}m]`;
+    const btn = document.createElement('button');
+    btn.textContent = 'Revoke';
+    btn.onclick = async () => {
+      await fetch('/admin-api/sessions/' + sess.code, { method: 'DELETE' });
+      loadSessions();
+    };
+    li.appendChild(btn);
+    ul.appendChild(li);
+  });
+}
+loadSessions();
+
+
+const loginForm = document.getElementById('loginForm');
+const loginBox = document.getElementById('adminLoginForm');
+const adminContent = document.getElementById('adminContent');
+let authHeader = '';
+
+function getAuthHeader() {
+  return localStorage.getItem('authHeader') || '';
+}
+
+function setAuthHeader(user, pass) {
+  const encoded = btoa(`${user}:${pass}`);
+  localStorage.setItem('authHeader', 'Basic ' + encoded);
+}
+
+function clearAuth() {
+  localStorage.removeItem('authHeader');
+  location.reload();
+}
+
+async function verifyLogin() {
+  const res = await fetch('/admin-api/login', {
+    method: 'POST',
+    headers: { 'Authorization': getAuthHeader() }
+  });
+  return res.ok;
+}
+
+async function initAdmin() {
+  const isLoggedIn = await verifyLogin();
+  if (!isLoggedIn) {
+    loginBox.style.display = 'block';
+    adminContent.style.display = 'none';
+    return;
+  }
+  loginBox.style.display = 'none';
+  adminContent.style.display = 'block';
+  loadRooms();
+  loadSessions();
+  loadTimeout();
+  loadGuests();
+  startInactivityTimer();
+}
+
+loginForm?.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const user = document.getElementById('adminUser').value;
+  const pass = document.getElementById('adminPass').value;
+  setAuthHeader(user, pass);
+  initAdmin();
+});
+
+// PATCH: Auto-logout
+let timeoutMinutes = 15;
+let activityTimeout;
+
+function resetTimer() {
+  clearTimeout(activityTimeout);
+  activityTimeout = setTimeout(() => {
+    clearAuth();
+    alert("Session expired due to inactivity.");
+  }, timeoutMinutes * 60 * 1000);
+}
+
+function startInactivityTimer() {
+  document.addEventListener('mousemove', resetTimer);
+  document.addEventListener('keydown', resetTimer);
+  resetTimer();
+}
+
+async function loadTimeout() {
+  const res = await fetch('/admin-api/uploadDir', { headers: { 'Authorization': getAuthHeader() }});
+  if (res.ok) {
+    document.getElementById('adminTimeoutMinutes').value = timeoutMinutes;
+  }
+}
+
+document.getElementById('timeoutForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const minutes = parseInt(document.getElementById('adminTimeoutMinutes').value);
+  timeoutMinutes = minutes;
+  await fetch('/admin-api/admin-timeout', {
+    method: 'POST',
+    headers: {
+      'Authorization': getAuthHeader(),
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({ minutes })
+  });
+  alert("Admin timeout updated.");
+  resetTimer();
+});
+
+// PATCH: load guests
+async function loadGuests() {
+  const res = await fetch('/api/guests', {
+    headers: { 'Authorization': getAuthHeader() }
+  });
+  const guests = await res.json();
+  const ul = document.createElement('ul');
+  guests.forEach(g => {
+    const li = document.createElement('li');
+    li.textContent = `${g.name} (${g.room}) at ${new Date(g.timestamp).toLocaleString()}`;
+    ul.appendChild(li);
+  });
+  const guestSection = document.createElement('div');
+  guestSection.innerHTML = '<h2>Registered Guests</h2>';
+  guestSection.appendChild(ul);
+  adminContent.appendChild(guestSection);
+}
+
+initAdmin();
+</script>
+</body>
+</html>

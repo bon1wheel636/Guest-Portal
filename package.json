@@ -1,0 +1,20 @@
+{
+  "name": "guest-portal",
+  "version": "1.2.1",
+  "description": "Self-hosted guest Wi-Fi portal with photo uploads and Smart Home integration",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "echo \"No tests configured\" && exit 0"
+  },
+  "keywords": ["guest-portal", "wifi", "smart-home"],
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.18.2",
+    "multer": "^1.4.5-lts.1",
+    "cors": "^2.8.5",
+    "basic-auth": "^2.0.1",
+    "bcrypt": "^5.1.1",
+    "express-rate-limit": "^7.1.5"
+  }
+}
