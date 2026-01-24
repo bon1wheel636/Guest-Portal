@@ -184,7 +184,7 @@ app.get('/admin-api/sessions', (req, res) => {
 });
 
 app.delete('/admin-api/sessions/:code', (req, res) => {
-  delete sessionCodes[code];
+  delete sessionCodes[req.params.code];
   saveSessions();
   res.sendStatus(200);
 });
