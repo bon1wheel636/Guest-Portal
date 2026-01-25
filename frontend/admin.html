@@ -45,6 +45,19 @@
     </form>
     <h2>Current Rooms</h2>
     <ul id="roomList"></ul>
+<h2>Landing Page Background</h2>
+<div id="bgPreview" style="margin-bottom:10px;">
+  <img id="bgImage" src="" alt="Current background" style="max-width:200px;max-height:150px;display:none;border:1px solid #ccc;" />
+  <p id="noBgText">No background image set</p>
+</div>
+<form id="bgForm" enctype="multipart/form-data">
+  <label>Upload Background Image:</label>
+  <input type="file" id="bgFile" name="background" accept="image/*" required />
+  <small>Max 5MB. Supported: JPG, PNG, GIF, WebP</small>
+  <button type="submit">Upload Background</button>
+</form>
+<button id="removeBg" style="margin-top:10px;background:#dc3545;">Remove Background</button>
+
 <h2>Session Settings</h2>
 <form id="timeoutForm">
   <label>Admin Auto-Logout Timeout (minutes):</label>
@@ -293,6 +306,76 @@ async function loadGuests() {
   guestSection.appendChild(ul);
   adminContent.appendChild(guestSection);
 }
+
+// Background image handling
+async function loadBackground() {
+  try {
+    const res = await fetch('/admin-api/background');
+    const data = await res.json();
+    const img = document.getElementById('bgImage');
+    const noText = document.getElementById('noBgText');
+    if (data.backgroundImage) {
+      img.src = data.backgroundImage;
+      img.style.display = 'block';
+      noText.style.display = 'none';
+    } else {
+      img.style.display = 'none';
+      noText.style.display = 'block';
+    }
+  } catch (err) {
+    console.error('Failed to load background:', err);
+  }
+}
+
+document.getElementById('bgForm')?.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const fileInput = document.getElementById('bgFile');
+  if (!fileInput.files[0]) {
+    alert('Please select an image');
+    return;
+  }
+  const formData = new FormData();
+  formData.append('background', fileInput.files[0]);
+
+  try {
+    const res = await fetch('/admin-api/background', {
+      method: 'POST',
+      body: formData
+    });
+    if (res.ok) {
+      alert('Background image uploaded!');
+      fileInput.value = '';
+      loadBackground();
+    } else {
+      const error = await res.text();
+      alert('Upload failed: ' + error);
+    }
+  } catch (err) {
+    alert('Upload failed: ' + err.message);
+  }
+});
+
+document.getElementById('removeBg')?.addEventListener('click', async () => {
+  if (!confirm('Remove the background image?')) return;
+  try {
+    const res = await fetch('/admin-api/background', { method: 'DELETE' });
+    if (res.ok) {
+      alert('Background removed');
+      loadBackground();
+    }
+  } catch (err) {
+    alert('Failed to remove: ' + err.message);
+  }
+});
+
+// Load background on admin init
+const origInitAdmin = initAdmin;
+initAdmin = async function() {
+  await origInitAdmin();
+  if (adminContent.style.display === 'block') {
+    loadBackground();
+  }
+};
 
 initAdmin();
 </script>
