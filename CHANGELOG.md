@@ -4,6 +4,27 @@ All notable changes to this project will be documented here.
 
 ---
 
+## [v1.3.0] - Persistent Guest Sessions & Device Linking
+
+### Added
+- Persistent guest sessions with configurable checkout dates (1-30 days, default 7)
+- Device linking system - guests can add multiple devices to their session
+- Admin guest session management panel (view, extend stays, check out)
+- Multiple guests per room support with separate tokens and upload folders
+- Background image upload/management from admin panel
+- First-run admin setup via web UI
+- Local development setup script (`setup-local.sh`)
+- Comprehensive test suite (`test-suite.sh`)
+
+### Security
+- XSS prevention with `escapeHtml()` function
+- Path traversal protection with input sanitization
+- Input validation on all user-facing endpoints
+- One-time session codes (invalidated after use)
+
+### Fixed
+- Session revoke endpoint using correct request parameter
+- Deployment documentation paths corrected
 
 ---
 
