@@ -8,7 +8,22 @@
 </head>
 <body>
   <div class="container">
-<div id="adminLoginForm">
+<div id="adminSetupForm" style="display:none;">
+  <h2>Initial Admin Setup</h2>
+  <p>No admin account configured. Create one to get started.</p>
+  <form id="setupForm">
+    <label>Username:</label>
+    <input type="text" id="setupUser" minlength="3" maxlength="50" pattern="[a-zA-Z0-9_-]+" required />
+    <small>3-50 characters, letters/numbers/underscore/hyphen only</small>
+    <label>Password:</label>
+    <input type="password" id="setupPass" minlength="8" required />
+    <small>Minimum 8 characters</small>
+    <label>Confirm Password:</label>
+    <input type="password" id="setupPassConfirm" minlength="8" required />
+    <button type="submit">Create Admin Account</button>
+  </form>
+</div>
+<div id="adminLoginForm" style="display:none;">
   <h2>Admin Login</h2>
   <form id="loginForm">
     <label>Username:</label>
@@ -115,6 +130,7 @@ async function loadSessions() {
 loadSessions();
 
 
+const setupBox = document.getElementById('adminSetupForm');
 const loginForm = document.getElementById('loginForm');
 const loginBox = document.getElementById('adminLoginForm');
 const adminContent = document.getElementById('adminContent');
@@ -134,6 +150,16 @@ function clearAuth() {
   location.reload();
 }
 
+async function checkSetupRequired() {
+  try {
+    const res = await fetch('/admin-api/setup-required');
+    const data = await res.json();
+    return data.setupRequired;
+  } catch {
+    return false;
+  }
+}
+
 async function verifyLogin() {
   const res = await fetch('/admin-api/login', {
     method: 'POST',
@@ -143,12 +169,23 @@ async function verifyLogin() {
 }
 
 async function initAdmin() {
+  // Check if initial setup is needed
+  const needsSetup = await checkSetupRequired();
+  if (needsSetup) {
+    setupBox.style.display = 'block';
+    loginBox.style.display = 'none';
+    adminContent.style.display = 'none';
+    return;
+  }
+
   const isLoggedIn = await verifyLogin();
   if (!isLoggedIn) {
+    setupBox.style.display = 'none';
     loginBox.style.display = 'block';
     adminContent.style.display = 'none';
     return;
   }
+  setupBox.style.display = 'none';
   loginBox.style.display = 'none';
   adminContent.style.display = 'block';
   loadRooms();
@@ -157,6 +194,38 @@ async function initAdmin() {
   loadGuests();
   startInactivityTimer();
 }
+
+// Handle initial setup form
+document.getElementById('setupForm')?.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const username = document.getElementById('setupUser').value;
+  const password = document.getElementById('setupPass').value;
+  const confirm = document.getElementById('setupPassConfirm').value;
+
+  if (password !== confirm) {
+    alert('Passwords do not match');
+    return;
+  }
+
+  try {
+    const res = await fetch('/admin-api/setup', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password })
+    });
+
+    if (res.ok) {
+      alert('Admin account created! Please log in.');
+      setAuthHeader(username, password);
+      initAdmin();
+    } else {
+      const error = await res.text();
+      alert('Setup failed: ' + error);
+    }
+  } catch (err) {
+    alert('Setup failed: ' + err.message);
+  }
+});
 
 loginForm?.addEventListener('submit', async (e) => {
   e.preventDefault();
