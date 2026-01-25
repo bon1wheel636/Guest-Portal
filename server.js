@@ -1,5 +1,5 @@
 
-// server.js - v1.0.1 patched
+// server.js - v1.0.2 security patched
 const express = require('express');
 const multer = require('multer');
 const path = require('path');
@@ -9,6 +9,25 @@ const basicAuth = require('basic-auth');
 const bcrypt = require('bcrypt');
 const rateLimit = require('express-rate-limit');
 const app = express();
+
+// Security: Sanitize filenames and paths to prevent directory traversal
+function sanitizeFilename(filename) {
+  // Remove path separators and null bytes
+  return filename
+    .replace(/[/\\]/g, '_')
+    .replace(/\.\./g, '_')
+    .replace(/\0/g, '')
+    .replace(/[<>:"|?*]/g, '_')
+    .substring(0, 255);
+}
+
+function sanitizeName(name) {
+  // Allow only alphanumeric, spaces, hyphens, and underscores
+  return name
+    .replace(/[^\w\s-]/g, '')
+    .replace(/\s+/g, '-')
+    .substring(0, 100);
+}
 
 // PATCH: Load session timeout from config
 function getExpirationMinutes() {
@@ -85,14 +104,20 @@ app.use(limiter);
 
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    const name = req.body.guestName || 'anonymous';
+    const name = sanitizeName(req.body.guestName || 'anonymous');
     const folderName = `${name}-${new Date().toISOString().split('T')[0]}`;
     const dir = path.join(__dirname, 'uploads', folderName);
+    // Verify the resolved path is within uploads directory
+    const uploadsDir = path.join(__dirname, 'uploads');
+    if (!dir.startsWith(uploadsDir)) {
+      return cb(new Error('Invalid upload path'));
+    }
     fs.mkdirSync(dir, { recursive: true });
     cb(null, dir);
   },
   filename: (req, file, cb) => {
-    cb(null, `${Date.now()}-${file.originalname}`);
+    const safeName = sanitizeFilename(file.originalname);
+    cb(null, `${Date.now()}-${safeName}`);
   }
 });
 const upload = multer({ storage });
@@ -130,6 +155,19 @@ app.get('/admin-api/rooms', (req, res) => res.json(guestData.rooms || []));
 
 app.post('/admin-api/rooms', (req, res) => {
   const { name, dashboardUrl } = req.body;
+  // Validate room name (alphanumeric, spaces, hyphens only)
+  if (!name || typeof name !== 'string' || name.length > 100 || /[^\w\s-]/.test(name)) {
+    return res.status(400).send('Invalid room name');
+  }
+  // Validate dashboard URL
+  if (!dashboardUrl || typeof dashboardUrl !== 'string' || dashboardUrl.length > 500) {
+    return res.status(400).send('Invalid dashboard URL');
+  }
+  try {
+    new URL(dashboardUrl);
+  } catch {
+    return res.status(400).send('Invalid dashboard URL format');
+  }
   const index = guestData.rooms.findIndex(r => r.name === name);
   if (index >= 0) guestData.rooms[index].dashboardUrl = dashboardUrl;
   else guestData.rooms.push({ name, dashboardUrl });
