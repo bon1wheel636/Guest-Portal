@@ -16,13 +16,18 @@
       <select id="room" name="room" required>
         <option value="" disabled selected>Select a room</option>
       </select>
+      <label for="stayDays">Length of Stay (days)</label>
+      <input type="number" id="stayDays" name="stayDays" min="1" max="30" value="7" required />
+      <small>How many days will you be staying? (1-30 days)</small>
       <button type="submit">Register</button>
     </form>
 
-    <p>Have a session code?</p>
+    <hr style="margin: 20px 0;" />
+
+    <p>Have a device link code? Enter it to join an existing session:</p>
     <form id="codeForm">
       <input type="text" id="sessionCode" placeholder="Enter Code" required />
-      <button type="submit">Use Code</button>
+      <button type="submit">Link Device</button>
     </form>
   </div>
 
@@ -38,6 +43,7 @@
       }
     }).catch(() => {});
 
+    // Load rooms
     fetch('/admin-api/rooms').then(res => res.json()).then(rooms => {
       const roomSelect = document.getElementById('room');
       rooms.forEach(r => {
@@ -48,34 +54,104 @@
       });
     });
 
-    const guestData = JSON.parse(localStorage.getItem('guestData'));
-    if (guestData?.name && guestData?.room) window.location.href = 'photo.html';
+    // Check for existing guest token and validate
+    async function checkExistingSession() {
+      const guestToken = localStorage.getItem('guestToken');
+      if (guestToken) {
+        try {
+          const res = await fetch('/guest/validate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ token: guestToken })
+          });
+          if (res.ok) {
+            const data = await res.json();
+            if (data.valid) {
+              // Update local data and redirect
+              localStorage.setItem('guestData', JSON.stringify(data.guest));
+              window.location.href = 'photo.html';
+              return;
+            }
+          }
+          // Token invalid or expired, clear it
+          localStorage.removeItem('guestToken');
+          localStorage.removeItem('guestData');
+        } catch (e) {
+          console.error('Token validation failed:', e);
+        }
+      }
 
-    document.getElementById('registrationForm').addEventListener('submit', function (e) {
+      // Also check legacy guestData
+      const guestData = JSON.parse(localStorage.getItem('guestData'));
+      if (guestData?.name && guestData?.room && !guestToken) {
+        // Legacy session without token - let them continue but they won't have persistence
+        window.location.href = 'photo.html';
+      }
+    }
+    checkExistingSession();
+
+    // Registration form
+    document.getElementById('registrationForm').addEventListener('submit', async function (e) {
       e.preventDefault();
       const name = document.getElementById('name').value.trim();
       const room = document.getElementById('room').value;
-      fetch('/register', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, room })
-      });
-      const dashboardUrl = `/dashboard/${room.toLowerCase().replace(/\s+/g, '')}`;
-      localStorage.setItem('guestData', JSON.stringify({ name, room, dashboardUrl }));
-      window.location.href = 'photo.html';
+      const stayDays = parseInt(document.getElementById('stayDays').value) || 7;
+
+      try {
+        const res = await fetch('/register', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name, room, stayDays })
+        });
+
+        if (res.ok) {
+          const data = await res.json();
+          // Store token for persistent sessions
+          localStorage.setItem('guestToken', data.token);
+          localStorage.setItem('guestData', JSON.stringify(data.guest));
+          window.location.href = 'photo.html';
+        } else {
+          alert('Registration failed. Please try again.');
+        }
+      } catch (err) {
+        alert('Error: ' + err.message);
+      }
     });
 
+    // Device link code form
     document.getElementById('codeForm').addEventListener('submit', async function (e) {
       e.preventDefault();
-      const code = document.getElementById('sessionCode').value.trim();
-      const res = await fetch(`/session/${code}`);
-      if (res.ok) {
-        const guest = await res.json();
-        localStorage.setItem('guestData', JSON.stringify(guest));
-        window.location.href = 'photo.html';
-      } else {
-        alert("Invalid or expired session code.");
-      }
+      const code = document.getElementById('sessionCode').value.trim().toUpperCase();
+
+      // Try device link first
+      try {
+        const res = await fetch('/guest/link-device', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ code })
+        });
+
+        if (res.ok) {
+          const data = await res.json();
+          localStorage.setItem('guestToken', data.token);
+          localStorage.setItem('guestData', JSON.stringify(data.guest));
+          window.location.href = 'photo.html';
+          return;
+        }
+      } catch (e) {}
+
+      // Fall back to legacy session code
+      try {
+        const res = await fetch(`/session/${code}`);
+        if (res.ok) {
+          const guest = await res.json();
+          localStorage.setItem('guestData', JSON.stringify(guest));
+          window.location.href = 'photo.html';
+          return;
+        }
+      } catch (e) {}
+
+      alert("Invalid or expired code.");
     });
   </script>
 </body>

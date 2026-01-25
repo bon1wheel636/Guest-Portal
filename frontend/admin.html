@@ -70,8 +70,12 @@
   <button type="submit">Update Expiration</button>
 </form>
 
-<h2>Active Sessions</h2>
+<h2>Active Session Codes</h2>
 <ul id="sessionList"></ul>
+
+<h2>Guest Sessions</h2>
+<p style="font-size: 0.9em; color: #666;">Guests with persistent sessions (can return during their stay)</p>
+<div id="guestSessionList"></div>
 
   </div>
   <script>
@@ -368,12 +372,103 @@ document.getElementById('removeBg')?.addEventListener('click', async () => {
   }
 });
 
+// Guest session management
+async function loadGuestSessions() {
+  try {
+    const res = await fetch('/admin-api/guest-sessions', {
+      headers: { 'Authorization': getAuthHeader() }
+    });
+    if (!res.ok) return;
+    const sessions = await res.json();
+    const container = document.getElementById('guestSessionList');
+    container.innerHTML = '';
+
+    if (sessions.length === 0) {
+      container.innerHTML = '<p style="color:#666;font-style:italic;">No active guest sessions</p>';
+      return;
+    }
+
+    sessions.forEach(guest => {
+      const div = document.createElement('div');
+      div.style.cssText = 'border:1px solid #ddd;padding:10px;margin:10px 0;border-radius:5px;';
+
+      const daysLeft = Math.ceil((new Date(guest.checkoutDate) - new Date()) / (1000*60*60*24));
+      const checkoutStr = new Date(guest.checkoutDate).toLocaleDateString();
+
+      let html = `<strong>${escapeHtml(guest.name)}</strong> - Room: ${escapeHtml(guest.room)}<br>`;
+      html += `<small>Checkout: ${checkoutStr} (${daysLeft} days remaining)</small><br>`;
+      html += `<small>Devices (${guest.devices.length}):</small><ul style="margin:5px 0;padding-left:20px;">`;
+
+      guest.devices.forEach((device, idx) => {
+        const addedDate = new Date(device.addedAt).toLocaleString();
+        const ua = device.userAgent || 'Unknown device';
+        const shortUa = ua.length > 50 ? ua.substring(0, 50) + '...' : ua;
+        html += `<li style="font-size:0.85em;">${escapeHtml(shortUa)} <small>(${addedDate})</small></li>`;
+      });
+      html += '</ul>';
+
+      div.innerHTML = html;
+
+      // Extend stay button
+      const extendBtn = document.createElement('button');
+      extendBtn.textContent = 'Extend Stay';
+      extendBtn.style.marginRight = '10px';
+      extendBtn.onclick = async () => {
+        const days = prompt('Extend stay by how many days?', '7');
+        if (!days) return;
+        const res = await fetch(`/admin-api/guest-sessions/${guest.id}/extend`, {
+          method: 'POST',
+          headers: { 'Authorization': getAuthHeader(), 'Content-Type': 'application/json' },
+          body: JSON.stringify({ days: parseInt(days) })
+        });
+        if (res.ok) {
+          alert('Stay extended!');
+          loadGuestSessions();
+        } else {
+          alert('Failed to extend stay');
+        }
+      };
+      div.appendChild(extendBtn);
+
+      // Check out button
+      const checkoutBtn = document.createElement('button');
+      checkoutBtn.textContent = 'Check Out';
+      checkoutBtn.style.background = '#dc3545';
+      checkoutBtn.onclick = async () => {
+        if (!confirm(`Check out ${guest.name}? This will end their session.`)) return;
+        const res = await fetch(`/admin-api/guest-sessions/${guest.id}`, {
+          method: 'DELETE',
+          headers: { 'Authorization': getAuthHeader() }
+        });
+        if (res.ok) {
+          alert('Guest checked out');
+          loadGuestSessions();
+        } else {
+          alert('Failed to check out guest');
+        }
+      };
+      div.appendChild(checkoutBtn);
+
+      container.appendChild(div);
+    });
+  } catch (err) {
+    console.error('Failed to load guest sessions:', err);
+  }
+}
+
+function escapeHtml(text) {
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
+}
+
 // Load background on admin init
 const origInitAdmin = initAdmin;
 initAdmin = async function() {
   await origInitAdmin();
   if (adminContent.style.display === 'block') {
     loadBackground();
+    loadGuestSessions();
   }
 };
 
