@@ -2,23 +2,27 @@
 
 A self-hosted, mobile-friendly landing portal for guest Wi-Fi networks. Provides Smart Home access, secure photo uploads, and cross-device session continuity.
 
-[![Version](https://img.shields.io/badge/version-1.2.1-blue.svg)](https://github.com/bon1wheel636/guest-portal/releases/tag/v1.2.1)
+[![Version](https://img.shields.io/badge/version-1.3.0-blue.svg)](https://github.com/bon1wheel636/guest-portal/releases/tag/v1.3.0)
 
 ---
 
 ## ✨ Features
 
-- 🛏️ Guest registration with room selection
-- 📸 Photo uploads saved by guest name and date
-- 🔁 Session continuity using cookies and 6-character session codes (one-time use)
+- 🛏️ Guest registration with room selection and checkout date
+- 📸 Photo uploads saved per guest with separate folders
+- 🔁 Persistent guest sessions (1-30 days, default 7)
+- 📱 Device linking - guests can add phones, tablets, and laptops to their session
 - 🔐 Admin panel with:
   - Room management
+  - Guest session management (view devices, extend stays, check out)
   - Upload base path configuration
-  - Session expiration setting (admin-configurable)
+  - Background image customization
   - View & revoke session codes
+- 👥 Multiple guests per room support
+- 🖼️ Customizable landing page background
 - 🔐 Secure uploads directory with Basic Auth
 - 🧱 Proxmox LXC container deployment
-- 🌐 GitHub Pages-ready documentation site
+- 🧪 Comprehensive test suite
 
 ---
 
@@ -72,9 +76,22 @@ bash setup.sh
 ## 🔐 Security
 
 - Admin uploads protected with bcrypt-authenticated Basic Auth
-- Uploads stored in a configurable path
+- Uploads stored in a configurable path with per-guest folders
 - Session codes are one-time and time-limited
 - Input validation prevents XSS and path traversal attacks
+- Guest tokens for persistent sessions with expiration dates
+
+---
+
+## 🧪 Testing
+
+Run the comprehensive test suite to validate all endpoints:
+
+```bash
+bash test-suite.sh
+```
+
+This tests registration, photo uploads, session management, admin features, and more.
 
 ---
 
