@@ -110,6 +110,14 @@ bash setup-local.sh
 # Option B: Start server and set up via web UI
 npm start
 # Then visit http://localhost:3000/admin.html to create admin account
+# Create config directory and files
+sudo mkdir -p /etc/guest-portal
+sudo bash -c 'echo "{\"adminUser\": \"admin\", \"adminHash\": \"$(node -e "require(\"bcrypt\").hash(\"password\", 10).then(console.log)")\"}" > /etc/guest-portal/config.json'
+sudo bash -c 'echo "{\"rooms\": [], \"guests\": []}" > /etc/guest-portal/storage.json'
+sudo bash -c 'echo "{}" > /etc/guest-portal/sessions.json'
+
+# Start the server
+npm start
 ```
 
 Access the portal at `http://localhost:3000`
