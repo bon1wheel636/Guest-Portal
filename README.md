@@ -74,6 +74,25 @@ bash setup.sh
 - Admin uploads protected with bcrypt-authenticated Basic Auth
 - Uploads stored in a configurable path
 - Session codes are one-time and time-limited
+- Input validation prevents XSS and path traversal attacks
+
+---
+
+## 🔑 Admin Password Setup
+
+There are **three ways** to set up the admin password:
+
+### Option 1: Proxmox Setup Script (Production)
+When running `bash setup.sh` on a Proxmox host, you'll be prompted to set the admin username and password. This is the recommended method for production deployments.
+
+### Option 2: Local Setup Script (Development)
+```bash
+bash setup-local.sh
+```
+This interactive script prompts for admin credentials and creates the configuration files.
+
+### Option 3: First-Run Web Setup
+If no admin password is configured, visiting `/admin.html` will show an **Initial Admin Setup** form where you can create the admin account directly in the browser.
 
 ---
 
@@ -82,17 +101,15 @@ bash setup.sh
 To run the portal locally without Proxmox:
 
 ```bash
-# Run the interactive setup script (prompts for admin password)
+# Install dependencies
+npm install
+
+# Option A: Use the setup script (recommended)
 bash setup-local.sh
 
-# Start the server
+# Option B: Start server and set up via web UI
 npm start
+# Then visit http://localhost:3000/admin.html to create admin account
 ```
-
-The setup script will:
-- Install npm dependencies
-- Prompt for admin username and password
-- Create secure configuration files in `/etc/guest-portal/`
-- Hash the password using bcrypt
 
 Access the portal at `http://localhost:3000`

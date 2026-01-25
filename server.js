@@ -43,6 +43,48 @@ function saveConfig() {
   fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
 }
 
+// Middleware setup (must be before routes)
+app.use(cors());
+app.use(express.json());
+app.use(express.static('frontend'));
+
+// Check if admin setup is needed (no password configured)
+app.get('/admin-api/setup-required', (req, res) => {
+  const needsSetup = !config.adminHash || config.adminHash === '<bcrypt_hash_placeholder>';
+  res.json({ setupRequired: needsSetup });
+});
+
+// First-run admin setup (only works if no password is set)
+app.post('/admin-api/setup', async (req, res) => {
+  // Only allow setup if no admin password is configured
+  if (config.adminHash && config.adminHash !== '<bcrypt_hash_placeholder>') {
+    return res.status(403).send('Admin already configured. Use setup-local.sh to reset.');
+  }
+
+  const { username, password } = req.body;
+
+  // Validate input
+  if (!username || typeof username !== 'string' || username.length < 3 || username.length > 50) {
+    return res.status(400).send('Username must be 3-50 characters');
+  }
+  if (!password || typeof password !== 'string' || password.length < 8) {
+    return res.status(400).send('Password must be at least 8 characters');
+  }
+  if (!/^[a-zA-Z0-9_-]+$/.test(username)) {
+    return res.status(400).send('Username can only contain letters, numbers, underscores, and hyphens');
+  }
+
+  try {
+    const hash = await bcrypt.hash(password, 10);
+    config.adminUser = username;
+    config.adminHash = hash;
+    saveConfig();
+    res.json({ success: true, message: 'Admin account created successfully' });
+  } catch (err) {
+    res.status(500).send('Failed to create admin account');
+  }
+});
+
 // PATCH: Admin login check
 app.post('/admin-api/login', (req, res) => {
   const user = basicAuth(req);
@@ -91,10 +133,6 @@ function saveSessions() {
 function generateCode() {
   return Math.random().toString(36).substring(2, 8).toUpperCase();
 }
-
-app.use(cors());
-app.use(express.json());
-app.use(express.static('frontend'));
 
 const limiter = rateLimit({
   windowMs: 60 * 1000,
