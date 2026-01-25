@@ -27,6 +27,17 @@
   </div>
 
   <script>
+    // Load background image if set
+    fetch('/admin-api/background').then(res => res.json()).then(data => {
+      if (data.backgroundImage) {
+        document.body.style.backgroundImage = `url('${data.backgroundImage}')`;
+        document.body.style.backgroundSize = 'cover';
+        document.body.style.backgroundPosition = 'center';
+        document.body.style.backgroundRepeat = 'no-repeat';
+        document.body.style.backgroundAttachment = 'fixed';
+      }
+    }).catch(() => {});
+
     fetch('/admin-api/rooms').then(res => res.json()).then(rooms => {
       const roomSelect = document.getElementById('room');
       rooms.forEach(r => {

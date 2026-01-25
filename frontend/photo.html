@@ -25,6 +25,17 @@
     <p><a href="#" id="reset">If you're not <span id="guestName"></span>, click here to register</a></p>
   </div>
   <script>
+    // Load background image if set
+    fetch('/admin-api/background').then(res => res.json()).then(data => {
+      if (data.backgroundImage) {
+        document.body.style.backgroundImage = `url('${data.backgroundImage}')`;
+        document.body.style.backgroundSize = 'cover';
+        document.body.style.backgroundPosition = 'center';
+        document.body.style.backgroundRepeat = 'no-repeat';
+        document.body.style.backgroundAttachment = 'fixed';
+      }
+    }).catch(() => {});
+
     const guestData = JSON.parse(localStorage.getItem('guestData')) || {};
     const greeting = document.getElementById('guestGreeting');
     const smartHomeLink = document.getElementById('smartHomeLink');

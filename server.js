@@ -228,6 +228,59 @@ app.post('/admin-api/uploadDir', (req, res) => {
   res.sendStatus(200);
 });
 
+// Background image upload for landing page
+const bgStorage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    const dir = path.join(__dirname, 'uploads', 'backgrounds');
+    fs.mkdirSync(dir, { recursive: true });
+    cb(null, dir);
+  },
+  filename: (req, file, cb) => {
+    const ext = path.extname(file.originalname).toLowerCase();
+    cb(null, `background${ext}`);
+  }
+});
+const bgUpload = multer({
+  storage: bgStorage,
+  fileFilter: (req, file, cb) => {
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+    if (allowedTypes.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only image files are allowed'));
+    }
+  },
+  limits: { fileSize: 5 * 1024 * 1024 } // 5MB limit
+});
+
+app.post('/admin-api/background', bgUpload.single('background'), (req, res) => {
+  if (!req.file) {
+    return res.status(400).send('No image uploaded');
+  }
+  config.backgroundImage = `/uploads/backgrounds/${req.file.filename}`;
+  saveConfig();
+  res.json({ success: true, path: config.backgroundImage });
+});
+
+app.get('/admin-api/background', (req, res) => {
+  res.json({ backgroundImage: config.backgroundImage || null });
+});
+
+app.delete('/admin-api/background', (req, res) => {
+  if (config.backgroundImage) {
+    const bgPath = path.join(__dirname, config.backgroundImage);
+    if (fs.existsSync(bgPath)) {
+      fs.unlinkSync(bgPath);
+    }
+    delete config.backgroundImage;
+    saveConfig();
+  }
+  res.json({ success: true });
+});
+
+// Serve background images publicly
+app.use('/uploads/backgrounds', express.static(path.join(__dirname, 'uploads', 'backgrounds')));
+
 app.post('/session', (req, res) => {
   const { name, room } = req.body;
   const code = generateCode();
@@ -241,8 +294,15 @@ app.post('/session', (req, res) => {
 app.get('/session/:code', (req, res) => {
   const { code } = req.params;
   const entry = sessionCodes[code];
-  if (entry && entry.expires > Date.now()) res.json(entry.guest);
-  else res.status(404).send('Invalid or expired code');
+  if (entry && entry.expires > Date.now()) {
+    const guest = entry.guest;
+    // One-time use: invalidate session code after retrieval
+    delete sessionCodes[code];
+    saveSessions();
+    res.json(guest);
+  } else {
+    res.status(404).send('Invalid or expired code');
+  }
 });
 
 app.post('/admin-api/session-expiration', (req, res) => {
