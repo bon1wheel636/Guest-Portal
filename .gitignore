@@ -6,18 +6,24 @@ server.log
 # Node dependencies
 node_modules/
 
-# Configuration and secrets
+# Configuration and secrets (if stored locally)
 config.json
-/etc/guest-portal/config.json
-/etc/guest-portal/storage.json
-/etc/guest-portal/sessions.json
+storage.json
+sessions.json
 
 # OS or editor specific
 .DS_Store
 Thumbs.db
+*.swp
+*.swo
+.vscode/
+.idea/
 
-# Optional additions
+# Environment and secrets
 *.env
+.env.*
+
+# Build artifacts
 nohup.out
 *.zip
 *.tar.gz

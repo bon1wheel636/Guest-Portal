@@ -82,17 +82,17 @@ bash setup.sh
 To run the portal locally without Proxmox:
 
 ```bash
-# Install dependencies
-npm install
-
-# Create config directory and files
-sudo mkdir -p /etc/guest-portal
-sudo bash -c 'echo "{\"adminUser\": \"admin\", \"adminHash\": \"$(node -e "require(\"bcrypt\").hash(\"password\", 10).then(console.log)")\"}" > /etc/guest-portal/config.json'
-sudo bash -c 'echo "{\"rooms\": [], \"guests\": []}" > /etc/guest-portal/storage.json'
-sudo bash -c 'echo "{}" > /etc/guest-portal/sessions.json'
+# Run the interactive setup script (prompts for admin password)
+bash setup-local.sh
 
 # Start the server
 npm start
 ```
+
+The setup script will:
+- Install npm dependencies
+- Prompt for admin username and password
+- Create secure configuration files in `/etc/guest-portal/`
+- Hash the password using bcrypt
 
 Access the portal at `http://localhost:3000`

@@ -54,8 +54,14 @@
       list.innerHTML = '';
       rooms.forEach(room => {
         const li = document.createElement('li');
-        li.innerHTML = `<strong>${room.name}</strong>: ${room.dashboardUrl}
-          <button onclick="deleteRoom('${room.name}')">Delete</button>`;
+        const strong = document.createElement('strong');
+        strong.textContent = room.name;
+        li.appendChild(strong);
+        li.appendChild(document.createTextNode(': ' + room.dashboardUrl + ' '));
+        const btn = document.createElement('button');
+        btn.textContent = 'Delete';
+        btn.onclick = () => deleteRoom(room.name);
+        li.appendChild(btn);
         list.appendChild(li);
       });
     }

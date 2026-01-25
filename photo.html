@@ -29,10 +29,15 @@
     const greeting = document.getElementById('guestGreeting');
     const smartHomeLink = document.getElementById('smartHomeLink');
     const guestNameSpan = document.getElementById('guestName');
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
     if (guestData.name && guestData.room) {
-      greeting.innerHTML = `Welcome back ${guestData.name}! Are you staying in the ${guestData.room} again or <a href='index.html'>change</a>?`;
+      greeting.innerHTML = `Welcome back ${escapeHtml(guestData.name)}! Are you staying in the ${escapeHtml(guestData.room)} again or <a href='index.html'>change</a>?`;
       smartHomeLink.href = guestData.dashboardUrl || "/";
-      guestNameSpan.innerText = guestData.name;
+      guestNameSpan.textContent = guestData.name;
     } else window.location.href = "index.html";
     document.getElementById('uploadForm').addEventListener('submit', async (e) => {
       e.preventDefault();
