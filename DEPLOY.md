@@ -4,20 +4,11 @@ This document provides complete instructions for installing and deploying the Gu
 
 ---
 
-## ✅ Changelog
-
-| Version | Changes |
-|---------|---------|
-| v1.2.1  | Added local development support, fixed deployment paths |
-| v1.0.0  | Initial secure and functional release with bcrypt auth, LXC setup, Smart Home access, photo upload, and admin panel |
-
----
-
 ## 📦 Setup Instructions
 
 1. **Clone or Extract the Project:**
 ```bash
-git clone https://github.com/<your-user>/guest-portal.git
+git clone https://github.com/bon1wheel636/guest-portal.git
 cd guest-portal
 ```
 
@@ -26,16 +17,25 @@ cd guest-portal
 bash setup.sh
 ```
 
-- Choose whether to create new LXC containers or use existing ones
-- Configure static IPs and bridge (recommended)
-- Set up guest rooms and Smart Home dashboard URLs
-- Secure admin access (bcrypt hashed password)
+The interactive script will walk you through:
+- Node.js LXC container creation (name, ID, cores, memory, network)
+- Guest room configuration with Home Assistant dashboard URLs
+- Admin credentials (bcrypt hashed)
+- Reverse proxy setup — choose one of:
+  1. **Nginx Proxy Manager** — prints step-by-step NPM dashboard config
+  2. **New NGINX container** — creates a dedicated LXC with TLS-ready config
+  3. **Skip / Manual** — configure your own proxy later
+
+The script automatically:
+- Installs Node.js and dependencies inside the container
+- Deploys a systemd service (`guest-portal.service`) for auto-restart and boot persistence
+- Detects the container IP and displays it in the setup summary
 
 3. **Access the Portal:**
-- 🧑‍💻 Guest: `https://guestportal.<your-fqdn>`
-- 📸 Upload: `https://guestportal.<your-fqdn>/photo.html`
-- ⚙️ Admin: `https://guestportal.<your-fqdn>/admin.html`
-- 🔐 Protected Uploads: `https://guestportal.<your-fqdn>/admin/uploads`
+- Guest Registration: `https://guestportal.<your-fqdn>/`
+- Photo Upload: `https://guestportal.<your-fqdn>/photo.html`
+- Admin Panel: `https://guestportal.<your-fqdn>/admin.html`
+- Protected Uploads: `https://guestportal.<your-fqdn>/admin/uploads`
 
 ---
 
@@ -46,23 +46,29 @@ bash setup.sh
 - [ ] Verify Smart Home links per room
 - [ ] Log into `/admin.html` and manage rooms
 - [ ] Confirm password protection on `/admin/uploads`
+- [ ] Verify admin API endpoints return 401 without credentials
+- [ ] Test device linking between two devices
+- [ ] Extend and check out a guest session from admin panel
+- [ ] Run `bash test-suite.sh` to validate all endpoints
+- [ ] Verify `systemctl status guest-portal` shows active
+- [ ] Confirm service restarts after `systemctl restart guest-portal`
 
 ---
 
+## 📁 Key Paths (Inside Container)
+
+| Path | Description |
+|------|-------------|
+| `/root/guest-portal/` | Application code |
+| `/etc/guest-portal/config.json` | Admin credentials, settings |
+| `/etc/guest-portal/storage.json` | Rooms and guest data |
+| `/etc/guest-portal/sessions.json` | Active session codes |
+| `/etc/guest-portal/guest-tokens.json` | Persistent guest tokens |
+| `/root/guest-portal/uploads/` | Guest photos and background images |
+
 ## 🌐 Deploy to GitHub (Optional)
 
-To publish the code:
-
 ```bash
-git init
-git add .
-git commit -m "Initial secure release of Guest Portal"
-gh repo create guest-portal --private --source=. --remote=origin
-git push -u origin main
-```
-
-To create a release, tag it:
-```bash
-git tag v1.0.0
-git push origin v1.0.0
+git tag v1.3.0
+git push origin v1.3.0
 ```
