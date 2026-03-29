@@ -73,6 +73,9 @@
 <h2>Active Session Codes</h2>
 <ul id="sessionList"></ul>
 
+<h2>Registered Guests</h2>
+<div id="guestList"></div>
+
 <h2>Guest Sessions</h2>
 <p style="font-size: 0.9em; color: #666;">Guests with persistent sessions (can return during their stay)</p>
 <div id="guestSessionList"></div>
@@ -98,7 +101,7 @@
       });
     }
     async function deleteRoom(name) {
-      await fetch('/admin-api/rooms/' + encodeURIComponent(name), { method: 'DELETE' });
+      await fetch('/admin-api/rooms/' + encodeURIComponent(name), { method: 'DELETE', headers: { 'Authorization': getAuthHeader() } });
       loadRooms();
     }
     document.getElementById('roomForm').addEventListener('submit', async e => {
@@ -107,7 +110,7 @@
       const dashboardUrl = document.getElementById('dashboardUrl').value;
       await fetch('/admin-api/rooms', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Authorization': getAuthHeader(), 'Content-Type': 'application/json' },
         body: JSON.stringify({ name, dashboardUrl })
       });
       document.getElementById('roomForm').reset();
@@ -120,14 +123,14 @@ document.getElementById('expirationForm').addEventListener('submit', async (e) =
   const minutes = parseInt(document.getElementById('expirationMinutes').value);
   await fetch('/admin-api/session-expiration', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Authorization': getAuthHeader(), 'Content-Type': 'application/json' },
     body: JSON.stringify({ minutes })
   });
   alert('Updated expiration time.');
 });
 
 async function loadSessions() {
-  const res = await fetch('/admin-api/sessions');
+  const res = await fetch('/admin-api/sessions', { headers: { 'Authorization': getAuthHeader() } });
   const sessions = await res.json();
   const ul = document.getElementById('sessionList');
   ul.innerHTML = '';
@@ -137,7 +140,7 @@ async function loadSessions() {
     const btn = document.createElement('button');
     btn.textContent = 'Revoke';
     btn.onclick = async () => {
-      await fetch('/admin-api/sessions/' + sess.code, { method: 'DELETE' });
+      await fetch('/admin-api/sessions/' + sess.code, { method: 'DELETE', headers: { 'Authorization': getAuthHeader() } });
       loadSessions();
     };
     li.appendChild(btn);
@@ -271,10 +274,14 @@ function startInactivityTimer() {
 }
 
 async function loadTimeout() {
-  const res = await fetch('/admin-api/uploadDir', { headers: { 'Authorization': getAuthHeader() }});
-  if (res.ok) {
-    document.getElementById('adminTimeoutMinutes').value = timeoutMinutes;
-  }
+  try {
+    const res = await fetch('/admin-api/admin-timeout', { headers: { 'Authorization': getAuthHeader() }});
+    if (res.ok) {
+      const data = await res.json();
+      timeoutMinutes = data.minutes || 15;
+      document.getElementById('adminTimeoutMinutes').value = timeoutMinutes;
+    }
+  } catch {}
 }
 
 document.getElementById('timeoutForm').addEventListener('submit', async (e) => {
@@ -293,22 +300,24 @@ document.getElementById('timeoutForm').addEventListener('submit', async (e) => {
   resetTimer();
 });
 
-// PATCH: load guests
 async function loadGuests() {
   const res = await fetch('/api/guests', {
     headers: { 'Authorization': getAuthHeader() }
   });
-  const guests = await res.json();
+  const data = await res.json();
+  const container = document.getElementById('guestList');
+  container.innerHTML = '';
+  if (!data.guests || data.guests.length === 0) {
+    container.innerHTML = '<p style="color:#666;font-style:italic;">No registered guests</p>';
+    return;
+  }
   const ul = document.createElement('ul');
-  guests.forEach(g => {
+  data.guests.forEach(g => {
     const li = document.createElement('li');
     li.textContent = `${g.name} (${g.room}) at ${new Date(g.timestamp).toLocaleString()}`;
     ul.appendChild(li);
   });
-  const guestSection = document.createElement('div');
-  guestSection.innerHTML = '<h2>Registered Guests</h2>';
-  guestSection.appendChild(ul);
-  adminContent.appendChild(guestSection);
+  container.appendChild(ul);
 }
 
 // Background image handling
@@ -344,6 +353,7 @@ document.getElementById('bgForm')?.addEventListener('submit', async (e) => {
   try {
     const res = await fetch('/admin-api/background', {
       method: 'POST',
+      headers: { 'Authorization': getAuthHeader() },
       body: formData
     });
     if (res.ok) {
@@ -362,7 +372,7 @@ document.getElementById('bgForm')?.addEventListener('submit', async (e) => {
 document.getElementById('removeBg')?.addEventListener('click', async () => {
   if (!confirm('Remove the background image?')) return;
   try {
-    const res = await fetch('/admin-api/background', { method: 'DELETE' });
+    const res = await fetch('/admin-api/background', { method: 'DELETE', headers: { 'Authorization': getAuthHeader() } });
     if (res.ok) {
       alert('Background removed');
       loadBackground();

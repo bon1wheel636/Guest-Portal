@@ -51,16 +51,29 @@ function getAdminTimeoutMinutes() {
   return config.adminSessionTimeoutMinutes || 15;
 }
 
+// L5: Async file writes to avoid blocking the event loop
 function saveConfig() {
-  fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
+  fs.promises.writeFile(configPath, JSON.stringify(config, null, 2)).catch(err => {
+    console.error('Failed to save config:', err);
+  });
 }
 
 function saveSessions() {
-  fs.writeFileSync(sessionFile, JSON.stringify(sessionCodes, null, 2));
+  fs.promises.writeFile(sessionFile, JSON.stringify(sessionCodes, null, 2)).catch(err => {
+    console.error('Failed to save sessions:', err);
+  });
 }
 
 function saveGuestTokens() {
-  fs.writeFileSync(guestTokensFile, JSON.stringify(guestTokens, null, 2));
+  fs.promises.writeFile(guestTokensFile, JSON.stringify(guestTokens, null, 2)).catch(err => {
+    console.error('Failed to save guest tokens:', err);
+  });
+}
+
+function saveGuestData() {
+  fs.promises.writeFile(dbPath, JSON.stringify(guestData, null, 2)).catch(err => {
+    console.error('Failed to save guest data:', err);
+  });
 }
 
 // C2: Use crypto.randomBytes instead of Math.random for secure token generation
@@ -123,6 +136,14 @@ const storage = multer.diskStorage({
 });
 const upload = multer({ storage });
 
+// L1: Map MIME types to allowed extensions to prevent mismatches
+const MIME_TO_EXT = {
+  'image/jpeg': '.jpg',
+  'image/png': '.png',
+  'image/gif': '.gif',
+  'image/webp': '.webp'
+};
+
 const bgStorage = multer.diskStorage({
   destination: (req, file, cb) => {
     const dir = path.join(__dirname, 'uploads', 'backgrounds');
@@ -130,18 +151,17 @@ const bgStorage = multer.diskStorage({
     cb(null, dir);
   },
   filename: (req, file, cb) => {
-    const ext = path.extname(file.originalname).toLowerCase();
+    const ext = MIME_TO_EXT[file.mimetype] || '.jpg';
     cb(null, `background${ext}`);
   }
 });
 const bgUpload = multer({
   storage: bgStorage,
   fileFilter: (req, file, cb) => {
-    const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
-    if (allowedTypes.includes(file.mimetype)) {
+    if (MIME_TO_EXT[file.mimetype]) {
       cb(null, true);
     } else {
-      cb(new Error('Only image files are allowed'));
+      cb(new Error('Only image files are allowed (JPG, PNG, GIF, WebP)'));
     }
   },
   limits: { fileSize: 5 * 1024 * 1024 }
@@ -242,7 +262,7 @@ app.post('/register', (req, res) => {
   saveGuestTokens();
 
   guestData.guests.push({ name, room, timestamp: new Date().toISOString(), guestId });
-  fs.writeFileSync(dbPath, JSON.stringify(guestData, null, 2));
+  saveGuestData();
 
   res.json({
     token,
@@ -395,23 +415,21 @@ app.post('/admin-api/rooms', authMiddleware, (req, res) => {
   const index = guestData.rooms.findIndex(r => r.name === name);
   if (index >= 0) guestData.rooms[index].dashboardUrl = dashboardUrl;
   else guestData.rooms.push({ name, dashboardUrl });
-  fs.writeFileSync(dbPath, JSON.stringify(guestData, null, 2));
+  saveGuestData();
   res.sendStatus(200);
 });
 
 app.delete('/admin-api/rooms/:name', authMiddleware, (req, res) => {
   guestData.rooms = guestData.rooms.filter(r => r.name !== req.params.name);
-  fs.writeFileSync(dbPath, JSON.stringify(guestData, null, 2));
+  saveGuestData();
   res.sendStatus(200);
 });
 
 app.use('/admin/uploads', authMiddleware, express.static(path.join(__dirname, 'uploads')));
 
-app.post('/admin-api/uploadDir', authMiddleware, (req, res) => {
-  const { path: newPath } = req.body;
-  config.uploadDir = newPath;
-  saveConfig();
-  res.sendStatus(200);
+// M6: GET endpoint to retrieve current admin timeout setting
+app.get('/admin-api/admin-timeout', authMiddleware, (req, res) => {
+  res.json({ minutes: getAdminTimeoutMinutes() });
 });
 
 app.post('/admin-api/background', authMiddleware, bgUpload.single('background'), (req, res) => {
@@ -514,6 +532,22 @@ app.delete('/admin-api/sessions/:code', authMiddleware, (req, res) => {
 
 // ─── Start Server ───────────────────────────────────────────────────────────
 
-app.listen(port, () => {
+const server = app.listen(port, () => {
   console.log(`Guest Portal backend is running at http://localhost:${port}`);
 });
+
+// L4: Graceful shutdown — close server and flush pending writes
+function shutdown(signal) {
+  console.log(`\n${signal} received. Shutting down gracefully...`);
+  server.close(() => {
+    console.log('Server closed.');
+    process.exit(0);
+  });
+  setTimeout(() => {
+    console.error('Forced shutdown after timeout.');
+    process.exit(1);
+  }, 5000);
+}
+
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => shutdown('SIGINT'));

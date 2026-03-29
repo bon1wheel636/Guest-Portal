@@ -1,6 +1,6 @@
 {
   "name": "guest-portal",
-  "version": "1.2.1",
+  "version": "1.3.0",
   "description": "Self-hosted guest Wi-Fi portal with photo uploads and Smart Home integration",
   "main": "server.js",
   "scripts": {

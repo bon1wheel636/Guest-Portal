@@ -124,52 +124,151 @@ pct push "$nodejs_id" "$(pwd)/guest-portal.service" /etc/systemd/system/guest-po
 pct exec "$nodejs_id" -- bash -c "systemctl daemon-reload && systemctl enable guest-portal && systemctl start guest-portal"
 echo "Guest Portal service started and enabled on boot."
 
-echo ""
-read -p "Do you want to set up a new NGINX container? (y/n, default: n): " setup_nginx
-setup_nginx=${setup_nginx:-n}
+############################
+# Reverse Proxy Setup      #
+############################
 
-if [[ "$setup_nginx" == "y" ]]; then
-  read -p "Enter container name for NGINX (default: guest-portal-nginx): " nginx_container
-  nginx_container=${nginx_container:-"guest-portal-nginx"}
-
-  read -p "Enter container ID for NGINX (default: 102): " nginx_id
-  nginx_id=${nginx_id:-102}
-
-  read -p "Enter network bridge for NGINX (default: vmbr0): " nginx_bridge
-  nginx_bridge=${nginx_bridge:-"vmbr0"}
-
-  read -p "Use static IP for NGINX? (y/n, default: y): " nginx_static
-  nginx_static=${nginx_static:-y}
-
-  if [[ "$nginx_static" == "y" ]]; then
-    read -p "Enter static IP (CIDR): " nginx_ip
-    read -p "Enter gateway: " nginx_gw
-    read -p "Enter DNS: " nginx_dns
-    nginx_net="name=eth0,bridge=${nginx_bridge},ip=${nginx_ip},gw=${nginx_gw},nameserver=${nginx_dns}"
-  else
-    nginx_net="name=eth0,bridge=${nginx_bridge},ip=dhcp"
-  fi
-
-  pct create "$nginx_id" local:vztmpl/debian-12-standard_12.0-1_amd64.tar.zst \
-    --hostname "$nginx_container" --cores 1 --memory 512 --net0 "$nginx_net" \
-    --rootfs local-lvm:2 --onboot 1
-
-  pct start "$nginx_id"
-  pct exec "$nginx_id" -- bash -c "apt update && apt install -y nginx"
-  pct push "$nginx_id" "$(pwd)/nginx/guestportal.conf" /etc/nginx/conf.d/guestportal.conf
-  pct exec "$nginx_id" -- systemctl restart nginx
-else
+# Get the Node.js container’s IP for proxy configuration
+NODEJS_IP=$(pct exec "$nodejs_id" -- hostname -I 2>/dev/null | awk ‘{print $1}’)
+if [[ -z "$NODEJS_IP" ]]; then
   echo ""
-  echo "Manual NGINX setup selected. Choose one of the following methods:"
-  echo "1. Web UI:"
-  echo "   - Log into the NGINX container’s web interface."
-  echo "   - Add a new server block for guestportal.<your-domain>."
-  echo "   - Reverse proxy to http://<nodejs-container-ip>:3000"
-  echo ""
-  echo "2. CLI:"
-  echo "   - Copy 'nginx/guestportal.conf' to /etc/nginx/conf.d/guestportal.conf"
-  echo "   - Restart nginx with: systemctl restart nginx"
+  echo "⚠  Could not auto-detect Node.js container IP."
+  read -p "Enter the Node.js container IP address: " NODEJS_IP
 fi
 
 echo ""
-echo "✅ Guest Portal setup complete!"
+echo "═══════════════════════════════════════════════════════"
+echo "  Reverse Proxy Configuration"
+echo "═══════════════════════════════════════════════════════"
+echo ""
+echo "  Guest Portal is running at: http://${NODEJS_IP}:3000"
+echo ""
+echo "  How would you like to handle reverse proxy / HTTPS?"
+echo ""
+echo "  1) Nginx Proxy Manager (NPM)"
+echo "     Use an existing NPM instance to manage SSL and routing."
+echo ""
+echo "  2) New NGINX container"
+echo "     Create a dedicated NGINX LXC with the included config."
+echo ""
+echo "  3) Skip / Manual"
+echo "     I’ll configure my own reverse proxy later."
+echo ""
+read -p "Select an option [1/2/3] (default: 1): " proxy_choice
+proxy_choice=${proxy_choice:-1}
+
+case "$proxy_choice" in
+  1)
+    echo ""
+    echo "═══════════════════════════════════════════════════════"
+    echo "  Nginx Proxy Manager Setup"
+    echo "═══════════════════════════════════════════════════════"
+    echo ""
+    echo "  Add a new Proxy Host in your NPM dashboard:"
+    echo ""
+    echo "  Details tab:"
+    echo "    Domain Names:       guestportal.yourdomain.com"
+    echo "    Scheme:             http"
+    echo "    Forward Hostname:   ${NODEJS_IP}"
+    echo "    Forward Port:       3000"
+    echo "    ☑ Block Common Exploits"
+    echo "    ☑ Websockets Support"
+    echo ""
+    echo "  SSL tab:"
+    echo "    ☑ Request a new SSL Certificate"
+    echo "    ☑ Force SSL"
+    echo "    ☑ HTTP/2 Support"
+    echo "    ☑ HSTS Enabled"
+    echo ""
+    echo "  Custom locations (optional):"
+    echo "    /admin-api/*  →  Access control or IP whitelist"
+    echo ""
+    echo "  Advanced tab (optional — paste this for security headers):"
+    echo "    add_header X-Content-Type-Options nosniff always;"
+    echo "    add_header X-Frame-Options DENY always;"
+    echo "    add_header Referrer-Policy strict-origin-when-cross-origin always;"
+    echo "    client_max_body_size 50M;"
+    echo ""
+    ;;
+  2)
+    read -p "Enter container name for NGINX (default: guest-portal-nginx): " nginx_container
+    nginx_container=${nginx_container:-"guest-portal-nginx"}
+
+    next_nginx_id=$((nodejs_id + 1))
+    read -p "Enter container ID for NGINX (default: $next_nginx_id): " nginx_id
+    nginx_id=${nginx_id:-$next_nginx_id}
+
+    read -p "Enter network bridge for NGINX (default: vmbr0): " nginx_bridge
+    nginx_bridge=${nginx_bridge:-"vmbr0"}
+
+    read -p "Use static IP for NGINX? (y/n, default: y): " nginx_static
+    nginx_static=${nginx_static:-y}
+
+    if [[ "$nginx_static" == "y" ]]; then
+      read -p "Enter static IP (CIDR, e.g. 192.168.1.101/24): " nginx_ip
+      read -p "Enter gateway (e.g. 192.168.1.1): " nginx_gw
+      read -p "Enter DNS (e.g. 8.8.8.8): " nginx_dns
+      nginx_net="name=eth0,bridge=${nginx_bridge},ip=${nginx_ip},gw=${nginx_gw},nameserver=${nginx_dns}"
+    else
+      nginx_net="name=eth0,bridge=${nginx_bridge},ip=dhcp"
+    fi
+
+    echo ""
+    echo "Creating NGINX container..."
+    pct create "$nginx_id" local:vztmpl/debian-12-standard_12.0-1_amd64.tar.zst \
+      --hostname "$nginx_container" --cores 1 --memory 256 --net0 "$nginx_net" \
+      --rootfs local-lvm:2 --onboot 1
+
+    pct start "$nginx_id"
+    pct exec "$nginx_id" -- bash -c "apt update && apt install -y nginx"
+
+    # Generate nginx config with the actual backend IP
+    NGINX_CONF_TMP=$(mktemp)
+    sed "s/NODEJS_CONTAINER_IP/${NODEJS_IP}/g" "$(pwd)/nginx/guestportal.conf" > "$NGINX_CONF_TMP"
+    pct push "$nginx_id" "$NGINX_CONF_TMP" /etc/nginx/conf.d/guestportal.conf
+    rm -f "$NGINX_CONF_TMP"
+
+    pct exec "$nginx_id" -- systemctl restart nginx
+    echo "NGINX container created and configured."
+    echo ""
+    echo "  Note: The included config expects SSL certificates at:"
+    echo "    /etc/letsencrypt/live/guestportal.example.com/"
+    echo ""
+    echo "  Install certbot and request a certificate:"
+    echo "    pct exec $nginx_id -- bash -c ‘apt install -y certbot python3-certbot-nginx’"
+    echo "    pct exec $nginx_id -- certbot --nginx -d guestportal.yourdomain.com"
+    ;;
+  3)
+    echo ""
+    echo "  Skipping reverse proxy setup."
+    echo ""
+    echo "  To configure manually, point your reverse proxy to:"
+    echo "    http://${NODEJS_IP}:3000"
+    echo ""
+    echo "  An example nginx config is included at:"
+    echo "    nginx/guestportal.conf"
+    echo ""
+    echo "  Replace NODEJS_CONTAINER_IP with: ${NODEJS_IP}"
+    ;;
+  *)
+    echo "Invalid option. Skipping proxy setup."
+    ;;
+esac
+
+echo ""
+echo "═══════════════════════════════════════════════════════"
+echo "  ✅ Guest Portal Setup Complete!"
+echo "═══════════════════════════════════════════════════════"
+echo ""
+echo "  Backend:  http://${NODEJS_IP}:3000"
+echo "  Admin:    http://${NODEJS_IP}:3000/admin.html"
+echo ""
+echo "  Container ID: ${nodejs_id} (${nodejs_container})"
+echo "  Config:       /etc/guest-portal/config.json"
+echo "  Data:         /etc/guest-portal/storage.json"
+echo "  Service:      systemctl status guest-portal"
+echo ""
+echo "  First-time setup: visit /admin.html to create your"
+echo "  admin account (or credentials from this script are"
+echo "  already configured)."
+echo ""
