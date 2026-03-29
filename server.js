@@ -9,6 +9,7 @@ const cors = require('cors');
 const basicAuth = require('basic-auth');
 const bcrypt = require('bcrypt');
 const rateLimit = require('express-rate-limit');
+const archiver = require('archiver');
 const app = express();
 
 // ─── Constants & Data Loading ───────────────────────────────────────────────
@@ -487,6 +488,103 @@ app.post('/admin-api/upload-path', authMiddleware, (req, res) => {
   fs.mkdirSync(bgDir, { recursive: true });
 
   res.json({ success: true, path: resolved });
+});
+
+// List guest photo folders
+app.get('/admin-api/uploads', authMiddleware, (req, res) => {
+  const uploadsDir = getUploadsDir();
+  if (!fs.existsSync(uploadsDir)) {
+    return res.json({ folders: [] });
+  }
+
+  try {
+    const entries = fs.readdirSync(uploadsDir, { withFileTypes: true });
+    const folders = entries
+      .filter(e => e.isDirectory() && e.name !== 'backgrounds')
+      .map(e => {
+        const folderPath = path.join(uploadsDir, e.name);
+        const files = fs.readdirSync(folderPath).filter(f => {
+          const stat = fs.statSync(path.join(folderPath, f));
+          return stat.isFile();
+        });
+        const totalSize = files.reduce((sum, f) => {
+          return sum + fs.statSync(path.join(folderPath, f)).size;
+        }, 0);
+        return {
+          name: e.name,
+          fileCount: files.length,
+          totalSize,
+          files: files.map(f => ({
+            name: f,
+            size: fs.statSync(path.join(folderPath, f)).size
+          }))
+        };
+      })
+      .filter(f => f.fileCount > 0)
+      .sort((a, b) => b.name.localeCompare(a.name));
+
+    res.json({ folders });
+  } catch (err) {
+    console.error('Failed to list uploads:', err);
+    res.status(500).send('Failed to list uploads');
+  }
+});
+
+// Download a single guest folder as zip
+app.get('/admin-api/uploads/download/:folder', authMiddleware, (req, res) => {
+  const uploadsDir = getUploadsDir();
+  const folderName = req.params.folder;
+  const folderPath = path.resolve(path.join(uploadsDir, folderName));
+
+  if (!folderPath.startsWith(path.resolve(uploadsDir))) {
+    return res.status(400).send('Invalid folder');
+  }
+  if (!fs.existsSync(folderPath) || !fs.statSync(folderPath).isDirectory()) {
+    return res.status(404).send('Folder not found');
+  }
+
+  res.setHeader('Content-Type', 'application/zip');
+  res.setHeader('Content-Disposition', `attachment; filename="${folderName}.zip"`);
+
+  const archive = archiver('zip', { zlib: { level: 5 } });
+  archive.on('error', err => {
+    console.error('Archive error:', err);
+    if (!res.headersSent) res.status(500).send('Archive failed');
+  });
+  archive.pipe(res);
+  archive.directory(folderPath, folderName);
+  archive.finalize();
+});
+
+// Download all guest photos as zip
+app.get('/admin-api/uploads/download-all', authMiddleware, (req, res) => {
+  const uploadsDir = getUploadsDir();
+  if (!fs.existsSync(uploadsDir)) {
+    return res.status(404).send('No uploads directory');
+  }
+
+  const entries = fs.readdirSync(uploadsDir, { withFileTypes: true });
+  const folders = entries.filter(e => e.isDirectory() && e.name !== 'backgrounds');
+
+  if (folders.length === 0) {
+    return res.status(404).send('No guest photos to download');
+  }
+
+  const date = new Date().toISOString().split('T')[0];
+  res.setHeader('Content-Type', 'application/zip');
+  res.setHeader('Content-Disposition', `attachment; filename="guest-photos-${date}.zip"`);
+
+  const archive = archiver('zip', { zlib: { level: 5 } });
+  archive.on('error', err => {
+    console.error('Archive error:', err);
+    if (!res.headersSent) res.status(500).send('Archive failed');
+  });
+  archive.pipe(res);
+
+  folders.forEach(e => {
+    archive.directory(path.join(uploadsDir, e.name), e.name);
+  });
+  archive.finalize();
 });
 
 // M6: GET endpoint to retrieve current admin timeout setting

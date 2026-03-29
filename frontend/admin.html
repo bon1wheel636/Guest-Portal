@@ -69,6 +69,14 @@
 </form>
 <button id="resetUploadPath" style="margin-top:10px;background:#6c757d;">Reset to Default</button>
 
+<h2>Guest Photos</h2>
+<p style="font-size: 0.9em; color: #666;">Browse and download guest photo uploads. Download to your NAS or local backup.</p>
+<div style="margin-bottom:10px;">
+  <button id="downloadAllPhotos" style="background:#28a745;">Download All Photos (.zip)</button>
+  <button id="refreshPhotos" style="background:#6c757d;margin-left:5px;">Refresh</button>
+</div>
+<div id="photoFolderList"></div>
+
 <h2>Session Settings</h2>
 <form id="timeoutForm">
   <label>Admin Auto-Logout Timeout (minutes):</label>
@@ -454,6 +462,76 @@ document.getElementById('resetUploadPath')?.addEventListener('click', async () =
   }
 });
 
+// Guest photo management
+function formatBytes(bytes) {
+  if (bytes === 0) return '0 B';
+  const units = ['B', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(1024));
+  return (bytes / Math.pow(1024, i)).toFixed(i > 0 ? 1 : 0) + ' ' + units[i];
+}
+
+async function loadPhotos() {
+  try {
+    const res = await fetch('/admin-api/uploads', { headers: { 'Authorization': getAuthHeader() } });
+    if (!res.ok) return;
+    const data = await res.json();
+    const container = document.getElementById('photoFolderList');
+    container.innerHTML = '';
+
+    if (!data.folders || data.folders.length === 0) {
+      container.innerHTML = '<p style="color:#666;font-style:italic;">No guest photos uploaded yet</p>';
+      return;
+    }
+
+    data.folders.forEach(folder => {
+      const div = document.createElement('div');
+      div.style.cssText = 'border:1px solid #ddd;padding:10px;margin:8px 0;border-radius:5px;';
+
+      let html = `<strong>${escapeHtml(folder.name)}</strong>`;
+      html += `<span style="float:right;color:#666;font-size:0.9em;">${folder.fileCount} file${folder.fileCount !== 1 ? 's' : ''} &bull; ${formatBytes(folder.totalSize)}</span>`;
+
+      div.innerHTML = html;
+
+      const downloadBtn = document.createElement('button');
+      downloadBtn.textContent = 'Download';
+      downloadBtn.style.cssText = 'margin-top:8px;font-size:0.85em;';
+      downloadBtn.onclick = () => downloadZip('/admin-api/uploads/download/' + encodeURIComponent(folder.name), folder.name + '.zip');
+      div.appendChild(downloadBtn);
+
+      container.appendChild(div);
+    });
+  } catch (err) {
+    console.error('Failed to load photos:', err);
+  }
+}
+
+async function downloadZip(url, filename) {
+  try {
+    const res = await fetch(url, { headers: { 'Authorization': getAuthHeader() } });
+    if (!res.ok) {
+      alert('Download failed: ' + await res.text());
+      return;
+    }
+    const blob = await res.blob();
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  } catch (err) {
+    alert('Download failed: ' + err.message);
+  }
+}
+
+document.getElementById('downloadAllPhotos')?.addEventListener('click', () => {
+  const date = new Date().toISOString().split('T')[0];
+  downloadZip('/admin-api/uploads/download-all', 'guest-photos-' + date + '.zip');
+});
+
+document.getElementById('refreshPhotos')?.addEventListener('click', () => {
+  loadPhotos();
+});
+
 // Guest session management
 async function loadGuestSessions() {
   try {
@@ -551,6 +629,7 @@ initAdmin = async function() {
   if (adminContent.style.display === 'block') {
     loadBackground();
     loadUploadPath();
+    loadPhotos();
     loadGuestSessions();
   }
 };
