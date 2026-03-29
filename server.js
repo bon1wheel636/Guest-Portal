@@ -27,6 +27,10 @@ let guestTokens = fs.existsSync(guestTokensFile) ? JSON.parse(fs.readFileSync(gu
 
 // ─── Utility Functions ──────────────────────────────────────────────────────
 
+function getUploadsDir() {
+  return config.uploadDir || path.join(__dirname, 'uploads');
+}
+
 function sanitizeFilename(filename) {
   return filename
     .replace(/[/\\]/g, '_')
@@ -119,11 +123,11 @@ function authMiddleware(req, res, next) {
 
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
+    const uploadsDir = getUploadsDir();
     const name = sanitizeName(req.body.guestName || 'anonymous');
     const folderName = `${name}-${new Date().toISOString().split('T')[0]}`;
-    const dir = path.join(__dirname, 'uploads', folderName);
-    const uploadsDir = path.join(__dirname, 'uploads');
-    if (!path.resolve(dir).startsWith(uploadsDir)) {
+    const dir = path.join(uploadsDir, folderName);
+    if (!path.resolve(dir).startsWith(path.resolve(uploadsDir))) {
       return cb(new Error('Invalid upload path'));
     }
     fs.mkdirSync(dir, { recursive: true });
@@ -146,7 +150,7 @@ const MIME_TO_EXT = {
 
 const bgStorage = multer.diskStorage({
   destination: (req, file, cb) => {
-    const dir = path.join(__dirname, 'uploads', 'backgrounds');
+    const dir = path.join(getUploadsDir(), 'backgrounds');
     fs.mkdirSync(dir, { recursive: true });
     cb(null, dir);
   },
@@ -231,8 +235,10 @@ app.get('/admin-api/background', (req, res) => {
   res.json({ backgroundImage: config.backgroundImage || null });
 });
 
-// Serve background images publicly
-app.use('/uploads/backgrounds', express.static(path.join(__dirname, 'uploads', 'backgrounds')));
+// Serve background images publicly (dynamic path via config)
+app.use('/uploads/backgrounds', (req, res, next) => {
+  express.static(path.join(getUploadsDir(), 'backgrounds'))(req, res, next);
+});
 
 app.post('/register', (req, res) => {
   const { name, room, stayDays } = req.body;
@@ -425,7 +431,63 @@ app.delete('/admin-api/rooms/:name', authMiddleware, (req, res) => {
   res.sendStatus(200);
 });
 
-app.use('/admin/uploads', authMiddleware, express.static(path.join(__dirname, 'uploads')));
+app.use('/admin/uploads', authMiddleware, (req, res, next) => {
+  express.static(getUploadsDir())(req, res, next);
+});
+
+// Upload path configuration
+app.get('/admin-api/upload-path', authMiddleware, (req, res) => {
+  const uploadsDir = getUploadsDir();
+  let writable = false;
+  let exists = false;
+  try {
+    exists = fs.existsSync(uploadsDir);
+    if (exists) {
+      fs.accessSync(uploadsDir, fs.constants.W_OK);
+      writable = true;
+    }
+  } catch {}
+  res.json({ path: uploadsDir, exists, writable });
+});
+
+app.post('/admin-api/upload-path', authMiddleware, (req, res) => {
+  const { path: newPath } = req.body;
+
+  // Empty path resets to default
+  if (!newPath || newPath.trim() === '') {
+    delete config.uploadDir;
+    saveConfig();
+    const defaultDir = path.join(__dirname, 'uploads');
+    fs.mkdirSync(path.join(defaultDir, 'backgrounds'), { recursive: true });
+    return res.json({ success: true, path: defaultDir });
+  }
+
+  if (typeof newPath !== 'string' || newPath.length > 500) {
+    return res.status(400).send('Invalid path');
+  }
+
+  const resolved = path.resolve(newPath);
+
+  // Validate the directory exists and is writable
+  if (!fs.existsSync(resolved)) {
+    return res.status(400).send('Directory does not exist. Create it and mount your NFS/SMB share first.');
+  }
+
+  try {
+    fs.accessSync(resolved, fs.constants.W_OK);
+  } catch {
+    return res.status(400).send('Directory is not writable. Check permissions.');
+  }
+
+  config.uploadDir = resolved;
+  saveConfig();
+
+  // Ensure backgrounds subdirectory exists
+  const bgDir = path.join(resolved, 'backgrounds');
+  fs.mkdirSync(bgDir, { recursive: true });
+
+  res.json({ success: true, path: resolved });
+});
 
 // M6: GET endpoint to retrieve current admin timeout setting
 app.get('/admin-api/admin-timeout', authMiddleware, (req, res) => {
@@ -444,8 +506,8 @@ app.post('/admin-api/background', authMiddleware, bgUpload.single('background'),
 // C6: Validate resolved path stays within uploads directory
 app.delete('/admin-api/background', authMiddleware, (req, res) => {
   if (config.backgroundImage) {
-    const bgPath = path.resolve(__dirname, config.backgroundImage.replace(/^\//, ''));
-    const uploadsDir = path.resolve(__dirname, 'uploads');
+    const uploadsDir = path.resolve(getUploadsDir());
+    const bgPath = path.resolve(path.join(uploadsDir, 'backgrounds', path.basename(config.backgroundImage)));
     if (bgPath.startsWith(uploadsDir) && fs.existsSync(bgPath)) {
       fs.unlinkSync(bgPath);
     }

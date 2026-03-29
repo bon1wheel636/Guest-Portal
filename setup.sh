@@ -124,6 +124,109 @@ pct push "$nodejs_id" "$(pwd)/guest-portal.service" /etc/systemd/system/guest-po
 pct exec "$nodejs_id" -- bash -c "systemctl daemon-reload && systemctl enable guest-portal && systemctl start guest-portal"
 echo "Guest Portal service started and enabled on boot."
 
+#############################
+# Storage / NAS Mount Setup #
+#############################
+
+echo ""
+echo "═══════════════════════════════════════════════════════"
+echo "  Photo Upload Storage"
+echo "═══════════════════════════════════════════════════════"
+echo ""
+echo "  By default, guest photos are stored locally at:"
+echo "    /root/guest-portal/uploads/"
+echo ""
+echo "  You can mount a NAS share (NFS or SMB/CIFS) so photos"
+echo "  are stored on your Synology, TrueNAS, or other NAS."
+echo ""
+echo "  1) Mount an NFS share"
+echo "  2) Mount an SMB/CIFS share"
+echo "  3) Skip — use local storage (or configure later in Admin panel)"
+echo ""
+read -p "Select an option [1/2/3] (default: 3): " storage_choice
+storage_choice=${storage_choice:-3}
+
+case "$storage_choice" in
+  1)
+    read -p "NFS server IP or hostname (e.g. 192.168.1.50): " nas_ip
+    read -p "NFS export path (e.g. /volume1/guest-photos): " nas_export
+    read -p "Mount point inside container (default: /mnt/nas/guest-photos): " nas_mount
+    nas_mount=${nas_mount:-/mnt/nas/guest-photos}
+
+    echo "Installing NFS client and mounting share..."
+    pct exec "$nodejs_id" -- bash -c "
+      apt install -y nfs-common &&
+      mkdir -p '$nas_mount' &&
+      mount -t nfs '$nas_ip:$nas_export' '$nas_mount' &&
+      mkdir -p '$nas_mount/backgrounds' &&
+      echo '$nas_ip:$nas_export $nas_mount nfs defaults,_netdev 0 0' >> /etc/fstab
+    "
+
+    if pct exec "$nodejs_id" -- bash -c "mountpoint -q '$nas_mount'" 2>/dev/null; then
+      echo "NFS share mounted successfully at $nas_mount"
+
+      # Update config to use the NAS mount path
+      NAS_MOUNT_B64=$(printf '%s' "$nas_mount" | base64 -w0)
+      pct exec "$nodejs_id" -- bash -c "
+        export MOUNT_B64=$NAS_MOUNT_B64
+        node -e 'var fs=require(\"fs\");var c=JSON.parse(fs.readFileSync(\"/etc/guest-portal/config.json\",\"utf8\"));c.uploadDir=Buffer.from(process.env.MOUNT_B64,\"base64\").toString();fs.writeFileSync(\"/etc/guest-portal/config.json\",JSON.stringify(c,null,2))'
+      "
+      echo "Upload path set to: $nas_mount"
+      echo "Restarting Guest Portal service..."
+      pct exec "$nodejs_id" -- systemctl restart guest-portal
+    else
+      echo "⚠  Mount failed. Check your NAS settings."
+      echo "   You can configure the upload path later in the Admin panel."
+    fi
+    ;;
+  2)
+    read -p "SMB server IP or hostname (e.g. 192.168.1.50): " nas_ip
+    read -p "SMB share name (e.g. guest-photos): " smb_share
+    read -p "SMB username: " smb_user
+    read -sp "SMB password: " smb_pass
+    echo
+    read -p "Mount point inside container (default: /mnt/nas/guest-photos): " nas_mount
+    nas_mount=${nas_mount:-/mnt/nas/guest-photos}
+
+    echo "Installing CIFS client and mounting share..."
+    # Store credentials securely
+    pct exec "$nodejs_id" -- bash -c "
+      apt install -y cifs-utils &&
+      mkdir -p '$nas_mount' &&
+      echo 'username=$smb_user' > /etc/guest-portal/.smbcredentials &&
+      echo 'password=$smb_pass' >> /etc/guest-portal/.smbcredentials &&
+      chmod 600 /etc/guest-portal/.smbcredentials &&
+      mount -t cifs '//$nas_ip/$smb_share' '$nas_mount' -o credentials=/etc/guest-portal/.smbcredentials,uid=0,gid=0,file_mode=0660,dir_mode=0770 &&
+      mkdir -p '$nas_mount/backgrounds' &&
+      echo '//$nas_ip/$smb_share $nas_mount cifs credentials=/etc/guest-portal/.smbcredentials,uid=0,gid=0,file_mode=0660,dir_mode=0770,_netdev 0 0' >> /etc/fstab
+    "
+
+    if pct exec "$nodejs_id" -- bash -c "mountpoint -q '$nas_mount'" 2>/dev/null; then
+      echo "SMB share mounted successfully at $nas_mount"
+
+      # Update config to use the NAS mount path
+      NAS_MOUNT_B64=$(printf '%s' "$nas_mount" | base64 -w0)
+      pct exec "$nodejs_id" -- bash -c "
+        export MOUNT_B64=$NAS_MOUNT_B64
+        node -e 'var fs=require(\"fs\");var c=JSON.parse(fs.readFileSync(\"/etc/guest-portal/config.json\",\"utf8\"));c.uploadDir=Buffer.from(process.env.MOUNT_B64,\"base64\").toString();fs.writeFileSync(\"/etc/guest-portal/config.json\",JSON.stringify(c,null,2))'
+      "
+      echo "Upload path set to: $nas_mount"
+      echo "Restarting Guest Portal service..."
+      pct exec "$nodejs_id" -- systemctl restart guest-portal
+    else
+      echo "⚠  Mount failed. Check your NAS/SMB settings."
+      echo "   You can configure the upload path later in the Admin panel."
+    fi
+    ;;
+  3)
+    echo "  Using default local storage. You can configure a NAS mount"
+    echo "  later from the Admin panel under Upload Storage Path."
+    ;;
+  *)
+    echo "  Invalid option. Using default local storage."
+    ;;
+esac
+
 ############################
 # Reverse Proxy Setup      #
 ############################

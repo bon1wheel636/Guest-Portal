@@ -58,6 +58,17 @@
 </form>
 <button id="removeBg" style="margin-top:10px;background:#dc3545;">Remove Background</button>
 
+<h2>Upload Storage Path</h2>
+<p style="font-size: 0.9em; color: #666;">Where guest photos are saved. Point this to an NFS/SMB mount for NAS storage.</p>
+<div id="uploadPathStatus" style="margin-bottom:10px;padding:8px;border-radius:5px;background:#f0f0f0;font-family:monospace;font-size:0.9em;"></div>
+<form id="uploadPathForm">
+  <label>Upload Directory (absolute path):</label>
+  <input type="text" id="uploadPathInput" placeholder="/mnt/nas/guest-photos" required />
+  <small>Directory must exist and be writable. Mount your NFS/SMB share first.</small>
+  <button type="submit">Update Upload Path</button>
+</form>
+<button id="resetUploadPath" style="margin-top:10px;background:#6c757d;">Reset to Default</button>
+
 <h2>Session Settings</h2>
 <form id="timeoutForm">
   <label>Admin Auto-Logout Timeout (minutes):</label>
@@ -382,6 +393,67 @@ document.getElementById('removeBg')?.addEventListener('click', async () => {
   }
 });
 
+// Upload path management
+async function loadUploadPath() {
+  try {
+    const res = await fetch('/admin-api/upload-path', { headers: { 'Authorization': getAuthHeader() } });
+    if (!res.ok) return;
+    const data = await res.json();
+    const status = document.getElementById('uploadPathStatus');
+    const writableIcon = data.writable ? '&#9989;' : '&#10060;';
+    const existsIcon = data.exists ? '&#9989;' : '&#10060;';
+    status.innerHTML = `<strong>Current:</strong> ${escapeHtml(data.path)}<br>`
+      + `<small>Exists: ${existsIcon} &nbsp; Writable: ${writableIcon}</small>`;
+    document.getElementById('uploadPathInput').placeholder = data.path;
+  } catch (err) {
+    console.error('Failed to load upload path:', err);
+  }
+}
+
+document.getElementById('uploadPathForm')?.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const newPath = document.getElementById('uploadPathInput').value.trim();
+  if (!newPath) return;
+
+  try {
+    const res = await fetch('/admin-api/upload-path', {
+      method: 'POST',
+      headers: { 'Authorization': getAuthHeader(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path: newPath })
+    });
+    if (res.ok) {
+      alert('Upload path updated!');
+      document.getElementById('uploadPathInput').value = '';
+      loadUploadPath();
+    } else {
+      const error = await res.text();
+      alert('Failed: ' + error);
+    }
+  } catch (err) {
+    alert('Error: ' + err.message);
+  }
+});
+
+document.getElementById('resetUploadPath')?.addEventListener('click', async () => {
+  if (!confirm('Reset upload path to the default (./uploads)?')) return;
+  try {
+    const res = await fetch('/admin-api/upload-path', {
+      method: 'POST',
+      headers: { 'Authorization': getAuthHeader(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path: '' })
+    });
+    if (res.ok) {
+      alert('Upload path reset to default.');
+      loadUploadPath();
+    } else {
+      const error = await res.text();
+      alert('Failed: ' + error);
+    }
+  } catch (err) {
+    alert('Error: ' + err.message);
+  }
+});
+
 // Guest session management
 async function loadGuestSessions() {
   try {
@@ -478,6 +550,7 @@ initAdmin = async function() {
   await origInitAdmin();
   if (adminContent.style.display === 'block') {
     loadBackground();
+    loadUploadPath();
     loadGuestSessions();
   }
 };
