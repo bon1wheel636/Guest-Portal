@@ -85,8 +85,9 @@ echo "Hashing admin password..."
 ADMIN_PASS_B64=$(printf '%s' "$ADMIN_PASS" | base64 -w0)
 ADMIN_HASH=$(pct exec "$nodejs_id" -- bash -c "export PASS_B64=$ADMIN_PASS_B64 && node -e 'require(\"bcrypt\").hash(Buffer.from(process.env.PASS_B64,\"base64\").toString(),10).then(console.log)'")
 
-echo "Copying project files..."
-pct push "$nodejs_id" "$(pwd)" /root/guest-portal -r
+# H6: Exclude node_modules, .git, and sensitive files from project copy
+echo "Copying project files (excluding node_modules, .git, uploads)..."
+tar cf - --exclude='node_modules' --exclude='.git' --exclude='uploads' --exclude='*.env' --exclude='config.json' --exclude='storage.json' --exclude='sessions.json' -C "$(pwd)" . | pct exec "$nodejs_id" -- bash -c "mkdir -p /root/guest-portal && tar xf - -C /root/guest-portal"
 
 # Write config to container (use base64 + node for safe JSON serialization)
 echo "Writing config to nodejs container..."
@@ -117,8 +118,11 @@ pct exec "$nodejs_id" -- bash -c "
   fi
 "
 
-echo "Launching nodejs server..."
-pct exec "$nodejs_id" -- bash -c "cd /root/guest-portal && npm install && nohup node server.js > server.log 2>&1 &"
+echo "Installing dependencies and configuring systemd service..."
+pct exec "$nodejs_id" -- bash -c "cd /root/guest-portal && npm install"
+pct push "$nodejs_id" "$(pwd)/guest-portal.service" /etc/systemd/system/guest-portal.service
+pct exec "$nodejs_id" -- bash -c "systemctl daemon-reload && systemctl enable guest-portal && systemctl start guest-portal"
+echo "Guest Portal service started and enabled on boot."
 
 echo ""
 read -p "Do you want to set up a new NGINX container? (y/n, default: n): " setup_nginx

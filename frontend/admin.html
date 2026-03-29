@@ -154,16 +154,16 @@ const adminContent = document.getElementById('adminContent');
 let authHeader = '';
 
 function getAuthHeader() {
-  return localStorage.getItem('authHeader') || '';
+  return sessionStorage.getItem('authHeader') || '';
 }
 
 function setAuthHeader(user, pass) {
   const encoded = btoa(`${user}:${pass}`);
-  localStorage.setItem('authHeader', 'Basic ' + encoded);
+  sessionStorage.setItem('authHeader', 'Basic ' + encoded);
 }
 
 function clearAuth() {
-  localStorage.removeItem('authHeader');
+  sessionStorage.removeItem('authHeader');
   location.reload();
 }
 
