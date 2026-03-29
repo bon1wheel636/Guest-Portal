@@ -587,6 +587,56 @@ app.get('/admin-api/uploads/download-all', authMiddleware, (req, res) => {
   archive.finalize();
 });
 
+// Delete a single guest photo folder
+app.delete('/admin-api/uploads/:folder', authMiddleware, (req, res) => {
+  const uploadsDir = getUploadsDir();
+  const folderName = req.params.folder;
+  const folderPath = path.resolve(path.join(uploadsDir, folderName));
+
+  if (!folderPath.startsWith(path.resolve(uploadsDir))) {
+    return res.status(400).send('Invalid folder');
+  }
+  if (folderName === 'backgrounds') {
+    return res.status(400).send('Cannot delete backgrounds folder');
+  }
+  if (!fs.existsSync(folderPath) || !fs.statSync(folderPath).isDirectory()) {
+    return res.status(404).send('Folder not found');
+  }
+
+  try {
+    fs.rmSync(folderPath, { recursive: true, force: true });
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Failed to delete folder:', err);
+    res.status(500).send('Failed to delete folder');
+  }
+});
+
+// Delete all guest photo folders
+app.delete('/admin-api/uploads', authMiddleware, (req, res) => {
+  const uploadsDir = getUploadsDir();
+  if (!fs.existsSync(uploadsDir)) {
+    return res.json({ success: true, deleted: 0 });
+  }
+
+  try {
+    const entries = fs.readdirSync(uploadsDir, { withFileTypes: true });
+    const folders = entries.filter(e => e.isDirectory() && e.name !== 'backgrounds');
+    let deleted = 0;
+
+    folders.forEach(e => {
+      const folderPath = path.join(uploadsDir, e.name);
+      fs.rmSync(folderPath, { recursive: true, force: true });
+      deleted++;
+    });
+
+    res.json({ success: true, deleted });
+  } catch (err) {
+    console.error('Failed to delete folders:', err);
+    res.status(500).send('Failed to delete folders');
+  }
+});
+
 // M6: GET endpoint to retrieve current admin timeout setting
 app.get('/admin-api/admin-timeout', authMiddleware, (req, res) => {
   res.json({ minutes: getAdminTimeoutMinutes() });

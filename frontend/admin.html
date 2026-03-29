@@ -73,6 +73,7 @@
 <p style="font-size: 0.9em; color: #666;">Browse and download guest photo uploads. Download to your NAS or local backup.</p>
 <div style="margin-bottom:10px;">
   <button id="downloadAllPhotos" style="background:#28a745;">Download All Photos (.zip)</button>
+  <button id="deleteAllPhotos" style="background:#dc3545;margin-left:5px;">Delete All Photos</button>
   <button id="refreshPhotos" style="background:#6c757d;margin-left:5px;">Refresh</button>
 </div>
 <div id="photoFolderList"></div>
@@ -498,6 +499,21 @@ async function loadPhotos() {
       downloadBtn.onclick = () => downloadZip('/admin-api/uploads/download/' + encodeURIComponent(folder.name), folder.name + '.zip');
       div.appendChild(downloadBtn);
 
+      const deleteBtn = document.createElement('button');
+      deleteBtn.textContent = 'Delete';
+      deleteBtn.style.cssText = 'margin-top:8px;margin-left:5px;font-size:0.85em;background:#dc3545;';
+      deleteBtn.onclick = async () => {
+        if (!confirm('Delete "' + folder.name + '" and all its photos? This cannot be undone.')) return;
+        try {
+          const res = await fetch('/admin-api/uploads/' + encodeURIComponent(folder.name), {
+            method: 'DELETE', headers: { 'Authorization': getAuthHeader() }
+          });
+          if (res.ok) loadPhotos();
+          else alert('Delete failed: ' + await res.text());
+        } catch (err) { alert('Delete failed: ' + err.message); }
+      };
+      div.appendChild(deleteBtn);
+
       container.appendChild(div);
     });
   } catch (err) {
@@ -526,6 +542,22 @@ async function downloadZip(url, filename) {
 document.getElementById('downloadAllPhotos')?.addEventListener('click', () => {
   const date = new Date().toISOString().split('T')[0];
   downloadZip('/admin-api/uploads/download-all', 'guest-photos-' + date + '.zip');
+});
+
+document.getElementById('deleteAllPhotos')?.addEventListener('click', async () => {
+  if (!confirm('Delete ALL guest photo folders? This cannot be undone. Make sure you have downloaded them first.')) return;
+  try {
+    const res = await fetch('/admin-api/uploads', {
+      method: 'DELETE', headers: { 'Authorization': getAuthHeader() }
+    });
+    if (res.ok) {
+      const data = await res.json();
+      alert('Deleted ' + data.deleted + ' folder(s).');
+      loadPhotos();
+    } else {
+      alert('Delete failed: ' + await res.text());
+    }
+  } catch (err) { alert('Delete failed: ' + err.message); }
 });
 
 document.getElementById('refreshPhotos')?.addEventListener('click', () => {
