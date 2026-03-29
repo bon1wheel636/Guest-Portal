@@ -1,377 +1,638 @@
-#!/bin/bash
-# Guest Portal LXC Setup Script — Secure & Sequenced
+#!/usr/bin/env bash
+# Guest Portal LXC Setup Script
+# https://github.com/bon1wheel636/guest-portal
 
-echo "Guest Portal LXC Setup Script"
-echo "This script will set up LXC containers for the Guest Portal project."
-echo ""
+set -euo pipefail
 
-#############################
-# Backend Container Options #
-#############################
+# ─── Colors & Formatting ───────────────────────────────────────────────────
 
-read -p "Enter container name for nodejs (default: guest-portal-nodejs): " nodejs_container
-nodejs_container=${nodejs_container:-"guest-portal-nodejs"}
+YW="\033[33m"
+BL="\033[36m"
+RD="\033[01;31m"
+GN="\033[1;92m"
+DGN="\033[32m"
+BGN="\033[4;92m"
+CL="\033[m"
+BOLD="\033[1m"
+TAB="  "
+CM="${TAB}✔️${TAB}"
+CROSS="${TAB}✖${TAB}"
+INFO="${TAB}💡${TAB}"
+CONTAINERID="${TAB}🆔${TAB}"
+HOSTNAME_ICON="${TAB}🏠${TAB}"
+DISKSIZE="${TAB}💾${TAB}"
+CPUCORE="${TAB}🧠${TAB}"
+RAMSIZE="${TAB}🛠️${TAB}"
+BRIDGE_ICON="${TAB}🌉${TAB}"
+NETWORK="${TAB}📡${TAB}"
+GATEWAY="${TAB}🌐${TAB}"
+CREATING="${TAB}🚀${TAB}"
+STORAGE="${TAB}📸${TAB}"
+PROXY="${TAB}🔒${TAB}"
 
-# Recommend next available container ID
-next_id=$(pct list | awk 'NR>1 {print $1}' | sort -n | tail -n1)
-next_id=$((next_id+1))
-echo "Suggested next available container ID: $next_id"
-read -p "Enter container ID for nodejs (default: $next_id): " nodejs_id
-nodejs_id=${nodejs_id:-$next_id}
-nodejs_id=${nodejs_id:-101}
+msg_info() { echo -ne "${TAB}⏳${TAB}${YW}${1}...${CL}"; }
+msg_ok() { echo -e "\r${CM}${GN}${1}${CL}"; }
+msg_error() { echo -e "\r${CROSS}${RD}${1}${CL}" >&2; }
 
-read -p "Enter number of cores for nodejs container (default: 1): " nodejs_cores
-nodejs_cores=${nodejs_cores:-1}
+header_info() {
+  clear
+  echo -e "${BL}"
+  echo '   ____                 _     ____            _        _ '
+  echo '  / ___|_   _  ___  ___| |_  |  _ \ ___  _ __| |_ __ _| |'
+  echo ' | |  _| | | |/ _ \/ __| __| | |_) / _ \|  __| __/ _` | |'
+  echo ' | |_| | |_| |  __/\__ \ |_  |  __/ (_) | |  | || (_| | |'
+  echo '  \____|\__,_|\___||___/\__| |_|   \___/|_|   \__\__,_|_|'
+  echo -e "${CL}"
+  echo -e "${TAB}${DGN}Proxmox LXC Installer${CL}"
+  echo ""
+}
 
-read -p "Enter memory for nodejs container in MB (default: 512): " nodejs_memory
-nodejs_memory=${nodejs_memory:-512}
+# ─── Pre-flight Checks ─────────────────────────────────────────────────────
 
-echo ""
-echo "Configure network for the nodejs container:"
-read -p "Enter network bridge for nodejs (default: vmbr0): " nodejs_bridge
-nodejs_bridge=${nodejs_bridge:-"vmbr0"}
+header_info
 
-read -p "Enter network configuration type for nodejs (DHCP or static, default: DHCP): " nodejs_net_type
-nodejs_net_type=${nodejs_net_type:-"DHCP"}
-
-if [[ "${nodejs_net_type^^}" == "STATIC" ]]; then
-    read -p "Enter static IP address with CIDR (e.g., 192.168.1.100/24): " nodejs_ip
-    read -p "Enter gateway (e.g., 192.168.1.1): " nodejs_gw
-    read -p "Enter DNS server (e.g., 8.8.8.8): " nodejs_dns
-    nodejs_net="name=eth0,bridge=${nodejs_bridge},ip=${nodejs_ip},gw=${nodejs_gw},nameserver=${nodejs_dns}"
-else
-    nodejs_net="name=eth0,bridge=${nodejs_bridge},ip=dhcp"
+if [[ "$(id -u)" -ne 0 ]]; then
+  msg_error "This script must be run as root on a Proxmox host."
+  exit 1
 fi
 
-read -p "Enter number of guest rooms (1–10): " ROOM_COUNT
+if ! command -v pct &>/dev/null; then
+  msg_error "pct command not found. Run this script on a Proxmox host."
+  exit 1
+fi
+
+# ─── Defaults ───────────────────────────────────────────────────────────────
+
+var_hostname="guest-portal"
+var_cpu=1
+var_ram=512
+var_disk=4
+var_bridge="vmbr0"
+var_net="dhcp"
+var_os_template="local:vztmpl/debian-12-standard_12.0-1_amd64.tar.zst"
+var_repo="https://github.com/bon1wheel636/guest-portal.git"
+
+# Auto-detect next available CT ID
+NEXT_ID=$(pvesh get /cluster/nextid 2>/dev/null || echo "100")
+
+# ─── Settings Selection ────────────────────────────────────────────────────
+
+echo -e "${TAB}${BOLD}How would you like to configure the container?${CL}"
+echo ""
+echo -e "${TAB}  1)  Use Default Settings"
+echo -e "${TAB}  2)  Advanced Settings (customize everything)"
+echo ""
+read -p "  Select [1/2] (default: 1): " SETTINGS_CHOICE
+SETTINGS_CHOICE=${SETTINGS_CHOICE:-1}
+
+CT_ID="$NEXT_ID"
+CT_HOSTNAME="$var_hostname"
+CT_CPU="$var_cpu"
+CT_RAM="$var_ram"
+CT_DISK="$var_disk"
+CT_BRIDGE="$var_bridge"
+CT_NET_STRING=""
+CT_IP_DISPLAY="DHCP"
+
+if [[ "$SETTINGS_CHOICE" == "2" ]]; then
+  header_info
+  echo -e "${TAB}${BOLD}Advanced Container Settings${CL}"
+  echo ""
+
+  # CT ID
+  read -p "  Container ID (default: ${NEXT_ID}): " input
+  CT_ID=${input:-$NEXT_ID}
+
+  # Validate CT ID is not in use
+  while pct status "$CT_ID" &>/dev/null; do
+    echo -e "${TAB}${RD}CT ID ${CT_ID} is already in use.${CL}"
+    read -p "  Container ID: " CT_ID
+  done
+
+  # Hostname
+  read -p "  Hostname (default: ${var_hostname}): " input
+  CT_HOSTNAME=${input:-$var_hostname}
+
+  # Disk Size
+  read -p "  Disk Size in GB (default: ${var_disk}): " input
+  CT_DISK=${input:-$var_disk}
+
+  # CPU Cores
+  read -p "  CPU Cores (default: ${var_cpu}): " input
+  CT_CPU=${input:-$var_cpu}
+
+  # RAM
+  read -p "  RAM in MiB (default: ${var_ram}): " input
+  CT_RAM=${input:-$var_ram}
+
+  # Network Bridge
+  echo ""
+  echo -e "${TAB}Available bridges:"
+  brctl show 2>/dev/null | awk 'NR>1 && $1 != "" {print "    " $1}' || echo "    vmbr0"
+  echo ""
+  read -p "  Network Bridge (default: ${var_bridge}): " input
+  CT_BRIDGE=${input:-$var_bridge}
+
+  # Network: DHCP vs Static
+  echo ""
+  echo -e "${TAB}IPv4 Configuration:"
+  echo -e "${TAB}  1)  DHCP"
+  echo -e "${TAB}  2)  Static IP"
+  echo ""
+  read -p "  Select [1/2] (default: 1): " net_choice
+  net_choice=${net_choice:-1}
+
+  if [[ "$net_choice" == "2" ]]; then
+    read -p "  Static IP (CIDR, e.g. 192.168.1.100/24): " CT_STATIC_IP
+    read -p "  Gateway (e.g. 192.168.1.1): " CT_GATEWAY
+    read -p "  DNS Server (default: 1.1.1.1): " CT_DNS
+    CT_DNS=${CT_DNS:-"1.1.1.1"}
+    CT_NET_STRING="name=eth0,bridge=${CT_BRIDGE},ip=${CT_STATIC_IP},gw=${CT_GATEWAY}"
+    CT_IP_DISPLAY="${CT_STATIC_IP}"
+  else
+    CT_NET_STRING="name=eth0,bridge=${CT_BRIDGE},ip=dhcp"
+    CT_IP_DISPLAY="DHCP"
+  fi
+else
+  CT_NET_STRING="name=eth0,bridge=${CT_BRIDGE},ip=dhcp"
+fi
+
+# ─── Display Summary ───────────────────────────────────────────────────────
+
+header_info
+echo -e "${TAB}${BOLD}Container Configuration Summary${CL}"
+echo ""
+echo -e "${CONTAINERID}${BOLD}${DGN}Container ID: ${BGN}${CT_ID}${CL}"
+echo -e "${HOSTNAME_ICON}${BOLD}${DGN}Hostname: ${BGN}${CT_HOSTNAME}${CL}"
+echo -e "${DISKSIZE}${BOLD}${DGN}Disk Size: ${BGN}${CT_DISK} GB${CL}"
+echo -e "${CPUCORE}${BOLD}${DGN}CPU Cores: ${BGN}${CT_CPU}${CL}"
+echo -e "${RAMSIZE}${BOLD}${DGN}RAM Size: ${BGN}${CT_RAM} MiB${CL}"
+echo -e "${BRIDGE_ICON}${BOLD}${DGN}Bridge: ${BGN}${CT_BRIDGE}${CL}"
+echo -e "${NETWORK}${BOLD}${DGN}IPv4: ${BGN}${CT_IP_DISPLAY}${CL}"
+echo ""
+read -p "  Continue with these settings? [y/n] (default: y): " confirm
+confirm=${confirm:-y}
+if [[ "${confirm,,}" != "y" ]]; then
+  echo "Setup cancelled."
+  exit 0
+fi
+
+# ─── Create Container ──────────────────────────────────────────────────────
+
+header_info
+msg_info "Creating LXC container ${CT_ID}"
+pct create "$CT_ID" "$var_os_template" \
+  --hostname "$CT_HOSTNAME" \
+  --cores "$CT_CPU" \
+  --memory "$CT_RAM" \
+  --net0 "$CT_NET_STRING" \
+  --rootfs local-lvm:"$CT_DISK" \
+  --onboot 1 \
+  --features nesting=1 \
+  --unprivileged 0 >/dev/null 2>&1
+msg_ok "Created LXC container ${CT_ID}"
+
+msg_info "Starting container"
+pct start "$CT_ID"
+# Wait for container to be fully running
+sleep 3
+msg_ok "Started container"
+
+# ─── Install Dependencies Inside Container ──────────────────────────────────
+
+msg_info "Updating OS and installing dependencies"
+pct exec "$CT_ID" -- bash -c "
+  apt-get update >/dev/null 2>&1 &&
+  apt-get install -y git curl nodejs npm >/dev/null 2>&1
+" >/dev/null 2>&1
+msg_ok "Installed OS dependencies"
+
+# ─── Clone Repository Inside Container ──────────────────────────────────────
+
+msg_info "Cloning Guest Portal repository"
+pct exec "$CT_ID" -- bash -c "
+  git clone ${var_repo} /root/guest-portal >/dev/null 2>&1
+" >/dev/null 2>&1
+msg_ok "Cloned repository into container"
+
+msg_info "Installing Node.js dependencies"
+pct exec "$CT_ID" -- bash -c "
+  cd /root/guest-portal && npm install >/dev/null 2>&1
+" >/dev/null 2>&1
+msg_ok "Installed Node.js dependencies"
+
+# ─── Guest Room Configuration ───────────────────────────────────────────────
+
+header_info
+echo -e "${TAB}${BOLD}Guest Room Configuration${CL}"
+echo ""
+echo -e "${INFO}${YW}Configure rooms with Home Assistant dashboard URLs.${CL}"
+echo -e "${TAB}  You can also add/remove rooms later from the Admin panel."
+echo ""
+
+read -p "  Number of guest rooms to configure now (default: 2): " ROOM_COUNT
 ROOM_COUNT=${ROOM_COUNT:-2}
 
 declare -a ROOMS
 for (( i=1; i<=ROOM_COUNT; i++ )); do
-  read -p "Enter name for Guest Room $i: " ROOM_NAME
-  read -p "Enter Home Assistant dashboard URL for $ROOM_NAME: " ROOM_URL
-  # Use node to safely serialize room data as JSON
+  echo ""
+  read -p "  Room ${i} name: " ROOM_NAME
+  read -p "  Room ${i} dashboard URL: " ROOM_URL
   ROOM_JSON=$(ROOM_NAME="$ROOM_NAME" ROOM_URL="$ROOM_URL" node -e "console.log(JSON.stringify({name:process.env.ROOM_NAME,dashboardUrl:process.env.ROOM_URL}))")
   ROOMS+=("$ROOM_JSON")
 done
 
-read -p "Set admin username (default: admin): " ADMIN_USER
-ADMIN_USER=${ADMIN_USER:-admin}
+# ─── Admin Credentials ──────────────────────────────────────────────────────
 
-while true; do
-  read -sp "Set admin password for /admin/uploads: " ADMIN_PASS
-  echo
-  read -sp "Confirm password: " ADMIN_PASS_CONFIRM
-  echo
-  [[ "$ADMIN_PASS" == "$ADMIN_PASS_CONFIRM" ]] && break || echo "❌ Passwords do not match. Try again."
-done
-
+header_info
+echo -e "${TAB}${BOLD}Admin Account Setup${CL}"
 echo ""
-echo "Creating nodejs container..."
-pct create "$nodejs_id" local:vztmpl/debian-12-standard_12.0-1_amd64.tar.zst \
-  --hostname "$nodejs_container" --cores "$nodejs_cores" --memory "$nodejs_memory" --net0 "$nodejs_net" \
-  --rootfs local-lvm:4 --onboot 1
+echo -e "${INFO}${YW}Set the admin username and password for the admin panel.${CL}"
+echo -e "${TAB}  You can also skip this and set up via the web UI on first visit."
+echo ""
+echo -e "${TAB}  1)  Set credentials now"
+echo -e "${TAB}  2)  Skip — configure via web UI later"
+echo ""
+read -p "  Select [1/2] (default: 1): " admin_choice
+admin_choice=${admin_choice:-1}
 
-echo "Starting nodejs container..."
-pct start "$nodejs_id"
+ADMIN_USER=""
+ADMIN_HASH=""
 
-echo "Installing Node.js and bcrypt..."
-pct exec "$nodejs_id" -- bash -c "apt update && apt install -y nodejs npm && npm install bcrypt"
+if [[ "$admin_choice" == "1" ]]; then
+  read -p "  Admin username (default: admin): " ADMIN_USER
+  ADMIN_USER=${ADMIN_USER:-admin}
 
-echo "Checking if bcrypt is installed in the container..."
-pct exec "$nodejs_id" -- bash -c "npm list bcrypt || npm install bcrypt"
-# Hash admin password (base64-encode to avoid shell injection)
-echo "Hashing admin password..."
-ADMIN_PASS_B64=$(printf '%s' "$ADMIN_PASS" | base64 -w0)
-ADMIN_HASH=$(pct exec "$nodejs_id" -- bash -c "export PASS_B64=$ADMIN_PASS_B64 && node -e 'require(\"bcrypt\").hash(Buffer.from(process.env.PASS_B64,\"base64\").toString(),10).then(console.log)'")
+  while true; do
+    read -sp "  Admin password: " ADMIN_PASS
+    echo
+    read -sp "  Confirm password: " ADMIN_PASS_CONFIRM
+    echo
+    if [[ "$ADMIN_PASS" == "$ADMIN_PASS_CONFIRM" ]]; then
+      break
+    fi
+    echo -e "${TAB}${RD}Passwords do not match. Try again.${CL}"
+  done
 
-# H6: Exclude node_modules, .git, and sensitive files from project copy
-echo "Copying project files (excluding node_modules, .git, uploads)..."
-tar cf - --exclude='node_modules' --exclude='.git' --exclude='uploads' --exclude='*.env' --exclude='config.json' --exclude='storage.json' --exclude='sessions.json' -C "$(pwd)" . | pct exec "$nodejs_id" -- bash -c "mkdir -p /root/guest-portal && tar xf - -C /root/guest-portal"
+  msg_info "Hashing admin password"
+  ADMIN_PASS_B64=$(printf '%s' "$ADMIN_PASS" | base64 -w0)
+  ADMIN_HASH=$(pct exec "$CT_ID" -- bash -c "
+    export PASS_B64=$ADMIN_PASS_B64
+    node -e 'require(\"bcrypt\").hash(Buffer.from(process.env.PASS_B64,\"base64\").toString(),10).then(console.log)'
+  ")
+  msg_ok "Admin credentials configured"
+fi
 
-# Write config to container (use base64 + node for safe JSON serialization)
-echo "Writing config to nodejs container..."
-pct exec "$nodejs_id" -- bash -c "mkdir -p /etc/guest-portal"
+# ─── Write Config Files ────────────────────────────────────────────────────
 
-ADMIN_USER_B64=$(printf '%s' "$ADMIN_USER" | base64 -w0)
-ADMIN_HASH_B64=$(printf '%s' "$ADMIN_HASH" | base64 -w0)
+msg_info "Writing configuration files"
+pct exec "$CT_ID" -- bash -c "mkdir -p /etc/guest-portal"
 
-# Build rooms JSON array safely using node
+# Build rooms JSON
 ROOMS_JSON=$(ROOM_DATA="$(printf '%s\n' "${ROOMS[@]}")" node -e "
   var rooms = process.env.ROOM_DATA.trim().split('\n').filter(Boolean);
   console.log(JSON.stringify(rooms.map(function(r) { return JSON.parse(r); })));
 ")
 ROOMS_JSON_B64=$(printf '%s' "$ROOMS_JSON" | base64 -w0)
 
-pct exec "$nodejs_id" -- bash -c "
-  if [ ! -f /etc/guest-portal/config.json ]; then
-    export USER_B64=$ADMIN_USER_B64 HASH_B64=$ADMIN_HASH_B64
-    node -e 'var fs=require(\"fs\");var c={adminUser:Buffer.from(process.env.USER_B64,\"base64\").toString(),adminHash:Buffer.from(process.env.HASH_B64,\"base64\").toString()};fs.writeFileSync(\"/etc/guest-portal/config.json\",JSON.stringify(c,null,2))'
-  else
-    echo '✔ Existing config.json found — skipping overwrite'
-  fi
+if [[ -n "$ADMIN_HASH" ]]; then
+  ADMIN_USER_B64=$(printf '%s' "$ADMIN_USER" | base64 -w0)
+  ADMIN_HASH_B64=$(printf '%s' "$ADMIN_HASH" | base64 -w0)
+
+  pct exec "$CT_ID" -- bash -c "
+    if [ ! -f /etc/guest-portal/config.json ]; then
+      export USER_B64=$ADMIN_USER_B64 HASH_B64=$ADMIN_HASH_B64
+      node -e 'var fs=require(\"fs\");var c={adminUser:Buffer.from(process.env.USER_B64,\"base64\").toString(),adminHash:Buffer.from(process.env.HASH_B64,\"base64\").toString(),uploadDir:\"\",sessionExpirationMinutes:10,adminSessionTimeoutMinutes:15};fs.writeFileSync(\"/etc/guest-portal/config.json\",JSON.stringify(c,null,2))'
+    else
+      echo 'Existing config.json found — skipping overwrite'
+    fi
+  "
+else
+  pct exec "$CT_ID" -- bash -c "
+    if [ ! -f /etc/guest-portal/config.json ]; then
+      node -e 'var fs=require(\"fs\");var c={adminUser:\"admin\",adminHash:\"<bcrypt_hash_placeholder>\",uploadDir:\"\",sessionExpirationMinutes:10,adminSessionTimeoutMinutes:15};fs.writeFileSync(\"/etc/guest-portal/config.json\",JSON.stringify(c,null,2))'
+    else
+      echo 'Existing config.json found — skipping overwrite'
+    fi
+  "
+fi
+
+pct exec "$CT_ID" -- bash -c "
   if [ ! -f /etc/guest-portal/storage.json ]; then
     export ROOMS_B64=$ROOMS_JSON_B64
     node -e 'var fs=require(\"fs\");var s={rooms:JSON.parse(Buffer.from(process.env.ROOMS_B64,\"base64\").toString()),guests:[]};fs.writeFileSync(\"/etc/guest-portal/storage.json\",JSON.stringify(s,null,2))'
   else
-    echo '✔ Existing storage.json found — skipping overwrite'
+    echo 'Existing storage.json found — skipping overwrite'
   fi
 "
+msg_ok "Configuration files written"
 
-echo "Installing dependencies and configuring systemd service..."
-pct exec "$nodejs_id" -- bash -c "cd /root/guest-portal && npm install"
-pct push "$nodejs_id" "$(pwd)/guest-portal.service" /etc/systemd/system/guest-portal.service
-pct exec "$nodejs_id" -- bash -c "systemctl daemon-reload && systemctl enable guest-portal && systemctl start guest-portal"
-echo "Guest Portal service started and enabled on boot."
+# ─── Systemd Service ───────────────────────────────────────────────────────
 
-#############################
-# Storage / NAS Mount Setup #
-#############################
+msg_info "Setting up systemd service"
+pct exec "$CT_ID" -- bash -c "
+cat > /etc/systemd/system/guest-portal.service << 'UNIT'
+[Unit]
+Description=Guest Portal Node.js Server
+After=network.target
 
+[Service]
+Type=simple
+WorkingDirectory=/root/guest-portal
+ExecStart=/usr/bin/node server.js
+Restart=always
+RestartSec=5
+Environment=NODE_ENV=production
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+systemctl daemon-reload >/dev/null 2>&1
+systemctl enable guest-portal >/dev/null 2>&1
+systemctl start guest-portal >/dev/null 2>&1
+"
+msg_ok "Systemd service enabled and started"
+
+# ─── NAS Storage Setup ─────────────────────────────────────────────────────
+
+header_info
+echo -e "${TAB}${BOLD}Photo Upload Storage${CL}"
 echo ""
-echo "═══════════════════════════════════════════════════════"
-echo "  Photo Upload Storage"
-echo "═══════════════════════════════════════════════════════"
+echo -e "${INFO}${YW}By default, photos are stored locally at /root/guest-portal/uploads/${CL}"
+echo -e "${TAB}  Mount a NAS share so photos are saved to your Synology, TrueNAS, etc."
 echo ""
-echo "  By default, guest photos are stored locally at:"
-echo "    /root/guest-portal/uploads/"
+echo -e "${TAB}  1)  Mount an NFS share"
+echo -e "${TAB}  2)  Mount an SMB/CIFS share"
+echo -e "${TAB}  3)  Skip — use local storage (configure later in Admin panel)"
 echo ""
-echo "  You can mount a NAS share (NFS or SMB/CIFS) so photos"
-echo "  are stored on your Synology, TrueNAS, or other NAS."
-echo ""
-echo "  1) Mount an NFS share"
-echo "  2) Mount an SMB/CIFS share"
-echo "  3) Skip — use local storage (or configure later in Admin panel)"
-echo ""
-read -p "Select an option [1/2/3] (default: 3): " storage_choice
+read -p "  Select [1/2/3] (default: 3): " storage_choice
 storage_choice=${storage_choice:-3}
 
 case "$storage_choice" in
   1)
-    read -p "NFS server IP or hostname (e.g. 192.168.1.50): " nas_ip
-    read -p "NFS export path (e.g. /volume1/guest-photos): " nas_export
-    read -p "Mount point inside container (default: /mnt/nas/guest-photos): " nas_mount
+    echo ""
+    read -p "  NFS server (e.g. 192.168.1.50): " nas_ip
+    read -p "  NFS export path (e.g. /volume1/guest-photos): " nas_export
+    read -p "  Mount point (default: /mnt/nas/guest-photos): " nas_mount
     nas_mount=${nas_mount:-/mnt/nas/guest-photos}
 
-    echo "Installing NFS client and mounting share..."
-    pct exec "$nodejs_id" -- bash -c "
-      apt install -y nfs-common &&
-      mkdir -p '$nas_mount' &&
-      mount -t nfs '$nas_ip:$nas_export' '$nas_mount' &&
-      mkdir -p '$nas_mount/backgrounds' &&
-      echo '$nas_ip:$nas_export $nas_mount nfs defaults,_netdev 0 0' >> /etc/fstab
+    msg_info "Installing NFS client and mounting share"
+    pct exec "$CT_ID" -- bash -c "
+      apt-get install -y nfs-common >/dev/null 2>&1 &&
+      mkdir -p '${nas_mount}' &&
+      mount -t nfs '${nas_ip}:${nas_export}' '${nas_mount}' &&
+      mkdir -p '${nas_mount}/backgrounds' &&
+      echo '${nas_ip}:${nas_export} ${nas_mount} nfs defaults,_netdev 0 0' >> /etc/fstab
     "
 
-    if pct exec "$nodejs_id" -- bash -c "mountpoint -q '$nas_mount'" 2>/dev/null; then
-      echo "NFS share mounted successfully at $nas_mount"
+    if pct exec "$CT_ID" -- bash -c "mountpoint -q '${nas_mount}'" 2>/dev/null; then
+      msg_ok "NFS share mounted at ${nas_mount}"
 
-      # Update config to use the NAS mount path
       NAS_MOUNT_B64=$(printf '%s' "$nas_mount" | base64 -w0)
-      pct exec "$nodejs_id" -- bash -c "
+      pct exec "$CT_ID" -- bash -c "
         export MOUNT_B64=$NAS_MOUNT_B64
         node -e 'var fs=require(\"fs\");var c=JSON.parse(fs.readFileSync(\"/etc/guest-portal/config.json\",\"utf8\"));c.uploadDir=Buffer.from(process.env.MOUNT_B64,\"base64\").toString();fs.writeFileSync(\"/etc/guest-portal/config.json\",JSON.stringify(c,null,2))'
       "
-      echo "Upload path set to: $nas_mount"
-      echo "Restarting Guest Portal service..."
-      pct exec "$nodejs_id" -- systemctl restart guest-portal
+      pct exec "$CT_ID" -- systemctl restart guest-portal
+      msg_ok "Upload path set to ${nas_mount}"
     else
-      echo "⚠  Mount failed. Check your NAS settings."
-      echo "   You can configure the upload path later in the Admin panel."
+      msg_error "Mount failed. Check your NAS settings."
+      echo -e "${INFO}${YW}You can configure the upload path later in the Admin panel.${CL}"
     fi
     ;;
   2)
-    read -p "SMB server IP or hostname (e.g. 192.168.1.50): " nas_ip
-    read -p "SMB share name (e.g. guest-photos): " smb_share
-    read -p "SMB username: " smb_user
-    read -sp "SMB password: " smb_pass
+    echo ""
+    read -p "  SMB server (e.g. 192.168.1.50): " nas_ip
+    read -p "  SMB share name (e.g. guest-photos): " smb_share
+    read -p "  SMB username: " smb_user
+    read -sp "  SMB password: " smb_pass
     echo
-    read -p "Mount point inside container (default: /mnt/nas/guest-photos): " nas_mount
+    read -p "  Mount point (default: /mnt/nas/guest-photos): " nas_mount
     nas_mount=${nas_mount:-/mnt/nas/guest-photos}
 
-    echo "Installing CIFS client and mounting share..."
-    # Store credentials securely
-    pct exec "$nodejs_id" -- bash -c "
-      apt install -y cifs-utils &&
-      mkdir -p '$nas_mount' &&
-      echo 'username=$smb_user' > /etc/guest-portal/.smbcredentials &&
-      echo 'password=$smb_pass' >> /etc/guest-portal/.smbcredentials &&
-      chmod 600 /etc/guest-portal/.smbcredentials &&
-      mount -t cifs '//$nas_ip/$smb_share' '$nas_mount' -o credentials=/etc/guest-portal/.smbcredentials,uid=0,gid=0,file_mode=0660,dir_mode=0770 &&
-      mkdir -p '$nas_mount/backgrounds' &&
-      echo '//$nas_ip/$smb_share $nas_mount cifs credentials=/etc/guest-portal/.smbcredentials,uid=0,gid=0,file_mode=0660,dir_mode=0770,_netdev 0 0' >> /etc/fstab
+    msg_info "Installing CIFS client and mounting share"
+    SMB_USER_B64=$(printf '%s' "$smb_user" | base64 -w0)
+    SMB_PASS_B64=$(printf '%s' "$smb_pass" | base64 -w0)
+
+    pct exec "$CT_ID" -- bash -c "
+      apt-get install -y cifs-utils >/dev/null 2>&1 &&
+      mkdir -p '${nas_mount}' &&
+      export SMB_U_B64=$SMB_USER_B64 SMB_P_B64=$SMB_PASS_B64
+      node -e '
+        var fs = require(\"fs\");
+        var u = Buffer.from(process.env.SMB_U_B64, \"base64\").toString();
+        var p = Buffer.from(process.env.SMB_P_B64, \"base64\").toString();
+        fs.writeFileSync(\"/etc/guest-portal/.smbcredentials\", \"username=\" + u + \"\npassword=\" + p + \"\n\", { mode: 0o600 });
+      ' &&
+      mount -t cifs '//${nas_ip}/${smb_share}' '${nas_mount}' -o credentials=/etc/guest-portal/.smbcredentials,uid=0,gid=0,file_mode=0660,dir_mode=0770 &&
+      mkdir -p '${nas_mount}/backgrounds' &&
+      echo '//${nas_ip}/${smb_share} ${nas_mount} cifs credentials=/etc/guest-portal/.smbcredentials,uid=0,gid=0,file_mode=0660,dir_mode=0770,_netdev 0 0' >> /etc/fstab
     "
 
-    if pct exec "$nodejs_id" -- bash -c "mountpoint -q '$nas_mount'" 2>/dev/null; then
-      echo "SMB share mounted successfully at $nas_mount"
+    if pct exec "$CT_ID" -- bash -c "mountpoint -q '${nas_mount}'" 2>/dev/null; then
+      msg_ok "SMB share mounted at ${nas_mount}"
 
-      # Update config to use the NAS mount path
       NAS_MOUNT_B64=$(printf '%s' "$nas_mount" | base64 -w0)
-      pct exec "$nodejs_id" -- bash -c "
+      pct exec "$CT_ID" -- bash -c "
         export MOUNT_B64=$NAS_MOUNT_B64
         node -e 'var fs=require(\"fs\");var c=JSON.parse(fs.readFileSync(\"/etc/guest-portal/config.json\",\"utf8\"));c.uploadDir=Buffer.from(process.env.MOUNT_B64,\"base64\").toString();fs.writeFileSync(\"/etc/guest-portal/config.json\",JSON.stringify(c,null,2))'
       "
-      echo "Upload path set to: $nas_mount"
-      echo "Restarting Guest Portal service..."
-      pct exec "$nodejs_id" -- systemctl restart guest-portal
+      pct exec "$CT_ID" -- systemctl restart guest-portal
+      msg_ok "Upload path set to ${nas_mount}"
     else
-      echo "⚠  Mount failed. Check your NAS/SMB settings."
-      echo "   You can configure the upload path later in the Admin panel."
+      msg_error "Mount failed. Check your NAS/SMB settings."
+      echo -e "${INFO}${YW}You can configure the upload path later in the Admin panel.${CL}"
     fi
     ;;
   3)
-    echo "  Using default local storage. You can configure a NAS mount"
-    echo "  later from the Admin panel under Upload Storage Path."
+    echo -e "${CM}${GN}Using default local storage${CL}"
+    echo -e "${INFO}${YW}Configure NAS mount later from Admin panel > Upload Storage Path.${CL}"
     ;;
   *)
-    echo "  Invalid option. Using default local storage."
+    echo -e "${CM}${GN}Using default local storage${CL}"
     ;;
 esac
 
-############################
-# Reverse Proxy Setup      #
-############################
+# ─── Reverse Proxy Setup ───────────────────────────────────────────────────
 
-# Get the Node.js container’s IP for proxy configuration
-NODEJS_IP=$(pct exec "$nodejs_id" -- hostname -I 2>/dev/null | awk ‘{print $1}’)
+# Detect container IP
+NODEJS_IP=$(pct exec "$CT_ID" -- hostname -I 2>/dev/null | awk '{print $1}')
 if [[ -z "$NODEJS_IP" ]]; then
   echo ""
-  echo "⚠  Could not auto-detect Node.js container IP."
-  read -p "Enter the Node.js container IP address: " NODEJS_IP
+  echo -e "${INFO}${YW}Could not auto-detect container IP.${CL}"
+  read -p "  Enter the container IP address: " NODEJS_IP
 fi
 
+header_info
+echo -e "${TAB}${BOLD}Reverse Proxy / HTTPS${CL}"
 echo ""
-echo "═══════════════════════════════════════════════════════"
-echo "  Reverse Proxy Configuration"
-echo "═══════════════════════════════════════════════════════"
+echo -e "${GATEWAY}${DGN}Guest Portal backend: ${BGN}http://${NODEJS_IP}:3000${CL}"
 echo ""
-echo "  Guest Portal is running at: http://${NODEJS_IP}:3000"
+echo -e "${TAB}  1)  Nginx Proxy Manager (existing instance)"
+echo -e "${TAB}      ${DGN}Prints step-by-step NPM dashboard config${CL}"
 echo ""
-echo "  How would you like to handle reverse proxy / HTTPS?"
+echo -e "${TAB}  2)  New NGINX container"
+echo -e "${TAB}      ${DGN}Creates a dedicated LXC with auto-configured reverse proxy${CL}"
 echo ""
-echo "  1) Nginx Proxy Manager (NPM)"
-echo "     Use an existing NPM instance to manage SSL and routing."
+echo -e "${TAB}  3)  Skip / Manual"
+echo -e "${TAB}      ${DGN}Configure your own reverse proxy later${CL}"
 echo ""
-echo "  2) New NGINX container"
-echo "     Create a dedicated NGINX LXC with the included config."
-echo ""
-echo "  3) Skip / Manual"
-echo "     I’ll configure my own reverse proxy later."
-echo ""
-read -p "Select an option [1/2/3] (default: 1): " proxy_choice
+read -p "  Select [1/2/3] (default: 1): " proxy_choice
 proxy_choice=${proxy_choice:-1}
 
 case "$proxy_choice" in
   1)
+    header_info
+    echo -e "${TAB}${BOLD}Nginx Proxy Manager Configuration${CL}"
     echo ""
-    echo "═══════════════════════════════════════════════════════"
-    echo "  Nginx Proxy Manager Setup"
-    echo "═══════════════════════════════════════════════════════"
+    echo -e "${TAB}  Add a new ${BOLD}Proxy Host${CL} in your NPM dashboard:"
     echo ""
-    echo "  Add a new Proxy Host in your NPM dashboard:"
+    echo -e "${TAB}  ${BOLD}Details tab:${CL}"
+    echo -e "${TAB}    Domain Names:       guestportal.yourdomain.com"
+    echo -e "${TAB}    Scheme:             http"
+    echo -e "${TAB}    Forward Hostname:   ${GN}${NODEJS_IP}${CL}"
+    echo -e "${TAB}    Forward Port:       ${GN}3000${CL}"
+    echo -e "${TAB}    [x] Block Common Exploits"
+    echo -e "${TAB}    [x] Websockets Support"
     echo ""
-    echo "  Details tab:"
-    echo "    Domain Names:       guestportal.yourdomain.com"
-    echo "    Scheme:             http"
-    echo "    Forward Hostname:   ${NODEJS_IP}"
-    echo "    Forward Port:       3000"
-    echo "    ☑ Block Common Exploits"
-    echo "    ☑ Websockets Support"
+    echo -e "${TAB}  ${BOLD}SSL tab:${CL}"
+    echo -e "${TAB}    [x] Request a new SSL Certificate"
+    echo -e "${TAB}    [x] Force SSL"
+    echo -e "${TAB}    [x] HTTP/2 Support"
+    echo -e "${TAB}    [x] HSTS Enabled"
     echo ""
-    echo "  SSL tab:"
-    echo "    ☑ Request a new SSL Certificate"
-    echo "    ☑ Force SSL"
-    echo "    ☑ HTTP/2 Support"
-    echo "    ☑ HSTS Enabled"
-    echo ""
-    echo "  Custom locations (optional):"
-    echo "    /admin-api/*  →  Access control or IP whitelist"
-    echo ""
-    echo "  Advanced tab (optional — paste this for security headers):"
-    echo "    add_header X-Content-Type-Options nosniff always;"
-    echo "    add_header X-Frame-Options DENY always;"
-    echo "    add_header Referrer-Policy strict-origin-when-cross-origin always;"
-    echo "    client_max_body_size 50M;"
+    echo -e "${TAB}  ${BOLD}Advanced tab (optional security headers):${CL}"
+    echo -e "${TAB}    add_header X-Content-Type-Options nosniff always;"
+    echo -e "${TAB}    add_header X-Frame-Options DENY always;"
+    echo -e "${TAB}    add_header Referrer-Policy strict-origin-when-cross-origin always;"
+    echo -e "${TAB}    client_max_body_size 50M;"
     echo ""
     ;;
   2)
-    read -p "Enter container name for NGINX (default: guest-portal-nginx): " nginx_container
-    nginx_container=${nginx_container:-"guest-portal-nginx"}
+    echo ""
+    echo -e "${TAB}${BOLD}NGINX Container Settings${CL}"
+    echo ""
+    read -p "  NGINX hostname (default: guest-portal-nginx): " nginx_hostname
+    nginx_hostname=${nginx_hostname:-"guest-portal-nginx"}
 
-    next_nginx_id=$((nodejs_id + 1))
-    read -p "Enter container ID for NGINX (default: $next_nginx_id): " nginx_id
-    nginx_id=${nginx_id:-$next_nginx_id}
+    NEXT_NGINX_ID=$((CT_ID + 1))
+    read -p "  NGINX container ID (default: ${NEXT_NGINX_ID}): " nginx_id
+    nginx_id=${nginx_id:-$NEXT_NGINX_ID}
 
-    read -p "Enter network bridge for NGINX (default: vmbr0): " nginx_bridge
-    nginx_bridge=${nginx_bridge:-"vmbr0"}
+    read -p "  Network bridge (default: ${CT_BRIDGE}): " nginx_bridge
+    nginx_bridge=${nginx_bridge:-$CT_BRIDGE}
 
-    read -p "Use static IP for NGINX? (y/n, default: y): " nginx_static
-    nginx_static=${nginx_static:-y}
+    echo ""
+    echo -e "${TAB}  NGINX IPv4 Configuration:"
+    echo -e "${TAB}    1)  DHCP"
+    echo -e "${TAB}    2)  Static IP"
+    echo ""
+    read -p "  Select [1/2] (default: 2): " nginx_net_choice
+    nginx_net_choice=${nginx_net_choice:-2}
 
-    if [[ "$nginx_static" == "y" ]]; then
-      read -p "Enter static IP (CIDR, e.g. 192.168.1.101/24): " nginx_ip
-      read -p "Enter gateway (e.g. 192.168.1.1): " nginx_gw
-      read -p "Enter DNS (e.g. 8.8.8.8): " nginx_dns
-      nginx_net="name=eth0,bridge=${nginx_bridge},ip=${nginx_ip},gw=${nginx_gw},nameserver=${nginx_dns}"
+    if [[ "$nginx_net_choice" == "2" ]]; then
+      read -p "  Static IP (CIDR, e.g. 192.168.1.101/24): " nginx_ip
+      read -p "  Gateway (e.g. 192.168.1.1): " nginx_gw
+      read -p "  DNS Server (default: 1.1.1.1): " nginx_dns
+      nginx_dns=${nginx_dns:-"1.1.1.1"}
+      nginx_net="name=eth0,bridge=${nginx_bridge},ip=${nginx_ip},gw=${nginx_gw}"
     else
       nginx_net="name=eth0,bridge=${nginx_bridge},ip=dhcp"
     fi
 
-    echo ""
-    echo "Creating NGINX container..."
-    pct create "$nginx_id" local:vztmpl/debian-12-standard_12.0-1_amd64.tar.zst \
-      --hostname "$nginx_container" --cores 1 --memory 256 --net0 "$nginx_net" \
-      --rootfs local-lvm:2 --onboot 1
+    msg_info "Creating NGINX container"
+    pct create "$nginx_id" "$var_os_template" \
+      --hostname "$nginx_hostname" \
+      --cores 1 --memory 256 \
+      --net0 "$nginx_net" \
+      --rootfs local-lvm:2 \
+      --onboot 1 \
+      --unprivileged 0 >/dev/null 2>&1
+    msg_ok "Created NGINX container ${nginx_id}"
 
+    msg_info "Starting NGINX container and installing nginx"
     pct start "$nginx_id"
-    pct exec "$nginx_id" -- bash -c "apt update && apt install -y nginx"
+    sleep 3
+    pct exec "$nginx_id" -- bash -c "apt-get update >/dev/null 2>&1 && apt-get install -y nginx >/dev/null 2>&1"
+    msg_ok "NGINX installed"
 
-    # Generate nginx config with the actual backend IP
-    NGINX_CONF_TMP=$(mktemp)
-    sed "s/NODEJS_CONTAINER_IP/${NODEJS_IP}/g" "$(pwd)/nginx/guestportal.conf" > "$NGINX_CONF_TMP"
-    pct push "$nginx_id" "$NGINX_CONF_TMP" /etc/nginx/conf.d/guestportal.conf
-    rm -f "$NGINX_CONF_TMP"
+    # Check if nginx config template exists on the host
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    if [[ -f "${SCRIPT_DIR}/nginx/guestportal.conf" ]]; then
+      msg_info "Deploying nginx config"
+      NGINX_CONF_TMP=$(mktemp)
+      sed "s/NODEJS_CONTAINER_IP/${NODEJS_IP}/g" "${SCRIPT_DIR}/nginx/guestportal.conf" > "$NGINX_CONF_TMP"
+      pct push "$nginx_id" "$NGINX_CONF_TMP" /etc/nginx/conf.d/guestportal.conf
+      rm -f "$NGINX_CONF_TMP"
+      pct exec "$nginx_id" -- systemctl restart nginx
+      msg_ok "NGINX configured and running"
+    else
+      msg_info "No nginx config template found — generating basic config"
+      pct exec "$nginx_id" -- bash -c "
+cat > /etc/nginx/conf.d/guestportal.conf << 'NGINX'
+server {
+    listen 80;
+    server_name guestportal.yourdomain.com;
+    client_max_body_size 50M;
 
-    pct exec "$nginx_id" -- systemctl restart nginx
-    echo "NGINX container created and configured."
+    location / {
+        proxy_pass http://${NODEJS_IP}:3000;
+        proxy_set_header Host \\\$host;
+        proxy_set_header X-Real-IP \\\$remote_addr;
+        proxy_set_header X-Forwarded-For \\\$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \\\$scheme;
+    }
+}
+NGINX
+systemctl restart nginx
+"
+      msg_ok "Basic NGINX config deployed"
+    fi
+
     echo ""
-    echo "  Note: The included config expects SSL certificates at:"
-    echo "    /etc/letsencrypt/live/guestportal.example.com/"
+    echo -e "${INFO}${YW}Install certbot for HTTPS:${CL}"
+    echo -e "${TAB}  pct exec ${nginx_id} -- bash -c 'apt install -y certbot python3-certbot-nginx'"
+    echo -e "${TAB}  pct exec ${nginx_id} -- certbot --nginx -d guestportal.yourdomain.com"
     echo ""
-    echo "  Install certbot and request a certificate:"
-    echo "    pct exec $nginx_id -- bash -c ‘apt install -y certbot python3-certbot-nginx’"
-    echo "    pct exec $nginx_id -- certbot --nginx -d guestportal.yourdomain.com"
     ;;
   3)
     echo ""
-    echo "  Skipping reverse proxy setup."
+    echo -e "${CM}${GN}Skipping reverse proxy setup${CL}"
     echo ""
-    echo "  To configure manually, point your reverse proxy to:"
-    echo "    http://${NODEJS_IP}:3000"
+    echo -e "${INFO}${YW}Point your reverse proxy to: ${GN}http://${NODEJS_IP}:3000${CL}"
+    echo -e "${TAB}  An example nginx config is included in the repo at:"
+    echo -e "${TAB}  /root/guest-portal/nginx/guestportal.conf"
     echo ""
-    echo "  An example nginx config is included at:"
-    echo "    nginx/guestportal.conf"
-    echo ""
-    echo "  Replace NODEJS_CONTAINER_IP with: ${NODEJS_IP}"
     ;;
   *)
-    echo "Invalid option. Skipping proxy setup."
+    echo -e "${CM}${GN}Skipping reverse proxy setup${CL}"
     ;;
 esac
 
+# ─── Setup Complete ────────────────────────────────────────────────────────
+
+header_info
+echo -e "${CREATING}${GN}${BOLD}Guest Portal setup has been completed successfully!${CL}"
 echo ""
-echo "═══════════════════════════════════════════════════════"
-echo "  ✅ Guest Portal Setup Complete!"
-echo "═══════════════════════════════════════════════════════"
+echo -e "${CONTAINERID}${BOLD}${DGN}Container ID: ${BGN}${CT_ID}${CL}  (${CT_HOSTNAME})"
+echo -e "${GATEWAY}${BOLD}${DGN}Backend: ${BGN}http://${NODEJS_IP}:3000${CL}"
+echo -e "${PROXY}${BOLD}${DGN}Admin Panel: ${BGN}http://${NODEJS_IP}:3000/admin.html${CL}"
 echo ""
-echo "  Backend:  http://${NODEJS_IP}:3000"
-echo "  Admin:    http://${NODEJS_IP}:3000/admin.html"
+echo -e "${TAB}${BOLD}Key Paths (inside container):${CL}"
+echo -e "${TAB}  Application:   /root/guest-portal/"
+echo -e "${TAB}  Config:        /etc/guest-portal/config.json"
+echo -e "${TAB}  Data:          /etc/guest-portal/storage.json"
+echo -e "${TAB}  Service:       systemctl status guest-portal"
 echo ""
-echo "  Container ID: ${nodejs_id} (${nodejs_container})"
-echo "  Config:       /etc/guest-portal/config.json"
-echo "  Data:         /etc/guest-portal/storage.json"
-echo "  Service:      systemctl status guest-portal"
+echo -e "${TAB}${BOLD}Useful Commands:${CL}"
+echo -e "${TAB}  ${DGN}pct enter ${CT_ID}${CL}                    Enter the container"
+echo -e "${TAB}  ${DGN}pct exec ${CT_ID} -- systemctl status guest-portal${CL}"
+echo -e "${TAB}  ${DGN}pct exec ${CT_ID} -- journalctl -u guest-portal -f${CL}"
+echo -e "${TAB}  ${DGN}cd /root/guest-portal && git pull${CL}     Update to latest version"
 echo ""
-echo "  First-time setup: visit /admin.html to create your"
-echo "  admin account (or credentials from this script are"
-echo "  already configured)."
+if [[ -z "$ADMIN_HASH" || "$ADMIN_HASH" == *"placeholder"* ]]; then
+  echo -e "${INFO}${YW}Visit /admin.html to create your admin account on first login.${CL}"
+else
+  echo -e "${CM}${GN}Admin credentials are configured. Log in at /admin.html${CL}"
+fi
 echo ""
