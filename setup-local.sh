@@ -47,9 +47,9 @@ while true; do
     fi
 done
 
-# Hash the password using bcrypt
+# Hash the password using bcrypt (pass via env var to prevent shell injection)
 echo "Hashing password..."
-ADMIN_HASH=$(node -e "require('bcrypt').hash('$ADMIN_PASS', 10).then(h => console.log(h))")
+ADMIN_HASH=$(ADMIN_PASS="$ADMIN_PASS" node -e "require('bcrypt').hash(process.env.ADMIN_PASS, 10).then(h => console.log(h))")
 
 # Create config directory
 CONFIG_DIR="/etc/guest-portal"
@@ -62,17 +62,19 @@ else
     sudo chown $(whoami) "$CONFIG_DIR"
 fi
 
-# Create config.json
+# Create config.json (use node to safely serialize values into JSON)
 echo "Creating configuration files..."
-cat > "$CONFIG_DIR/config.json" << EOF
-{
-  "adminUser": "$ADMIN_USER",
-  "adminHash": "$ADMIN_HASH",
-  "uploadDir": "./uploads",
-  "sessionExpirationMinutes": 10,
-  "adminSessionTimeoutMinutes": 15
-}
-EOF
+ADMIN_USER="$ADMIN_USER" ADMIN_HASH="$ADMIN_HASH" node -e "
+  var fs = require('fs');
+  var config = {
+    adminUser: process.env.ADMIN_USER,
+    adminHash: process.env.ADMIN_HASH,
+    uploadDir: './uploads',
+    sessionExpirationMinutes: 10,
+    adminSessionTimeoutMinutes: 15
+  };
+  fs.writeFileSync('$CONFIG_DIR/config.json', JSON.stringify(config, null, 2));
+"
 
 # Create storage.json if it doesn't exist
 if [ ! -f "$CONFIG_DIR/storage.json" ]; then

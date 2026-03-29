@@ -50,7 +50,9 @@ declare -a ROOMS
 for (( i=1; i<=ROOM_COUNT; i++ )); do
   read -p "Enter name for Guest Room $i: " ROOM_NAME
   read -p "Enter Home Assistant dashboard URL for $ROOM_NAME: " ROOM_URL
-  ROOMS+=("{\"name\": \"$ROOM_NAME\", \"dashboardUrl\": \"$ROOM_URL\"}")
+  # Use node to safely serialize room data as JSON
+  ROOM_JSON=$(ROOM_NAME="$ROOM_NAME" ROOM_URL="$ROOM_URL" node -e "console.log(JSON.stringify({name:process.env.ROOM_NAME,dashboardUrl:process.env.ROOM_URL}))")
+  ROOMS+=("$ROOM_JSON")
 done
 
 read -p "Set admin username (default: admin): " ADMIN_USER
@@ -78,26 +80,42 @@ pct exec "$nodejs_id" -- bash -c "apt update && apt install -y nodejs npm && npm
 
 echo "Checking if bcrypt is installed in the container..."
 pct exec "$nodejs_id" -- bash -c "npm list bcrypt || npm install bcrypt"
+# Hash admin password (base64-encode to avoid shell injection)
 echo "Hashing admin password..."
-ADMIN_HASH=$(pct exec "$nodejs_id" -- bash -c "node -e \"require('bcrypt').hash('$ADMIN_PASS', 10).then(console.log)\"")
+ADMIN_PASS_B64=$(printf '%s' "$ADMIN_PASS" | base64 -w0)
+ADMIN_HASH=$(pct exec "$nodejs_id" -- bash -c "export PASS_B64=$ADMIN_PASS_B64 && node -e 'require(\"bcrypt\").hash(Buffer.from(process.env.PASS_B64,\"base64\").toString(),10).then(console.log)'")
 
 echo "Copying project files..."
 pct push "$nodejs_id" "$(pwd)" /root/guest-portal -r
 
+# Write config to container (use base64 + node for safe JSON serialization)
 echo "Writing config to nodejs container..."
-pct exec "$nodejs_id" -- bash -c '
-  mkdir -p /etc/guest-portal
+pct exec "$nodejs_id" -- bash -c "mkdir -p /etc/guest-portal"
+
+ADMIN_USER_B64=$(printf '%s' "$ADMIN_USER" | base64 -w0)
+ADMIN_HASH_B64=$(printf '%s' "$ADMIN_HASH" | base64 -w0)
+
+# Build rooms JSON array safely using node
+ROOMS_JSON=$(ROOM_DATA="$(printf '%s\n' "${ROOMS[@]}")" node -e "
+  var rooms = process.env.ROOM_DATA.trim().split('\n').filter(Boolean);
+  console.log(JSON.stringify(rooms.map(function(r) { return JSON.parse(r); })));
+")
+ROOMS_JSON_B64=$(printf '%s' "$ROOMS_JSON" | base64 -w0)
+
+pct exec "$nodejs_id" -- bash -c "
   if [ ! -f /etc/guest-portal/config.json ]; then
-    echo "{\"adminUser\": \"'$ADMIN_USER'\", \"adminHash\": \"'$ADMIN_HASH'\"}" > /etc/guest-portal/config.json
+    export USER_B64=$ADMIN_USER_B64 HASH_B64=$ADMIN_HASH_B64
+    node -e 'var fs=require(\"fs\");var c={adminUser:Buffer.from(process.env.USER_B64,\"base64\").toString(),adminHash:Buffer.from(process.env.HASH_B64,\"base64\").toString()};fs.writeFileSync(\"/etc/guest-portal/config.json\",JSON.stringify(c,null,2))'
   else
-    echo "✔ Existing config.json found — skipping overwrite"
+    echo '✔ Existing config.json found — skipping overwrite'
   fi
   if [ ! -f /etc/guest-portal/storage.json ]; then
-    echo "{\"rooms\": [$(IFS=,; echo "${ROOMS[*]}")], \"guests\": []}" > /etc/guest-portal/storage.json
+    export ROOMS_B64=$ROOMS_JSON_B64
+    node -e 'var fs=require(\"fs\");var s={rooms:JSON.parse(Buffer.from(process.env.ROOMS_B64,\"base64\").toString()),guests:[]};fs.writeFileSync(\"/etc/guest-portal/storage.json\",JSON.stringify(s,null,2))'
   else
-    echo "✔ Existing storage.json found — skipping overwrite"
+    echo '✔ Existing storage.json found — skipping overwrite'
   fi
-'
+"
 
 echo "Launching nodejs server..."
 pct exec "$nodejs_id" -- bash -c "cd /root/guest-portal && npm install && nohup node server.js > server.log 2>&1 &"
