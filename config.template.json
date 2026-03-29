@@ -1,7 +1,7 @@
 {
   "adminUser": "admin",
   "adminHash": "<bcrypt_hash_placeholder>",
-  "uploadDir": "./uploads",
+  "uploadDir": "",
   "sessionExpirationMinutes": 10,
   "adminSessionTimeoutMinutes": 15
 }

@@ -9,6 +9,7 @@ const cors = require('cors');
 const basicAuth = require('basic-auth');
 const bcrypt = require('bcrypt');
 const rateLimit = require('express-rate-limit');
+const archiver = require('archiver');
 const app = express();
 
 // ─── Constants & Data Loading ───────────────────────────────────────────────
@@ -26,6 +27,10 @@ let sessionCodes = fs.existsSync(sessionFile) ? JSON.parse(fs.readFileSync(sessi
 let guestTokens = fs.existsSync(guestTokensFile) ? JSON.parse(fs.readFileSync(guestTokensFile, 'utf8')) : {};
 
 // ─── Utility Functions ──────────────────────────────────────────────────────
+
+function getUploadsDir() {
+  return config.uploadDir || path.join(__dirname, 'uploads');
+}
 
 function sanitizeFilename(filename) {
   return filename
@@ -119,11 +124,11 @@ function authMiddleware(req, res, next) {
 
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
+    const uploadsDir = getUploadsDir();
     const name = sanitizeName(req.body.guestName || 'anonymous');
     const folderName = `${name}-${new Date().toISOString().split('T')[0]}`;
-    const dir = path.join(__dirname, 'uploads', folderName);
-    const uploadsDir = path.join(__dirname, 'uploads');
-    if (!path.resolve(dir).startsWith(uploadsDir)) {
+    const dir = path.join(uploadsDir, folderName);
+    if (!path.resolve(dir).startsWith(path.resolve(uploadsDir))) {
       return cb(new Error('Invalid upload path'));
     }
     fs.mkdirSync(dir, { recursive: true });
@@ -146,7 +151,7 @@ const MIME_TO_EXT = {
 
 const bgStorage = multer.diskStorage({
   destination: (req, file, cb) => {
-    const dir = path.join(__dirname, 'uploads', 'backgrounds');
+    const dir = path.join(getUploadsDir(), 'backgrounds');
     fs.mkdirSync(dir, { recursive: true });
     cb(null, dir);
   },
@@ -231,8 +236,10 @@ app.get('/admin-api/background', (req, res) => {
   res.json({ backgroundImage: config.backgroundImage || null });
 });
 
-// Serve background images publicly
-app.use('/uploads/backgrounds', express.static(path.join(__dirname, 'uploads', 'backgrounds')));
+// Serve background images publicly (dynamic path via config)
+app.use('/uploads/backgrounds', (req, res, next) => {
+  express.static(path.join(getUploadsDir(), 'backgrounds'))(req, res, next);
+});
 
 app.post('/register', (req, res) => {
   const { name, room, stayDays } = req.body;
@@ -425,7 +432,210 @@ app.delete('/admin-api/rooms/:name', authMiddleware, (req, res) => {
   res.sendStatus(200);
 });
 
-app.use('/admin/uploads', authMiddleware, express.static(path.join(__dirname, 'uploads')));
+app.use('/admin/uploads', authMiddleware, (req, res, next) => {
+  express.static(getUploadsDir())(req, res, next);
+});
+
+// Upload path configuration
+app.get('/admin-api/upload-path', authMiddleware, (req, res) => {
+  const uploadsDir = getUploadsDir();
+  let writable = false;
+  let exists = false;
+  try {
+    exists = fs.existsSync(uploadsDir);
+    if (exists) {
+      fs.accessSync(uploadsDir, fs.constants.W_OK);
+      writable = true;
+    }
+  } catch {}
+  res.json({ path: uploadsDir, exists, writable });
+});
+
+app.post('/admin-api/upload-path', authMiddleware, (req, res) => {
+  const { path: newPath } = req.body;
+
+  // Empty path resets to default
+  if (!newPath || newPath.trim() === '') {
+    delete config.uploadDir;
+    saveConfig();
+    const defaultDir = path.join(__dirname, 'uploads');
+    fs.mkdirSync(path.join(defaultDir, 'backgrounds'), { recursive: true });
+    return res.json({ success: true, path: defaultDir });
+  }
+
+  if (typeof newPath !== 'string' || newPath.length > 500) {
+    return res.status(400).send('Invalid path');
+  }
+
+  const resolved = path.resolve(newPath);
+
+  // Validate the directory exists and is writable
+  if (!fs.existsSync(resolved)) {
+    return res.status(400).send('Directory does not exist. Create it and mount your NFS/SMB share first.');
+  }
+
+  try {
+    fs.accessSync(resolved, fs.constants.W_OK);
+  } catch {
+    return res.status(400).send('Directory is not writable. Check permissions.');
+  }
+
+  config.uploadDir = resolved;
+  saveConfig();
+
+  // Ensure backgrounds subdirectory exists
+  const bgDir = path.join(resolved, 'backgrounds');
+  fs.mkdirSync(bgDir, { recursive: true });
+
+  res.json({ success: true, path: resolved });
+});
+
+// List guest photo folders
+app.get('/admin-api/uploads', authMiddleware, (req, res) => {
+  const uploadsDir = getUploadsDir();
+  if (!fs.existsSync(uploadsDir)) {
+    return res.json({ folders: [] });
+  }
+
+  try {
+    const entries = fs.readdirSync(uploadsDir, { withFileTypes: true });
+    const folders = entries
+      .filter(e => e.isDirectory() && e.name !== 'backgrounds')
+      .map(e => {
+        const folderPath = path.join(uploadsDir, e.name);
+        const files = fs.readdirSync(folderPath).filter(f => {
+          const stat = fs.statSync(path.join(folderPath, f));
+          return stat.isFile();
+        });
+        const totalSize = files.reduce((sum, f) => {
+          return sum + fs.statSync(path.join(folderPath, f)).size;
+        }, 0);
+        return {
+          name: e.name,
+          fileCount: files.length,
+          totalSize,
+          files: files.map(f => ({
+            name: f,
+            size: fs.statSync(path.join(folderPath, f)).size
+          }))
+        };
+      })
+      .filter(f => f.fileCount > 0)
+      .sort((a, b) => b.name.localeCompare(a.name));
+
+    res.json({ folders });
+  } catch (err) {
+    console.error('Failed to list uploads:', err);
+    res.status(500).send('Failed to list uploads');
+  }
+});
+
+// Download a single guest folder as zip
+app.get('/admin-api/uploads/download/:folder', authMiddleware, (req, res) => {
+  const uploadsDir = getUploadsDir();
+  const folderName = req.params.folder;
+  const folderPath = path.resolve(path.join(uploadsDir, folderName));
+
+  if (!folderPath.startsWith(path.resolve(uploadsDir))) {
+    return res.status(400).send('Invalid folder');
+  }
+  if (!fs.existsSync(folderPath) || !fs.statSync(folderPath).isDirectory()) {
+    return res.status(404).send('Folder not found');
+  }
+
+  res.setHeader('Content-Type', 'application/zip');
+  res.setHeader('Content-Disposition', `attachment; filename="${folderName}.zip"`);
+
+  const archive = archiver('zip', { zlib: { level: 5 } });
+  archive.on('error', err => {
+    console.error('Archive error:', err);
+    if (!res.headersSent) res.status(500).send('Archive failed');
+  });
+  archive.pipe(res);
+  archive.directory(folderPath, folderName);
+  archive.finalize();
+});
+
+// Download all guest photos as zip
+app.get('/admin-api/uploads/download-all', authMiddleware, (req, res) => {
+  const uploadsDir = getUploadsDir();
+  if (!fs.existsSync(uploadsDir)) {
+    return res.status(404).send('No uploads directory');
+  }
+
+  const entries = fs.readdirSync(uploadsDir, { withFileTypes: true });
+  const folders = entries.filter(e => e.isDirectory() && e.name !== 'backgrounds');
+
+  if (folders.length === 0) {
+    return res.status(404).send('No guest photos to download');
+  }
+
+  const date = new Date().toISOString().split('T')[0];
+  res.setHeader('Content-Type', 'application/zip');
+  res.setHeader('Content-Disposition', `attachment; filename="guest-photos-${date}.zip"`);
+
+  const archive = archiver('zip', { zlib: { level: 5 } });
+  archive.on('error', err => {
+    console.error('Archive error:', err);
+    if (!res.headersSent) res.status(500).send('Archive failed');
+  });
+  archive.pipe(res);
+
+  folders.forEach(e => {
+    archive.directory(path.join(uploadsDir, e.name), e.name);
+  });
+  archive.finalize();
+});
+
+// Delete a single guest photo folder
+app.delete('/admin-api/uploads/:folder', authMiddleware, (req, res) => {
+  const uploadsDir = getUploadsDir();
+  const folderName = req.params.folder;
+  const folderPath = path.resolve(path.join(uploadsDir, folderName));
+
+  if (!folderPath.startsWith(path.resolve(uploadsDir))) {
+    return res.status(400).send('Invalid folder');
+  }
+  if (folderName === 'backgrounds') {
+    return res.status(400).send('Cannot delete backgrounds folder');
+  }
+  if (!fs.existsSync(folderPath) || !fs.statSync(folderPath).isDirectory()) {
+    return res.status(404).send('Folder not found');
+  }
+
+  try {
+    fs.rmSync(folderPath, { recursive: true, force: true });
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Failed to delete folder:', err);
+    res.status(500).send('Failed to delete folder');
+  }
+});
+
+// Delete all guest photo folders
+app.delete('/admin-api/uploads', authMiddleware, (req, res) => {
+  const uploadsDir = getUploadsDir();
+  if (!fs.existsSync(uploadsDir)) {
+    return res.json({ success: true, deleted: 0 });
+  }
+
+  try {
+    const entries = fs.readdirSync(uploadsDir, { withFileTypes: true });
+    const folders = entries.filter(e => e.isDirectory() && e.name !== 'backgrounds');
+    let deleted = 0;
+
+    folders.forEach(e => {
+      const folderPath = path.join(uploadsDir, e.name);
+      fs.rmSync(folderPath, { recursive: true, force: true });
+      deleted++;
+    });
+
+    res.json({ success: true, deleted });
+  } catch (err) {
+    console.error('Failed to delete folders:', err);
+    res.status(500).send('Failed to delete folders');
+  }
+});
 
 // M6: GET endpoint to retrieve current admin timeout setting
 app.get('/admin-api/admin-timeout', authMiddleware, (req, res) => {
@@ -444,8 +654,8 @@ app.post('/admin-api/background', authMiddleware, bgUpload.single('background'),
 // C6: Validate resolved path stays within uploads directory
 app.delete('/admin-api/background', authMiddleware, (req, res) => {
   if (config.backgroundImage) {
-    const bgPath = path.resolve(__dirname, config.backgroundImage.replace(/^\//, ''));
-    const uploadsDir = path.resolve(__dirname, 'uploads');
+    const uploadsDir = path.resolve(getUploadsDir());
+    const bgPath = path.resolve(path.join(uploadsDir, 'backgrounds', path.basename(config.backgroundImage)));
     if (bgPath.startsWith(uploadsDir) && fs.existsSync(bgPath)) {
       fs.unlinkSync(bgPath);
     }

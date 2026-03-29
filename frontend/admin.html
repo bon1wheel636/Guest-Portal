@@ -58,6 +58,26 @@
 </form>
 <button id="removeBg" style="margin-top:10px;background:#dc3545;">Remove Background</button>
 
+<h2>Upload Storage Path</h2>
+<p style="font-size: 0.9em; color: #666;">Where guest photos are saved. Point this to an NFS/SMB mount for NAS storage.</p>
+<div id="uploadPathStatus" style="margin-bottom:10px;padding:8px;border-radius:5px;background:#f0f0f0;font-family:monospace;font-size:0.9em;"></div>
+<form id="uploadPathForm">
+  <label>Upload Directory (absolute path):</label>
+  <input type="text" id="uploadPathInput" placeholder="/mnt/nas/guest-photos" required />
+  <small>Directory must exist and be writable. Mount your NFS/SMB share first.</small>
+  <button type="submit">Update Upload Path</button>
+</form>
+<button id="resetUploadPath" style="margin-top:10px;background:#6c757d;">Reset to Default</button>
+
+<h2>Guest Photos</h2>
+<p style="font-size: 0.9em; color: #666;">Browse and download guest photo uploads. Download to your NAS or local backup.</p>
+<div style="margin-bottom:10px;">
+  <button id="downloadAllPhotos" style="background:#28a745;">Download All Photos (.zip)</button>
+  <button id="deleteAllPhotos" style="background:#dc3545;margin-left:5px;">Delete All Photos</button>
+  <button id="refreshPhotos" style="background:#6c757d;margin-left:5px;">Refresh</button>
+</div>
+<div id="photoFolderList"></div>
+
 <h2>Session Settings</h2>
 <form id="timeoutForm">
   <label>Admin Auto-Logout Timeout (minutes):</label>
@@ -382,6 +402,168 @@ document.getElementById('removeBg')?.addEventListener('click', async () => {
   }
 });
 
+// Upload path management
+async function loadUploadPath() {
+  try {
+    const res = await fetch('/admin-api/upload-path', { headers: { 'Authorization': getAuthHeader() } });
+    if (!res.ok) return;
+    const data = await res.json();
+    const status = document.getElementById('uploadPathStatus');
+    const writableIcon = data.writable ? '&#9989;' : '&#10060;';
+    const existsIcon = data.exists ? '&#9989;' : '&#10060;';
+    status.innerHTML = `<strong>Current:</strong> ${escapeHtml(data.path)}<br>`
+      + `<small>Exists: ${existsIcon} &nbsp; Writable: ${writableIcon}</small>`;
+    document.getElementById('uploadPathInput').placeholder = data.path;
+  } catch (err) {
+    console.error('Failed to load upload path:', err);
+  }
+}
+
+document.getElementById('uploadPathForm')?.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const newPath = document.getElementById('uploadPathInput').value.trim();
+  if (!newPath) return;
+
+  try {
+    const res = await fetch('/admin-api/upload-path', {
+      method: 'POST',
+      headers: { 'Authorization': getAuthHeader(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path: newPath })
+    });
+    if (res.ok) {
+      alert('Upload path updated!');
+      document.getElementById('uploadPathInput').value = '';
+      loadUploadPath();
+    } else {
+      const error = await res.text();
+      alert('Failed: ' + error);
+    }
+  } catch (err) {
+    alert('Error: ' + err.message);
+  }
+});
+
+document.getElementById('resetUploadPath')?.addEventListener('click', async () => {
+  if (!confirm('Reset upload path to the default (./uploads)?')) return;
+  try {
+    const res = await fetch('/admin-api/upload-path', {
+      method: 'POST',
+      headers: { 'Authorization': getAuthHeader(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path: '' })
+    });
+    if (res.ok) {
+      alert('Upload path reset to default.');
+      loadUploadPath();
+    } else {
+      const error = await res.text();
+      alert('Failed: ' + error);
+    }
+  } catch (err) {
+    alert('Error: ' + err.message);
+  }
+});
+
+// Guest photo management
+function formatBytes(bytes) {
+  if (bytes === 0) return '0 B';
+  const units = ['B', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(1024));
+  return (bytes / Math.pow(1024, i)).toFixed(i > 0 ? 1 : 0) + ' ' + units[i];
+}
+
+async function loadPhotos() {
+  try {
+    const res = await fetch('/admin-api/uploads', { headers: { 'Authorization': getAuthHeader() } });
+    if (!res.ok) return;
+    const data = await res.json();
+    const container = document.getElementById('photoFolderList');
+    container.innerHTML = '';
+
+    if (!data.folders || data.folders.length === 0) {
+      container.innerHTML = '<p style="color:#666;font-style:italic;">No guest photos uploaded yet</p>';
+      return;
+    }
+
+    data.folders.forEach(folder => {
+      const div = document.createElement('div');
+      div.style.cssText = 'border:1px solid #ddd;padding:10px;margin:8px 0;border-radius:5px;';
+
+      let html = `<strong>${escapeHtml(folder.name)}</strong>`;
+      html += `<span style="float:right;color:#666;font-size:0.9em;">${folder.fileCount} file${folder.fileCount !== 1 ? 's' : ''} &bull; ${formatBytes(folder.totalSize)}</span>`;
+
+      div.innerHTML = html;
+
+      const downloadBtn = document.createElement('button');
+      downloadBtn.textContent = 'Download';
+      downloadBtn.style.cssText = 'margin-top:8px;font-size:0.85em;';
+      downloadBtn.onclick = () => downloadZip('/admin-api/uploads/download/' + encodeURIComponent(folder.name), folder.name + '.zip');
+      div.appendChild(downloadBtn);
+
+      const deleteBtn = document.createElement('button');
+      deleteBtn.textContent = 'Delete';
+      deleteBtn.style.cssText = 'margin-top:8px;margin-left:5px;font-size:0.85em;background:#dc3545;';
+      deleteBtn.onclick = async () => {
+        if (!confirm('Delete "' + folder.name + '" and all its photos? This cannot be undone.')) return;
+        try {
+          const res = await fetch('/admin-api/uploads/' + encodeURIComponent(folder.name), {
+            method: 'DELETE', headers: { 'Authorization': getAuthHeader() }
+          });
+          if (res.ok) loadPhotos();
+          else alert('Delete failed: ' + await res.text());
+        } catch (err) { alert('Delete failed: ' + err.message); }
+      };
+      div.appendChild(deleteBtn);
+
+      container.appendChild(div);
+    });
+  } catch (err) {
+    console.error('Failed to load photos:', err);
+  }
+}
+
+async function downloadZip(url, filename) {
+  try {
+    const res = await fetch(url, { headers: { 'Authorization': getAuthHeader() } });
+    if (!res.ok) {
+      alert('Download failed: ' + await res.text());
+      return;
+    }
+    const blob = await res.blob();
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  } catch (err) {
+    alert('Download failed: ' + err.message);
+  }
+}
+
+document.getElementById('downloadAllPhotos')?.addEventListener('click', () => {
+  const date = new Date().toISOString().split('T')[0];
+  downloadZip('/admin-api/uploads/download-all', 'guest-photos-' + date + '.zip');
+});
+
+document.getElementById('deleteAllPhotos')?.addEventListener('click', async () => {
+  if (!confirm('Delete ALL guest photo folders? This cannot be undone. Make sure you have downloaded them first.')) return;
+  try {
+    const res = await fetch('/admin-api/uploads', {
+      method: 'DELETE', headers: { 'Authorization': getAuthHeader() }
+    });
+    if (res.ok) {
+      const data = await res.json();
+      alert('Deleted ' + data.deleted + ' folder(s).');
+      loadPhotos();
+    } else {
+      alert('Delete failed: ' + await res.text());
+    }
+  } catch (err) { alert('Delete failed: ' + err.message); }
+});
+
+document.getElementById('refreshPhotos')?.addEventListener('click', () => {
+  loadPhotos();
+});
+
 // Guest session management
 async function loadGuestSessions() {
   try {
@@ -478,6 +660,8 @@ initAdmin = async function() {
   await origInitAdmin();
   if (adminContent.style.display === 'block') {
     loadBackground();
+    loadUploadPath();
+    loadPhotos();
     loadGuestSessions();
   }
 };
