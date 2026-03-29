@@ -2,8 +2,6 @@
 # Guest Portal Comprehensive Test Suite
 # Usage: bash test-suite.sh [base_url]
 
-set -e
-
 BASE_URL="${1:-http://localhost:3000}"
 PASSED=0
 FAILED=0
@@ -69,11 +67,11 @@ section "2. GUEST REGISTRATION"
 test_register_valid() {
     local response=$(curl -s -X POST "$BASE_URL/register" \
         -H "Content-Type: application/json" \
-        -d '{"name":"Test User","room":"Room 1"}')
-    if [[ "$response" == "OK" ]]; then
-        pass "Valid guest registration"
+        -d '{"name":"Test User","room":"Room 1","stayDays":7}')
+    if [[ "$response" == *"token"* ]] && [[ "$response" == *"guest"* ]]; then
+        pass "Valid guest registration (returns token + guest)"
     else
-        fail "Valid guest registration" "OK" "$response"
+        fail "Valid guest registration" '{"token":"...","guest":{...}}' "$response"
     fi
 }
 

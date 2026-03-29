@@ -15,8 +15,8 @@ A self-hosted, mobile-friendly landing portal for guest Wi-Fi networks. Provides
 - 🔐 Admin panel with:
   - Room management
   - Guest session management (view devices, extend stays, check out)
-  - Upload base path configuration
   - Background image customization
+  - Session settings (admin timeout, code expiration)
   - View & revoke session codes
 - 👥 Multiple guests per room support
 - 🖼️ Customizable landing page background
@@ -58,28 +58,42 @@ bash setup.sh
 
 - This script creates and configures:
   - A Node.js container for the backend server
-  - Optionally, an NGINX container for reverse proxying
+  - A systemd service for automatic restarts and boot persistence
 - It supports:
   - DHCP or static IP network configuration
   - Smart Home dashboard links per room
   - Secure admin password hashing (bcrypt)
-  - Session expiration and upload directory settings
+  - Three reverse proxy options:
+    1. **Nginx Proxy Manager** — step-by-step NPM dashboard instructions
+    2. **New NGINX container** — creates a dedicated LXC with auto-configured config
+    3. **Skip / Manual** — configure your own proxy later
+
 ## 📄 Documentation
 
 - [Deployment Guide](DEPLOY.md)
-- [Admin Panel](admin.html)
-- [Guest Registration](index.html)
-- [Photo Upload Page](photo.html)
+- [Code Review Findings](CODE_REVIEW_FINDINGS.md)
+
+### Application Pages
+
+| Page | Path | Description |
+|------|------|-------------|
+| Guest Registration | `/` | Room selection, stay length, device linking |
+| Photo Upload | `/photo.html` | Upload photos, Smart Home link, device code |
+| Admin Panel | `/admin.html` | Room/session/guest management, settings |
 
 ---
 
 ## 🔐 Security
 
-- Admin uploads protected with bcrypt-authenticated Basic Auth
-- Uploads stored in a configurable path with per-guest folders
-- Session codes are one-time and time-limited
+- All admin API endpoints protected with bcrypt-authenticated Basic Auth
+- Cryptographically secure token generation (`crypto.randomBytes`)
+- Admin credentials stored in `sessionStorage` (cleared on tab close)
+- Rate limiting on all routes (60 req/min)
 - Input validation prevents XSS and path traversal attacks
+- Session codes are one-time and time-limited
 - Guest tokens for persistent sessions with expiration dates
+- HTTPS support with TLS 1.2+, HSTS, and security headers (via nginx config)
+- Graceful shutdown on SIGTERM/SIGINT
 
 ---
 
