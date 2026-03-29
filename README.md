@@ -16,11 +16,14 @@ A self-hosted, mobile-friendly landing portal for guest Wi-Fi networks. Provides
   - Room management
   - Guest session management (view devices, extend stays, check out)
   - Background image customization
+  - Configurable upload path (supports NFS/SMB NAS mounts)
+  - Guest photo browsing, download (zip), and deletion
   - Session settings (admin timeout, code expiration)
   - View & revoke session codes
 - 👥 Multiple guests per room support
 - 🖼️ Customizable landing page background
 - 🔐 Secure uploads directory with Basic Auth
+- 💾 NAS storage support (NFS/SMB mount for guest photos)
 - 🧱 Proxmox LXC container deployment
 - 🧪 Comprehensive test suite
 
@@ -63,6 +66,10 @@ bash setup.sh
   - DHCP or static IP network configuration
   - Smart Home dashboard links per room
   - Secure admin password hashing (bcrypt)
+  - NAS storage setup (optional):
+    1. **NFS mount** — auto-configures NFS mount point with fstab entry
+    2. **SMB/CIFS mount** — auto-configures SMB mount with stored credentials
+    3. **Skip** — use local storage or configure from admin panel later
   - Three reverse proxy options:
     1. **Nginx Proxy Manager** — step-by-step NPM dashboard instructions
     2. **New NGINX container** — creates a dedicated LXC with auto-configured config
@@ -124,6 +131,22 @@ This interactive script prompts for admin credentials and creates the configurat
 
 ### Option 3: First-Run Web Setup
 If no admin password is configured, visiting `/admin.html` will show an **Initial Admin Setup** form where you can create the admin account directly in the browser.
+
+---
+
+## 📸 Photo Storage & Management
+
+Guest photos are stored locally by default in `./uploads/`. You can change the storage path from the admin panel under **Upload Storage Path** to point to an NFS or SMB mount on a NAS.
+
+### NAS Setup
+- **During install:** The setup script offers to configure an NFS or SMB mount automatically
+- **After install:** Set the upload path from the admin panel to any mounted directory
+
+### Photo Management
+From the admin panel **Guest Photos** section:
+- **Browse** uploaded folders with file counts and sizes
+- **Download** individual folders or all photos as a `.zip`
+- **Delete** individual folders or all photos after backing up
 
 ---
 
