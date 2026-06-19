@@ -33,7 +33,7 @@ A self-hosted, mobile-friendly landing portal for guest Wi-Fi networks. Provides
 
 ### For Proxmox Deployment
 - Proxmox host with storage and bridge access
-- Debian 12 template for containers
+- Debian 13 or 12 LXC template for containers (installer prefers 13)
 - NGINX reverse proxy (container or manual)
 
 ### For Local Development
@@ -63,7 +63,7 @@ See [DEPLOY.md](DEPLOY.md) for the manual LXC path (`setup-container.sh` inside 
 
 ### Manual LXC + in-container setup
 
-Create a Debian 12 LXC (1 CPU, 512 MiB RAM, 4 GB disk), enter it as root, then:
+Create a Debian 13 or 12 LXC (1 CPU, 512 MiB RAM, 4 GB disk), enter it as root, then:
 
 ```bash
 bash -c "$(curl -fsSL https://raw.githubusercontent.com/bon1wheel636/guest-portal/main/scripts/setup-container.sh)"

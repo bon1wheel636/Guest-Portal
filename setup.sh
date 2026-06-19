@@ -151,22 +151,33 @@ fetch_nginx_template() {
 
 detect_os_template() {
   local template=""
+
+  pick_newest_template() {
+    local pattern="$1"
+    pveam list local 2>/dev/null | awk -v pat="$pattern" '$1 ~ pat {print $1}' | sort -V | tail -1
+  }
+
   if command -v pveam >/dev/null 2>&1; then
-    # Pick the newest local Debian 12 standard template (e.g. 12.12-1, not hardcoded 12.0-1)
-    template=$(pveam list local 2>/dev/null | awk '/debian-12-standard/ {print $1}' | sort -V | tail -1)
+    # Prefer Debian 13 (current stable). Fall back to Debian 12 (oldstable/LTS).
+    template=$(pick_newest_template 'debian-13-standard')
+    if [[ -z "$template" ]]; then
+      template=$(pick_newest_template 'debian-12-standard')
+    fi
   fi
+
   if [[ -n "$template" ]]; then
     var_os_template="$template"
     return 0
   fi
 
-  msg_error "No Debian 12 LXC template found on this Proxmox node."
+  msg_error "No Debian 13 or Debian 12 LXC template found on this Proxmox node."
   echo "" >&2
-  echo -e "${INFO}${YW}The installer uses any local debian-12-standard template (not a fixed version).${CL}" >&2
-  echo -e "${INFO}${YW}Download one, then rerun the installer:${CL}" >&2
+  echo -e "${INFO}${YW}New installs prefer debian-13-standard, then debian-12-standard.${CL}" >&2
+  echo -e "${INFO}${YW}Download a template, then rerun the installer:${CL}" >&2
   echo -e "${TAB}  pveam update" >&2
-  echo -e "${TAB}  pveam available | grep debian-12" >&2
-  echo -e "${TAB}  pveam download local debian-12-standard" >&2
+  echo -e "${TAB}  pveam available | grep -E 'debian-13|debian-12'" >&2
+  echo -e "${TAB}  pveam download local debian-13-standard" >&2
+  echo -e "${TAB}  pveam download local debian-12-standard   # fallback" >&2
   echo -e "${TAB}  pveam list local" >&2
   exit 1
 }
@@ -212,7 +223,8 @@ ensure_ct_id_available() {
 print_pct_create_help() {
   echo "" >&2
   echo -e "${INFO}${YW}Common fixes:${CL}" >&2
-  echo -e "${TAB}  pveam update && pveam download local debian-12-standard" >&2
+  echo -e "${TAB}  pveam update && pveam download local debian-13-standard" >&2
+  echo -e "${TAB}  pveam download local debian-12-standard   # fallback" >&2
   echo -e "${TAB}  pveam list local" >&2
   echo -e "${TAB}  pvesm status" >&2
   echo -e "${TAB}  ip -br link show type bridge" >&2

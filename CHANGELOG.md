@@ -16,6 +16,7 @@ All notable changes to this project will be documented here.
 - Admin guest management: register guests on behalf of visitors, view registration history separately from active sessions, remove history entries, purge inactive history, change guest room affiliation, clear linked devices, purge expired sessions, and check out guests.
 - In-container `updateguest` command for routine git pull, dependency refresh, and service restart from the LXC console.
 - Remote Proxmox install via `install.sh` (no git on host) and in-container `setup-container.sh` for manual LXC installs.
+- Installer auto-detects Proxmox templates, prefers Debian 13, and falls back to Debian 12 (replacing hardcoded `12.0-1`).
 
 ### Changed
 - Admin panel now uses browser HTTP Basic Auth only; removed duplicate HTML login form and sessionStorage credentials.

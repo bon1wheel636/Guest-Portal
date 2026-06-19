@@ -38,7 +38,7 @@ Use this if you prefer to create the LXC yourself (Proxmox UI, Terraform, anothe
 
 | Setting | Recommended |
 |---------|-------------|
-| OS template | Debian 12 |
+| OS template | Debian 13 preferred (`debian-13-standard`); Debian 12 used if 13 is not downloaded |
 | CPU | 1 core |
 | RAM | 512 MiB |
 | Disk | 4 GB |
@@ -138,14 +138,14 @@ Older installer versions hid `pct create` failures. Re-run with the latest `inst
 
 1. **Hardcoded template version mismatch** (fixed in current installer)
 
-The old installer targeted `debian-12-standard_12.0-1` exactly. If you only have a newer build (for example `12.12-1`), `pct create` failed silently. The current installer auto-selects the newest local `debian-12-standard` template from `pveam list local`.
+The old installer targeted `debian-12-standard_12.0-1` exactly. If you only have a newer build (for example `12.12-1` or `13.1-2`), `pct create` failed silently. The current installer auto-selects the newest local `debian-13-standard` template, or falls back to `debian-12-standard`.
 
-2. **No Debian 12 template downloaded**
+2. **No Debian 13 or 12 template downloaded**
 
 ```bash
 pveam update
-pveam available | grep debian-12
-pveam download local debian-12-standard
+pveam available | grep -E 'debian-13|debian-12'
+pveam download local debian-13-standard
 pveam list local
 ```
 
