@@ -4,6 +4,24 @@ All notable changes to this project will be documented here.
 
 ---
 
+## [Unreleased]
+
+### Added
+- UniFi guest WiFi deployment guide with guest VLAN, Home Assistant isolation, NAS upload, and future external portal guidance.
+- Test coverage for unauthenticated admin mutations, token-required uploads, token-authenticated PDF uploads, and code upload rejection.
+
+### Changed
+- Guest uploads now require an active guest token and store files in server-derived per-guest folders.
+- Guest upload UI now documents that photos, videos, and PDF letters are allowed while code, scripts, archives, and macro documents are blocked.
+- Production dependencies updated to clear current `npm audit --omit=dev --audit-level=moderate` findings.
+- `.gitignore` expanded to keep runtime uploads, local config, credentials, generated archives, certificates, and temporary files out of version control.
+
+### Security
+- Guest uploads are restricted by MIME type, file extension, file count, file size, and file signature checks.
+- Rejected upload files are removed after validation failure.
+
+---
+
 ## [v1.3.0] - Persistent Guest Sessions & Device Linking
 
 ### Added

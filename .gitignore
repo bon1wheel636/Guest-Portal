@@ -1,29 +1,52 @@
-# Ignore sensitive and runtime files
-uploads/
-server.log
-*.log
-
-# Node dependencies
+# Dependencies
 node_modules/
 
-# Configuration and secrets (if stored locally)
+# Runtime uploads and logs
+uploads/
+*.log
+server.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+nohup.out
+
+# Local configuration, secrets, and persisted app state
+.env
+.env.*
+!.env.example
 config.json
 storage.json
 sessions.json
+guest-tokens.json
+/etc/guest-portal/
+.smbcredentials
+*.pem
+*.key
+*.crt
+*.p12
 
-# OS or editor specific
+# Generated archives and release artifacts
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+*.7z
+*.sha256
+dist/
+build/
+coverage/
+
+# Test and temporary artifacts
+tmp/
+temp/
+*.tmp
+*.bak
+*.orig
+
+# OS and editor files
 .DS_Store
 Thumbs.db
 *.swp
 *.swo
 .vscode/
 .idea/
-
-# Environment and secrets
-*.env
-.env.*
-
-# Build artifacts
-nohup.out
-*.zip
-*.tar.gz
