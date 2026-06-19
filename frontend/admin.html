@@ -35,6 +35,14 @@
 </div>
 <div id="adminContent" style="display:none;">
     <h1>Admin Panel</h1>
+    <h2>Deployment Status</h2>
+    <p style="font-size: 0.9em; color: #666;">Checks service health, reverse proxy headers, upload storage, and optional dashboard URL reachability.</p>
+    <div style="margin-bottom:10px;">
+      <button id="refreshDeploymentStatus" style="background:#6c757d;">Refresh Status</button>
+      <button id="checkDashboardUrls" style="background:#28a745;margin-left:5px;">Check Dashboard URLs</button>
+    </div>
+    <div id="deploymentStatus" style="margin-bottom:15px;padding:10px;border:1px solid #ddd;border-radius:5px;background:#fafafa;"></div>
+
     <h2>Add or Update Room</h2>
     <form id="roomForm">
       <label for="roomName">Room Name:</label>
@@ -189,6 +197,74 @@ function clearAuth() {
   sessionStorage.removeItem('authHeader');
   location.reload();
 }
+
+function statusBadge(ok, label) {
+  const color = ok ? '#1b7f37' : '#b42318';
+  const text = ok ? (label || 'OK') : (label || 'Needs attention');
+  return `<span style="color:${color};font-weight:bold;">${escapeHtml(text)}</span>`;
+}
+
+function renderDeploymentStatus(data) {
+  const container = document.getElementById('deploymentStatus');
+  if (!data) {
+    container.innerHTML = '<p style="color:#666;">Deployment status has not been loaded yet.</p>';
+    return;
+  }
+
+  const storageOk = data.storage.exists && data.storage.isDirectory && data.storage.writable;
+  const proxyText = data.reverseProxy.httpsDetected
+    ? 'HTTPS detected'
+    : (data.reverseProxy.usingForwardedHeaders ? 'Forwarded headers seen, HTTPS not detected' : 'Direct/internal request');
+
+  let html = '';
+  html += `<p><strong>App:</strong> ${statusBadge(data.app.status === 'ok', 'OK')} `;
+  html += `<small>v${escapeHtml(data.app.version)} | ${escapeHtml(data.app.environment)} | uptime ${data.app.uptimeSeconds}s</small></p>`;
+  html += `<p><strong>Upload storage:</strong> ${statusBadge(storageOk)} `;
+  html += `<small>${escapeHtml(data.storage.path)} (exists: ${data.storage.exists ? 'yes' : 'no'}, writable: ${data.storage.writable ? 'yes' : 'no'})</small></p>`;
+  if (data.storage.error) {
+    html += `<p style="color:#b42318;"><small>${escapeHtml(data.storage.error)}</small></p>`;
+  }
+  html += `<p><strong>Reverse proxy:</strong> ${escapeHtml(proxyText)} `;
+  html += `<small>host: ${escapeHtml(data.reverseProxy.forwardedHost || data.reverseProxy.host || 'unknown')}, proto: ${escapeHtml(data.reverseProxy.forwardedProto || 'none')}</small></p>`;
+  html += `<p><strong>Data:</strong> ${data.data.rooms} room(s), ${data.data.registeredGuests} registered guest(s), ${data.data.activeGuestSessions} active guest session(s), ${data.data.pendingSessionCodes} pending code(s)</p>`;
+
+  if (data.dashboards.rooms.length > 0) {
+    html += '<p><strong>Dashboard URLs:</strong></p><ul>';
+    data.dashboards.rooms.forEach(room => {
+      let result = 'not checked';
+      if (room.checked) {
+        result = room.reachable ? `reachable (${room.status || 'no status'})` : `not reachable${room.error ? ': ' + room.error : ''}`;
+      }
+      html += `<li>${escapeHtml(room.name)} - ${escapeHtml(result)}<br><small>${escapeHtml(room.dashboardUrl || 'No URL')}</small></li>`;
+    });
+    html += '</ul>';
+  } else {
+    html += '<p><strong>Dashboard URLs:</strong> No rooms configured.</p>';
+  }
+
+  html += `<p><small>Generated ${escapeHtml(new Date(data.generatedAt).toLocaleString())}</small></p>`;
+  container.innerHTML = html;
+}
+
+async function loadDeploymentStatus(checkUrls = false) {
+  const container = document.getElementById('deploymentStatus');
+  container.innerHTML = '<p style="color:#666;">Checking deployment status...</p>';
+  try {
+    const res = await fetch('/admin-api/deployment-status?checkUrls=' + (checkUrls ? 'true' : 'false'), {
+      headers: { 'Authorization': getAuthHeader() }
+    });
+    if (!res.ok) {
+      container.innerHTML = '<p style="color:#b42318;">Failed to load deployment status: ' + escapeHtml(await res.text()) + '</p>';
+      return;
+    }
+    renderDeploymentStatus(await res.json());
+  } catch (err) {
+    container.innerHTML = '<p style="color:#b42318;">Failed to load deployment status: ' + escapeHtml(err.message) + '</p>';
+  }
+}
+
+document.getElementById('refreshDeploymentStatus')?.addEventListener('click', () => loadDeploymentStatus(false));
+document.getElementById('checkDashboardUrls')?.addEventListener('click', () => loadDeploymentStatus(true));
 
 async function checkSetupRequired() {
   try {
@@ -659,6 +735,7 @@ const origInitAdmin = initAdmin;
 initAdmin = async function() {
   await origInitAdmin();
   if (adminContent.style.display === 'block') {
+    loadDeploymentStatus(false);
     loadBackground();
     loadUploadPath();
     loadPhotos();

@@ -60,6 +60,11 @@ If uploads are on a NAS, use the NAS backup tooling or snapshots for that share.
    ```bash
    pct exec <ctid> -- systemctl start guest-portal
    ```
+6. Log into `/admin.html` and verify **Deployment Status**:
+   - App status is OK.
+   - Upload storage exists and is writable.
+   - Room/dashboard counts look correct.
+   - Dashboard URL reachability passes after selecting **Check Dashboard URLs**.
 
 ## NAS permission checklist
 

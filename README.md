@@ -90,8 +90,8 @@ bash setup.sh
 | Page | Path | Description |
 |------|------|-------------|
 | Guest Registration | `/` | Room selection, stay length, device linking |
-| Photo Upload | `/photo.html` | Upload photos, Smart Home link, device code |
-| Admin Panel | `/admin.html` | Room/session/guest management, settings |
+| Photo Upload | `/photo.html` | Upload photos/videos/PDF letters, Smart Home link, device code |
+| Admin Panel | `/admin.html` | Deployment status, room/session/guest management, settings |
 
 ---
 
@@ -104,6 +104,7 @@ bash setup.sh
 - Input validation prevents XSS and path traversal attacks
 - Guest uploads require an active guest token before files are accepted
 - Guest uploads allow photos, videos, and PDFs only; scripts, archives, executables, and macro documents are rejected
+- Admin deployment status checks cover app health, upload storage writability, reverse proxy headers, and optional dashboard URL reachability
 - Session codes are one-time and time-limited
 - Guest tokens for persistent sessions with expiration dates
 - HTTPS support with TLS 1.2+, HSTS, and security headers (via nginx config)
@@ -130,6 +131,13 @@ There are **three ways** to set up the admin password:
 ### Option 1: Proxmox Setup Script (Production)
 When running `bash setup.sh` on a Proxmox host, you'll be prompted to set the admin username and password. This is the recommended method for production deployments.
 
+Useful setup modes:
+```bash
+bash setup.sh --dry-run
+bash setup.sh --update <ctid>
+```
+Dry run shows the selected install/update plan without changing containers, files, services, or mounts. Update mode detects an existing container and prompts before changing code, service files, app state ownership, NAS upload path, or restarting the service.
+
 ### Option 2: Local Setup Script (Development)
 ```bash
 bash setup-local.sh
@@ -143,9 +151,9 @@ If no admin password is configured, visiting `/admin.html` will show an **Initia
 
 ## 📸 Photo Storage & Management
 
-Guest photos are stored locally by default in `./uploads/`. You can change the storage path from the admin panel under **Upload Storage Path** to point to an NFS or SMB mount on a NAS.
+Guest photos are stored locally by default in `/opt/guest-portal/uploads/` in production. You can change the storage path from the admin panel under **Upload Storage Path** to point to an NFS or SMB mount on a NAS.
 
-Guest uploads are intentionally limited to photos, videos, and PDFs. If a guest wants to leave a letter, ask them to upload a PDF or a photo of the note rather than a Word/Pages document or script-capable file.
+Guest uploads are intentionally limited to photos, videos, HEIC/HEIF phone images, and PDFs. If a guest wants to leave a letter, ask them to upload a PDF or a photo of the note rather than a Word/Pages document or script-capable file.
 
 ### NAS Setup
 - **During install:** The setup script offers to configure an NFS or SMB mount automatically

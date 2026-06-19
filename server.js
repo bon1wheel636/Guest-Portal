@@ -21,12 +21,15 @@ const sessionFile = '/etc/guest-portal/sessions.json';
 const guestTokensFile = '/etc/guest-portal/guest-tokens.json';
 const MAX_GUEST_UPLOAD_SIZE_BYTES = 50 * 1024 * 1024;
 const MAX_GUEST_UPLOAD_FILES = 10;
+const URL_CHECK_TIMEOUT_MS = 2500;
 
 // H2: Use JSON.parse(fs.readFileSync()) instead of require() to avoid module caching
 const config = fs.existsSync(configPath) ? JSON.parse(fs.readFileSync(configPath, 'utf8')) : {};
 const guestData = fs.existsSync(dbPath) ? JSON.parse(fs.readFileSync(dbPath, 'utf8')) : { rooms: [], guests: [] };
 let sessionCodes = fs.existsSync(sessionFile) ? JSON.parse(fs.readFileSync(sessionFile, 'utf8')) : {};
 let guestTokens = fs.existsSync(guestTokensFile) ? JSON.parse(fs.readFileSync(guestTokensFile, 'utf8')) : {};
+const packageJsonPath = path.join(__dirname, 'package.json');
+const packageInfo = fs.existsSync(packageJsonPath) ? JSON.parse(fs.readFileSync(packageJsonPath, 'utf8')) : {};
 
 // ─── Utility Functions ──────────────────────────────────────────────────────
 
@@ -153,6 +156,90 @@ function removeUploadedFiles(files = []) {
       console.error('Failed to remove rejected upload:', err);
     });
   });
+}
+
+function getDirectoryStatus(dirPath) {
+  const resolved = path.resolve(dirPath);
+  const status = {
+    path: resolved,
+    exists: false,
+    isDirectory: false,
+    writable: false,
+    error: null
+  };
+
+  try {
+    status.exists = fs.existsSync(resolved);
+    if (!status.exists) return status;
+
+    const stat = fs.statSync(resolved);
+    status.isDirectory = stat.isDirectory();
+    if (!status.isDirectory) return status;
+
+    fs.accessSync(resolved, fs.constants.W_OK);
+    status.writable = true;
+  } catch (err) {
+    status.error = err.message;
+  }
+
+  return status;
+}
+
+function getReverseProxyStatus(req) {
+  const forwardedProto = req.get('X-Forwarded-Proto') || null;
+  const forwardedHost = req.get('X-Forwarded-Host') || null;
+  const forwardedFor = req.get('X-Forwarded-For') || null;
+  const host = req.get('Host') || null;
+
+  return {
+    host,
+    forwardedHost,
+    forwardedProto,
+    forwardedForPresent: Boolean(forwardedFor),
+    usingForwardedHeaders: Boolean(forwardedProto || forwardedHost || forwardedFor),
+    httpsDetected: req.secure || forwardedProto === 'https'
+  };
+}
+
+async function checkUrlReachability(rawUrl) {
+  if (!rawUrl) return { checked: false, reachable: false, status: null, error: 'No URL configured' };
+
+  let parsed;
+  try {
+    parsed = new URL(rawUrl);
+  } catch {
+    return { checked: true, reachable: false, status: null, error: 'Invalid URL' };
+  }
+
+  if (!['http:', 'https:'].includes(parsed.protocol)) {
+    return { checked: true, reachable: false, status: null, error: 'URL must use http or https' };
+  }
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), URL_CHECK_TIMEOUT_MS);
+
+  try {
+    const response = await fetch(parsed.toString(), {
+      method: 'HEAD',
+      redirect: 'manual',
+      signal: controller.signal
+    });
+    return {
+      checked: true,
+      reachable: response.status < 500,
+      status: response.status,
+      error: null
+    };
+  } catch (err) {
+    return {
+      checked: true,
+      reachable: false,
+      status: null,
+      error: err.name === 'AbortError' ? 'Timed out' : err.message
+    };
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 // ─── Middleware ──────────────────────────────────────────────────────────────
@@ -528,6 +615,46 @@ app.post('/admin-api/admin-timeout', authMiddleware, (req, res) => {
   config.adminSessionTimeoutMinutes = minutes;
   saveConfig();
   res.sendStatus(200);
+});
+
+app.get('/admin-api/deployment-status', authMiddleware, async (req, res) => {
+  const checkUrls = req.query.checkUrls === 'true';
+  const rooms = guestData.rooms || [];
+
+  const dashboardChecks = await Promise.all(rooms.map(async room => ({
+    name: room.name,
+    dashboardUrl: room.dashboardUrl || null,
+    ...(checkUrls
+      ? await checkUrlReachability(room.dashboardUrl)
+      : { checked: false, reachable: null, status: null, error: null })
+  })));
+
+  const now = new Date();
+  const activeGuestSessions = Object.values(guestTokens)
+    .filter(guest => new Date(guest.checkoutDate) >= now).length;
+
+  res.json({
+    generatedAt: now.toISOString(),
+    app: {
+      status: 'ok',
+      version: packageInfo.version || 'unknown',
+      nodeVersion: process.version,
+      environment: process.env.NODE_ENV || 'development',
+      uptimeSeconds: Math.round(process.uptime())
+    },
+    storage: getDirectoryStatus(getUploadsDir()),
+    reverseProxy: getReverseProxyStatus(req),
+    data: {
+      rooms: rooms.length,
+      registeredGuests: (guestData.guests || []).length,
+      activeGuestSessions,
+      pendingSessionCodes: Object.values(sessionCodes).filter(entry => entry.expires > Date.now()).length
+    },
+    dashboards: {
+      checked: checkUrls,
+      rooms: dashboardChecks
+    }
+  });
 });
 
 app.post('/admin-api/rooms', authMiddleware, (req, res) => {

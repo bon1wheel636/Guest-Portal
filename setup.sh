@@ -34,6 +34,45 @@ msg_info() { echo -ne "${TAB}⏳${TAB}${YW}${1}...${CL}"; }
 msg_ok() { echo -e "\r${CM}${GN}${1}${CL}"; }
 msg_error() { echo -e "\r${CROSS}${RD}${1}${CL}" >&2; }
 
+DRY_RUN=false
+UPDATE_MODE=false
+UPDATE_CT_ID=""
+
+usage() {
+  echo "Usage: bash setup.sh [--dry-run] [--update [ctid]]"
+  echo ""
+  echo "  --dry-run       Show the selected plan and stop before making changes"
+  echo "  --update [ctid] Update an existing Guest Portal LXC instead of creating a new one"
+  echo "  --help          Show this help"
+}
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --dry-run)
+      DRY_RUN=true
+      shift
+      ;;
+    --update)
+      UPDATE_MODE=true
+      if [[ "${2:-}" =~ ^[0-9]+$ ]]; then
+        UPDATE_CT_ID="$2"
+        shift 2
+      else
+        shift
+      fi
+      ;;
+    --help|-h)
+      usage
+      exit 0
+      ;;
+    *)
+      msg_error "Unknown argument: $1"
+      usage
+      exit 1
+      ;;
+  esac
+done
+
 header_info() {
   clear
   echo -e "${BL}"
@@ -78,6 +117,169 @@ var_unprivileged=1
 
 # Auto-detect next available CT ID
 NEXT_ID=$(pvesh get /cluster/nextid 2>/dev/null || echo "100")
+
+prompt_yes_no() {
+  local prompt="$1"
+  local default="${2:-n}"
+  local answer
+  read -p "${prompt} [y/n] (default: ${default}): " answer
+  answer=${answer:-$default}
+  [[ "${answer,,}" == "y" ]]
+}
+
+detect_existing_installs() {
+  pct list 2>/dev/null | awk -v name="$var_hostname" 'NR > 1 && $4 == name { print $1 }'
+}
+
+select_existing_ct() {
+  local existing_ids="$1"
+  if [[ -n "$UPDATE_CT_ID" ]]; then
+    echo "$UPDATE_CT_ID"
+    return
+  fi
+
+  if [[ -n "$existing_ids" ]]; then
+    echo "$existing_ids" | awk 'NR == 1 { print; exit }'
+    return
+  fi
+
+  read -p "  Existing container ID to update: " UPDATE_CT_ID
+  echo "$UPDATE_CT_ID"
+}
+
+update_existing_install() {
+  local target_ct="$1"
+
+  if ! pct status "$target_ct" >/dev/null 2>&1; then
+    msg_error "Container ${target_ct} was not found."
+    exit 1
+  fi
+
+  header_info
+  echo -e "${TAB}${BOLD}Update Existing Guest Portal Install${CL}"
+  echo ""
+  echo -e "${CONTAINERID}${BOLD}${DGN}Container ID: ${BGN}${target_ct}${CL}"
+  echo -e "${INFO}${YW}The updater prompts before code, service, app state, NAS path, or restart changes.${CL}"
+  echo ""
+
+  if [[ "$DRY_RUN" == "true" ]]; then
+    echo -e "${TAB}${BOLD}Dry run only. Planned checks:${CL}"
+    echo -e "${TAB}  - Detect app path (${var_app_dir} or legacy /root/guest-portal)"
+    echo -e "${TAB}  - Update git checkout and npm dependencies if approved"
+    echo -e "${TAB}  - Ensure ${var_app_user} service user and ownership if approved"
+    echo -e "${TAB}  - Rewrite hardened systemd service if approved"
+    echo -e "${TAB}  - Optionally validate and set a NAS upload path"
+    echo -e "${TAB}  - Restart guest-portal only if approved"
+    exit 0
+  fi
+
+  if prompt_yes_no "  Update application code and npm dependencies?" "y"; then
+    msg_info "Updating application code"
+    pct exec "$target_ct" -- bash -c "
+      set -e
+      groupadd --system '${var_app_group}' 2>/dev/null || true
+      id -u '${var_app_user}' >/dev/null 2>&1 || useradd --system --gid '${var_app_group}' --home-dir '${var_app_dir}' --shell /usr/sbin/nologin '${var_app_user}'
+      mkdir -p '${var_app_dir}' /etc/guest-portal
+      if [ -d '${var_app_dir}/.git' ]; then
+        cd '${var_app_dir}'
+      elif [ -d '/root/guest-portal/.git' ]; then
+        cp -a /root/guest-portal/. '${var_app_dir}/'
+        cd '${var_app_dir}'
+      else
+        git clone '${var_repo}' '${var_app_dir}'
+        cd '${var_app_dir}'
+      fi
+      git pull --ff-only
+      npm install
+      mkdir -p '${var_app_dir}/uploads/backgrounds'
+      chown -R '${var_app_user}:${var_app_group}' '${var_app_dir}' /etc/guest-portal
+    " >/dev/null 2>&1
+    msg_ok "Application code updated"
+  fi
+
+  if prompt_yes_no "  Initialize missing state files and fix /etc/guest-portal ownership?" "y"; then
+    msg_info "Updating app state ownership"
+    pct exec "$target_ct" -- bash -c "
+      mkdir -p /etc/guest-portal
+      [ -f /etc/guest-portal/sessions.json ] || echo '{}' > /etc/guest-portal/sessions.json
+      [ -f /etc/guest-portal/guest-tokens.json ] || echo '{}' > /etc/guest-portal/guest-tokens.json
+      chown -R '${var_app_user}:${var_app_group}' /etc/guest-portal
+    " >/dev/null 2>&1
+    msg_ok "App state ownership updated"
+  fi
+
+  if prompt_yes_no "  Rewrite hardened systemd service?" "y"; then
+    msg_info "Writing systemd service"
+    pct exec "$target_ct" -- bash -c "
+cat > /etc/systemd/system/guest-portal.service << 'UNIT'
+[Unit]
+Description=Guest Portal Node.js Server
+After=network.target
+
+[Service]
+Type=simple
+User=${var_app_user}
+Group=${var_app_group}
+WorkingDirectory=${var_app_dir}
+ExecStart=/usr/bin/env node server.js
+Restart=always
+RestartSec=5
+Environment=NODE_ENV=production
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=full
+ReadWritePaths=/etc/guest-portal ${var_app_dir}/uploads /mnt
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+systemctl daemon-reload >/dev/null 2>&1
+systemctl enable guest-portal >/dev/null 2>&1
+    " >/dev/null 2>&1
+    msg_ok "Systemd service updated"
+  fi
+
+  if prompt_yes_no "  Change upload path to an existing mounted directory?" "n"; then
+    read -p "  Existing mounted upload path (default: /mnt/nas/guest-photos): " update_mount
+    update_mount=${update_mount:-/mnt/nas/guest-photos}
+
+    if pct exec "$target_ct" -- bash -c "[ -d '${update_mount}' ] && su -s /bin/sh -c 'test -w \"${update_mount}\"' '${var_app_user}'" 2>/dev/null; then
+      UPDATE_MOUNT_B64=$(printf '%s' "$update_mount" | base64 -w0)
+      msg_info "Updating upload path"
+      pct exec "$target_ct" -- bash -c "
+        su -s /bin/sh -c 'mkdir -p \"${update_mount}/backgrounds\"' '${var_app_user}'
+        export MOUNT_B64=$UPDATE_MOUNT_B64
+        node -e 'var fs=require(\"fs\");var c=JSON.parse(fs.readFileSync(\"/etc/guest-portal/config.json\",\"utf8\"));c.uploadDir=Buffer.from(process.env.MOUNT_B64,\"base64\").toString();fs.writeFileSync(\"/etc/guest-portal/config.json\",JSON.stringify(c,null,2))'
+        chown -R '${var_app_user}:${var_app_group}' /etc/guest-portal
+      " >/dev/null 2>&1
+      msg_ok "Upload path updated"
+    else
+      msg_error "Path does not exist or is not writable by ${var_app_user}. Upload path was not changed."
+    fi
+  fi
+
+  if prompt_yes_no "  Restart guest-portal service now?" "y"; then
+    msg_info "Restarting guest-portal"
+    pct exec "$target_ct" -- systemctl restart guest-portal >/dev/null 2>&1
+    msg_ok "guest-portal restarted"
+  fi
+
+  echo ""
+  echo -e "${CM}${GN}Existing Guest Portal update complete.${CL}"
+  exit 0
+}
+
+EXISTING_CT_IDS=$(detect_existing_installs)
+if [[ "$UPDATE_MODE" == "true" || -n "$EXISTING_CT_IDS" ]]; then
+  if [[ "$UPDATE_MODE" == "true" ]]; then
+    UPDATE_TARGET_CT=$(select_existing_ct "$EXISTING_CT_IDS")
+    update_existing_install "$UPDATE_TARGET_CT"
+  elif prompt_yes_no "Existing ${var_hostname} container(s) found (${EXISTING_CT_IDS//$'\n'/, }). Update one instead of creating a new container?" "y"; then
+    UPDATE_TARGET_CT=$(select_existing_ct "$EXISTING_CT_IDS")
+    update_existing_install "$UPDATE_TARGET_CT"
+  fi
+fi
 
 # ─── Settings Selection ────────────────────────────────────────────────────
 
@@ -194,6 +396,15 @@ read -p "  Continue with these settings? [y/n] (default: y): " confirm
 confirm=${confirm:-y}
 if [[ "${confirm,,}" != "y" ]]; then
   echo "Setup cancelled."
+  exit 0
+fi
+
+if [[ "$DRY_RUN" == "true" ]]; then
+  echo ""
+  echo -e "${TAB}${BOLD}Dry run complete. No containers, files, services, or mounts were changed.${CL}"
+  echo -e "${TAB}  Planned app path: ${var_app_dir}"
+  echo -e "${TAB}  Planned service user: ${var_app_user}"
+  echo -e "${TAB}  Planned isolation: ${CT_PRIVILEGE_DISPLAY}"
   exit 0
 fi
 

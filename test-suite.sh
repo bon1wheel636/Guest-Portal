@@ -261,6 +261,16 @@ test_admin_login_invalid() {
     fi
 }
 
+test_deployment_status() {
+    require_admin_creds "Deployment status" || return
+    local response=$(admin_curl "$BASE_URL/admin-api/deployment-status")
+    if [[ "$response" == *'"app"'* ]] && [[ "$response" == *'"storage"'* ]] && [[ "$response" == *'"reverseProxy"'* ]]; then
+        pass "Deployment status endpoint"
+    else
+        fail "Deployment status endpoint" "app/storage/reverseProxy JSON" "$response"
+    fi
+}
+
 section "6. FILE UPLOAD"
 
 test_upload() {
@@ -427,6 +437,7 @@ test_revoke_session
 
 test_admin_setup_required
 test_admin_login_invalid
+test_deployment_status
 
 test_upload
 test_path_traversal
