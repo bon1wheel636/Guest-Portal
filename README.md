@@ -78,6 +78,7 @@ bash setup.sh
 ## 📄 Documentation
 
 - [Deployment Guide](DEPLOY.md)
+- [UniFi Guest WiFi Guide](UNIFI.md)
 - [Code Review Findings](CODE_REVIEW_FINDINGS.md)
 
 ### Application Pages
@@ -97,6 +98,8 @@ bash setup.sh
 - Admin credentials stored in `sessionStorage` (cleared on tab close)
 - Rate limiting on all routes (60 req/min)
 - Input validation prevents XSS and path traversal attacks
+- Guest uploads require an active guest token before files are accepted
+- Guest uploads allow photos, videos, and PDFs only; scripts, archives, executables, and macro documents are rejected
 - Session codes are one-time and time-limited
 - Guest tokens for persistent sessions with expiration dates
 - HTTPS support with TLS 1.2+, HSTS, and security headers (via nginx config)
@@ -109,10 +112,10 @@ bash setup.sh
 Run the comprehensive test suite to validate all endpoints:
 
 ```bash
-bash test-suite.sh
+ADMIN_USER=admin ADMIN_PASS='<password>' bash test-suite.sh
 ```
 
-This tests registration, photo uploads, session management, admin features, and more.
+This tests registration, token-authenticated uploads, admin authentication, session management, admin features, and more. Without `ADMIN_PASS`, admin mutation tests are skipped and unauthenticated admin rejection is still tested.
 
 ---
 
@@ -137,6 +140,8 @@ If no admin password is configured, visiting `/admin.html` will show an **Initia
 ## 📸 Photo Storage & Management
 
 Guest photos are stored locally by default in `./uploads/`. You can change the storage path from the admin panel under **Upload Storage Path** to point to an NFS or SMB mount on a NAS.
+
+Guest uploads are intentionally limited to photos, videos, and PDFs. If a guest wants to leave a letter, ask them to upload a PDF or a photo of the note rather than a Word/Pages document or script-capable file.
 
 ### NAS Setup
 - **During install:** The setup script offers to configure an NFS or SMB mount automatically

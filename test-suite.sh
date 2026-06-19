@@ -3,9 +3,12 @@
 # Usage: bash test-suite.sh [base_url]
 
 BASE_URL="${1:-http://localhost:3000}"
+ADMIN_USER="${ADMIN_USER:-admin}"
+ADMIN_PASS="${ADMIN_PASS:-}"
 PASSED=0
 FAILED=0
 TOTAL=0
+SKIPPED=0
 
 # Colors
 RED='\033[0;31m'
@@ -26,6 +29,27 @@ fail() {
     echo "  Got: $3"
     ((FAILED++))
     ((TOTAL++))
+}
+
+skip() {
+    echo -e "${YELLOW}⚠ SKIP${NC}: $1"
+    ((SKIPPED++))
+}
+
+admin_curl() {
+    if [[ -n "$ADMIN_PASS" ]]; then
+        curl -s -u "$ADMIN_USER:$ADMIN_PASS" "$@"
+    else
+        curl -s "$@"
+    fi
+}
+
+require_admin_creds() {
+    if [[ -z "$ADMIN_PASS" ]]; then
+        skip "$1 (set ADMIN_USER and ADMIN_PASS to run)"
+        return 1
+    fi
+    return 0
 }
 
 section() {
@@ -69,6 +93,7 @@ test_register_valid() {
         -H "Content-Type: application/json" \
         -d '{"name":"Test User","room":"Room 1","stayDays":7}')
     if [[ "$response" == *"token"* ]] && [[ "$response" == *"guest"* ]]; then
+        GUEST_TOKEN=$(echo "$response" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
         pass "Valid guest registration (returns token + guest)"
     else
         fail "Valid guest registration" '{"token":"...","guest":{...}}' "$response"
@@ -109,7 +134,8 @@ test_get_rooms() {
 }
 
 test_add_room_valid() {
-    local response=$(curl -s -X POST "$BASE_URL/admin-api/rooms" \
+    require_admin_creds "Add valid room" || return
+    local response=$(admin_curl -X POST "$BASE_URL/admin-api/rooms" \
         -H "Content-Type: application/json" \
         -d '{"name":"Test Suite Room","dashboardUrl":"http://example.com/test"}')
     if [[ "$response" == "OK" ]]; then
@@ -120,7 +146,8 @@ test_add_room_valid() {
 }
 
 test_add_room_invalid_name() {
-    local response=$(curl -s -X POST "$BASE_URL/admin-api/rooms" \
+    require_admin_creds "Rejects XSS in room name" || return
+    local response=$(admin_curl -X POST "$BASE_URL/admin-api/rooms" \
         -H "Content-Type: application/json" \
         -d '{"name":"<script>","dashboardUrl":"http://example.com"}')
     if [[ "$response" == *"Invalid"* ]]; then
@@ -131,7 +158,8 @@ test_add_room_invalid_name() {
 }
 
 test_add_room_invalid_url() {
-    local response=$(curl -s -X POST "$BASE_URL/admin-api/rooms" \
+    require_admin_creds "Rejects invalid URL" || return
+    local response=$(admin_curl -X POST "$BASE_URL/admin-api/rooms" \
         -H "Content-Type: application/json" \
         -d '{"name":"Valid Room","dashboardUrl":"not-a-url"}')
     if [[ "$response" == *"Invalid"* ]]; then
@@ -142,7 +170,8 @@ test_add_room_invalid_url() {
 }
 
 test_delete_room() {
-    local response=$(curl -s -X DELETE "$BASE_URL/admin-api/rooms/Test%20Suite%20Room")
+    require_admin_creds "Delete room" || return
+    local response=$(admin_curl -X DELETE "$BASE_URL/admin-api/rooms/Test%20Suite%20Room")
     if [[ "$response" == "OK" ]]; then
         pass "Delete room"
     else
@@ -187,7 +216,8 @@ test_invalid_session() {
 }
 
 test_list_sessions() {
-    local response=$(curl -s "$BASE_URL/admin-api/sessions")
+    require_admin_creds "List active sessions" || return
+    local response=$(admin_curl "$BASE_URL/admin-api/sessions")
     if [[ "$response" == "["* ]]; then
         pass "List active sessions"
     else
@@ -196,11 +226,12 @@ test_list_sessions() {
 }
 
 test_revoke_session() {
+    require_admin_creds "Revoke session code" || return
     if [[ -z "$SESSION_CODE" ]]; then
         fail "Revoke session" "Needs session code" "No code available"
         return
     fi
-    local response=$(curl -s -X DELETE "$BASE_URL/admin-api/sessions/$SESSION_CODE")
+    local response=$(admin_curl -X DELETE "$BASE_URL/admin-api/sessions/$SESSION_CODE")
     if [[ "$response" == "OK" ]]; then
         pass "Revoke session code"
     else
@@ -233,24 +264,33 @@ test_admin_login_invalid() {
 section "6. FILE UPLOAD"
 
 test_upload() {
-    echo "test content" > /tmp/test-upload.txt
-    local response=$(curl -s -X POST "$BASE_URL/upload" \
-        -F "photos=@/tmp/test-upload.txt" \
-        -F "guestName=UploadTestUser")
-    if [[ "$response" == "OK" ]]; then
-        pass "File upload"
-    else
-        fail "File upload" "OK" "$response"
+    if [[ -z "$GUEST_TOKEN" ]]; then
+        fail "File upload" "Needs guest token" "No token available"
+        return
     fi
-    rm -f /tmp/test-upload.txt
+    printf '%s\n' '%PDF-1.4' '1 0 obj <<>> endobj' '%%EOF' > /tmp/test-upload.pdf
+    local response=$(curl -s -X POST "$BASE_URL/upload" \
+        -H "X-Guest-Token: $GUEST_TOKEN" \
+        -F "photos=@/tmp/test-upload.pdf;type=application/pdf")
+    if [[ "$response" == "OK" ]]; then
+        pass "Token-authenticated PDF upload"
+    else
+        fail "Token-authenticated PDF upload" "OK" "$response"
+    fi
+    rm -f /tmp/test-upload.pdf
 }
 
 section "7. SECURITY TESTS"
 
 test_path_traversal() {
-    echo "malicious" > /tmp/evil.txt
+    if [[ -z "$GUEST_TOKEN" ]]; then
+        fail "Path traversal" "Needs guest token" "No token available"
+        return
+    fi
+    printf '%s\n' '%PDF-1.4' '1 0 obj <<>> endobj' '%%EOF' > /tmp/evil.pdf
     local response=$(curl -s -X POST "$BASE_URL/upload" \
-        -F "photos=@/tmp/evil.txt" \
+        -H "X-Guest-Token: $GUEST_TOKEN" \
+        -F "photos=@/tmp/evil.pdf;type=application/pdf" \
         -F "guestName=../../../etc/passwd")
     # Should succeed but with sanitized path
     if [[ "$response" == "OK" ]]; then
@@ -263,7 +303,48 @@ test_path_traversal() {
     else
         pass "Path traversal blocked"
     fi
-    rm -f /tmp/evil.txt
+    rm -f /tmp/evil.pdf
+}
+
+test_admin_requires_auth() {
+    local http_code=$(curl -s -o /dev/null -w "%{http_code}" \
+        -X POST "$BASE_URL/admin-api/rooms" \
+        -H "Content-Type: application/json" \
+        -d '{"name":"Unauthorized Room","dashboardUrl":"http://example.com"}')
+    if [[ "$http_code" == "401" ]]; then
+        pass "Admin room mutation requires auth (401)"
+    else
+        fail "Admin room mutation requires auth" "401" "$http_code"
+    fi
+}
+
+test_upload_requires_token() {
+    printf '%s\n' '%PDF-1.4' '1 0 obj <<>> endobj' '%%EOF' > /tmp/no-token.pdf
+    local http_code=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$BASE_URL/upload" \
+        -F "photos=@/tmp/no-token.pdf;type=application/pdf")
+    if [[ "$http_code" == "401" ]]; then
+        pass "Upload requires guest token (401)"
+    else
+        fail "Upload requires guest token" "401" "$http_code"
+    fi
+    rm -f /tmp/no-token.pdf
+}
+
+test_upload_rejects_code() {
+    if [[ -z "$GUEST_TOKEN" ]]; then
+        fail "Rejects code upload" "Needs guest token" "No token available"
+        return
+    fi
+    echo "console.log('blocked');" > /tmp/payload.js
+    local http_code=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$BASE_URL/upload" \
+        -H "X-Guest-Token: $GUEST_TOKEN" \
+        -F "photos=@/tmp/payload.js;type=application/javascript")
+    if [[ "$http_code" == "400" ]]; then
+        pass "Rejects code upload"
+    else
+        fail "Rejects code upload" "400" "$http_code"
+    fi
+    rm -f /tmp/payload.js
 }
 
 test_rate_limiting() {
@@ -349,6 +430,9 @@ test_admin_login_invalid
 
 test_upload
 test_path_traversal
+test_admin_requires_auth
+test_upload_requires_token
+test_upload_rejects_code
 
 test_index_html
 test_admin_html
@@ -363,6 +447,7 @@ echo ""
 echo "Total:  $TOTAL"
 echo -e "Passed: ${GREEN}$PASSED${NC}"
 echo -e "Failed: ${RED}$FAILED${NC}"
+echo -e "Skipped: ${YELLOW}$SKIPPED${NC}"
 echo ""
 
 if [[ $FAILED -eq 0 ]]; then

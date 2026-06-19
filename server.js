@@ -19,6 +19,8 @@ const configPath = '/etc/guest-portal/config.json';
 const dbPath = '/etc/guest-portal/storage.json';
 const sessionFile = '/etc/guest-portal/sessions.json';
 const guestTokensFile = '/etc/guest-portal/guest-tokens.json';
+const MAX_GUEST_UPLOAD_SIZE_BYTES = 50 * 1024 * 1024;
+const MAX_GUEST_UPLOAD_FILES = 10;
 
 // H2: Use JSON.parse(fs.readFileSync()) instead of require() to avoid module caching
 const config = fs.existsSync(configPath) ? JSON.parse(fs.readFileSync(configPath, 'utf8')) : {};
@@ -90,6 +92,69 @@ function generateToken() {
   return crypto.randomBytes(32).toString('hex');
 }
 
+function getGuestSession(token) {
+  if (!token || !guestTokens[token]) {
+    return { status: 401, message: 'Valid guest session required' };
+  }
+
+  const guest = guestTokens[token];
+  if (new Date(guest.checkoutDate) < new Date()) {
+    return { status: 410, message: 'Guest session expired' };
+  }
+
+  return { guest };
+}
+
+function bufferStartsWith(buffer, signature) {
+  return signature.every((byte, index) => buffer[index] === byte);
+}
+
+function readFileHeader(filePath) {
+  const fd = fs.openSync(filePath, 'r');
+  try {
+    const buffer = Buffer.alloc(4100);
+    const bytesRead = fs.readSync(fd, buffer, 0, buffer.length, 0);
+    return buffer.subarray(0, bytesRead);
+  } finally {
+    fs.closeSync(fd);
+  }
+}
+
+function hasExpectedFileSignature(file) {
+  const header = readFileHeader(file.path);
+  const ascii = header.toString('ascii');
+
+  switch (file.mimetype) {
+    case 'image/jpeg':
+      return bufferStartsWith(header, [0xff, 0xd8, 0xff]);
+    case 'image/png':
+      return bufferStartsWith(header, [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+    case 'image/gif':
+      return ascii.startsWith('GIF87a') || ascii.startsWith('GIF89a');
+    case 'image/webp':
+      return ascii.startsWith('RIFF') && ascii.substring(8, 12) === 'WEBP';
+    case 'application/pdf':
+      return ascii.startsWith('%PDF-');
+    case 'video/webm':
+      return bufferStartsWith(header, [0x1a, 0x45, 0xdf, 0xa3]);
+    case 'video/mp4':
+    case 'video/quicktime':
+    case 'image/heic':
+    case 'image/heif':
+      return ascii.substring(4, 8) === 'ftyp';
+    default:
+      return false;
+  }
+}
+
+function removeUploadedFiles(files = []) {
+  files.forEach(file => {
+    fs.promises.unlink(file.path).catch(err => {
+      console.error('Failed to remove rejected upload:', err);
+    });
+  });
+}
+
 // ─── Middleware ──────────────────────────────────────────────────────────────
 
 app.use(cors());
@@ -125,8 +190,9 @@ function authMiddleware(req, res, next) {
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
     const uploadsDir = getUploadsDir();
-    const name = sanitizeName(req.body.guestName || 'anonymous');
-    const folderName = `${name}-${new Date().toISOString().split('T')[0]}`;
+    const guest = req.guestSession.guest;
+    const name = sanitizeName(guest.name || guest.id);
+    const folderName = `${name}-${guest.id}-${new Date().toISOString().split('T')[0]}`;
     const dir = path.join(uploadsDir, folderName);
     if (!path.resolve(dir).startsWith(path.resolve(uploadsDir))) {
       return cb(new Error('Invalid upload path'));
@@ -139,7 +205,63 @@ const storage = multer.diskStorage({
     cb(null, `${Date.now()}-${safeName}`);
   }
 });
-const upload = multer({ storage });
+
+const GUEST_UPLOAD_TYPES = {
+  'image/jpeg': ['.jpg', '.jpeg'],
+  'image/png': ['.png'],
+  'image/gif': ['.gif'],
+  'image/webp': ['.webp'],
+  'image/heic': ['.heic'],
+  'image/heif': ['.heif'],
+  'video/mp4': ['.mp4'],
+  'video/quicktime': ['.mov', '.qt'],
+  'video/webm': ['.webm'],
+  'application/pdf': ['.pdf']
+};
+
+const upload = multer({
+  storage,
+  fileFilter: (req, file, cb) => {
+    const allowedExts = GUEST_UPLOAD_TYPES[file.mimetype];
+    const ext = path.extname(file.originalname).toLowerCase();
+    if (!allowedExts || !allowedExts.includes(ext)) {
+      return cb(new Error('Only photos, videos, and PDF files are allowed'));
+    }
+    cb(null, true);
+  },
+  limits: {
+    fileSize: MAX_GUEST_UPLOAD_SIZE_BYTES,
+    files: MAX_GUEST_UPLOAD_FILES
+  }
+});
+
+function validateGuestUploadToken(req, res, next) {
+  const token = req.get('X-Guest-Token') || req.query.token;
+  const session = getGuestSession(token);
+  if (!session.guest) {
+    return res.status(session.status).send(session.message);
+  }
+  req.guestSession = { token, guest: session.guest };
+  next();
+}
+
+function handleGuestUpload(req, res, next) {
+  upload.array('photos', MAX_GUEST_UPLOAD_FILES)(req, res, err => {
+    if (!err) return next();
+
+    if (err instanceof multer.MulterError) {
+      if (err.code === 'LIMIT_FILE_SIZE') {
+        return res.status(413).send('File too large');
+      }
+      if (err.code === 'LIMIT_FILE_COUNT') {
+        return res.status(400).send(`Upload up to ${MAX_GUEST_UPLOAD_FILES} files at a time`);
+      }
+      return res.status(400).send(err.message);
+    }
+
+    return res.status(400).send(err.message);
+  });
+}
 
 // L1: Map MIME types to allowed extensions to prevent mismatches
 const MIME_TO_EXT = {
@@ -285,17 +407,15 @@ app.post('/register', (req, res) => {
 
 app.post('/guest/validate', (req, res) => {
   const { token } = req.body;
-  if (!token || !guestTokens[token]) {
+  const session = getGuestSession(token);
+  if (session.status === 410) {
+    return res.status(410).json({ valid: false, error: 'Session expired (checkout passed)' });
+  }
+  if (!session.guest) {
     return res.status(404).json({ valid: false, error: 'Invalid token' });
   }
 
-  const guest = guestTokens[token];
-  const checkout = new Date(guest.checkoutDate);
-
-  if (checkout < new Date()) {
-    return res.status(410).json({ valid: false, error: 'Session expired (checkout passed)' });
-  }
-
+  const guest = session.guest;
   res.json({
     valid: true,
     guest: {
@@ -364,10 +484,14 @@ app.post('/guest/link-device', (req, res) => {
 });
 
 // H4: Validate guest token on upload
-app.post('/upload', upload.array('photos', 10), (req, res) => {
-  const guestName = req.body.guestName;
-  if (!guestName || guestName === 'anonymous') {
-    return res.status(400).send('Guest name required');
+app.post('/upload', validateGuestUploadToken, handleGuestUpload, (req, res) => {
+  if (!req.files || req.files.length === 0) {
+    return res.status(400).send('At least one file is required');
+  }
+  const invalidFile = req.files.find(file => !hasExpectedFileSignature(file));
+  if (invalidFile) {
+    removeUploadedFiles(req.files);
+    return res.status(400).send('Uploaded file content does not match an allowed file type');
   }
   res.sendStatus(200);
 });
@@ -415,7 +539,10 @@ app.post('/admin-api/rooms', authMiddleware, (req, res) => {
     return res.status(400).send('Invalid dashboard URL');
   }
   try {
-    new URL(dashboardUrl);
+    const parsedDashboardUrl = new URL(dashboardUrl);
+    if (!['http:', 'https:'].includes(parsedDashboardUrl.protocol)) {
+      return res.status(400).send('Dashboard URL must use http or https');
+    }
   } catch {
     return res.status(400).send('Invalid dashboard URL format');
   }

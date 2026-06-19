@@ -41,6 +41,8 @@ The script automatically:
 - Admin Panel: `https://guestportal.<your-fqdn>/admin.html`
 - Protected Uploads: `https://guestportal.<your-fqdn>/admin/uploads`
 
+For UniFi guest WiFi deployments, use the UniFi hotspot or guest network as the admission gate and set its post-authorization redirect to the Guest Portal registration URL. See [UNIFI.md](UNIFI.md) for the recommended configuration path and the future external portal integration option.
+
 ---
 
 ## 📸 Photo Storage
@@ -59,12 +61,16 @@ From the admin panel **Guest Photos** section:
 - Download individual folders or all photos as a `.zip`
 - Delete individual folders or all photos after backing up
 
+Only photos, videos, and PDFs are accepted. Keep the NAS share dedicated to guest uploads, quota-limited, and mounted with restrictive options such as `noexec,nodev,nosuid` when possible.
+
 ---
 
 ## 🧪 Testing Checklist
 
 - [ ] Register as a guest and test room selection
-- [ ] Upload photos, verify guest folders are created
+- [ ] Upload photos with a registered guest session and verify guest folders are created
+- [ ] Verify `/upload` returns 401 without `X-Guest-Token`
+- [ ] Verify script/code uploads are rejected
 - [ ] Verify Smart Home links per room
 - [ ] Log into `/admin.html` and manage rooms
 - [ ] Confirm password protection on `/admin/uploads`
@@ -75,7 +81,7 @@ From the admin panel **Guest Photos** section:
 - [ ] Download guest photos as zip from admin panel
 - [ ] Delete a guest photo folder from admin panel
 - [ ] Reset upload path to default and verify it works
-- [ ] Run `bash test-suite.sh` to validate all endpoints
+- [ ] Run `ADMIN_USER=admin ADMIN_PASS='<password>' bash test-suite.sh` to validate all endpoints
 - [ ] Verify `systemctl status guest-portal` shows active
 - [ ] Confirm service restarts after `systemctl restart guest-portal`
 
