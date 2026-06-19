@@ -112,7 +112,7 @@ var_ram=512
 var_disk=4
 var_bridge="vmbr0"
 var_net="dhcp"
-var_os_template="local:vztmpl/debian-12-standard_12.0-1_amd64.tar.zst"
+var_os_template=""
 var_rootfs_storage="local-lvm"
 var_repo="https://github.com/bon1wheel636/guest-portal.git"
 var_repo_raw="https://raw.githubusercontent.com/bon1wheel636/guest-portal/main"
@@ -152,7 +152,8 @@ fetch_nginx_template() {
 detect_os_template() {
   local template=""
   if command -v pveam >/dev/null 2>&1; then
-    template=$(pveam list local 2>/dev/null | awk '/debian-12-standard/ {print $1; exit}')
+    # Pick the newest local Debian 12 standard template (e.g. 12.12-1, not hardcoded 12.0-1)
+    template=$(pveam list local 2>/dev/null | awk '/debian-12-standard/ {print $1}' | sort -V | tail -1)
   fi
   if [[ -n "$template" ]]; then
     var_os_template="$template"
@@ -161,7 +162,8 @@ detect_os_template() {
 
   msg_error "No Debian 12 LXC template found on this Proxmox node."
   echo "" >&2
-  echo -e "${INFO}${YW}Download a template, then rerun the installer:${CL}" >&2
+  echo -e "${INFO}${YW}The installer uses any local debian-12-standard template (not a fixed version).${CL}" >&2
+  echo -e "${INFO}${YW}Download one, then rerun the installer:${CL}" >&2
   echo -e "${TAB}  pveam update" >&2
   echo -e "${TAB}  pveam available | grep debian-12" >&2
   echo -e "${TAB}  pveam download local debian-12-standard" >&2
