@@ -14,6 +14,7 @@ All notable changes to this project will be documented here.
 - `setup.sh --dry-run` and `setup.sh --update [ctid]` flows for safer install planning and existing-container updates.
 - Test coverage for unauthenticated admin mutations, token-required uploads, token-authenticated PDF uploads, and code upload rejection.
 - Admin guest management: register guests on behalf of visitors, view registration history separately from active sessions, remove history entries, purge inactive history, change guest room affiliation, clear linked devices, purge expired sessions, and check out guests.
+- In-container `updateguest` command for routine git pull, dependency refresh, and service restart from the LXC console.
 
 ### Changed
 - Guest uploads now require an active guest token and store files in server-derived per-guest folders.

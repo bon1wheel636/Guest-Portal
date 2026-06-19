@@ -138,6 +138,8 @@ bash setup.sh --update <ctid>
 ```
 Dry run shows the selected install/update plan without changing containers, files, services, or mounts. Update mode detects an existing container and prompts before changing code, service files, app state ownership, NAS upload path, or restarting the service.
 
+Inside the LXC, routine code updates can also use `updateguest` (see [DEPLOY.md](DEPLOY.md)).
+
 ### Option 2: Local Setup Script (Development)
 ```bash
 bash setup-local.sh

@@ -60,6 +60,54 @@ For UniFi guest WiFi deployments, use the UniFi hotspot or guest network as the 
 
 ---
 
+## 🔄 Updating the Application
+
+### From the Proxmox host (recommended for full control)
+
+Use the interactive updater, which can refresh code, ownership, the systemd unit, NAS upload path, and service restart:
+
+```bash
+bash setup.sh --update <ctid>
+```
+
+### From inside the Guest Portal LXC
+
+After install or update, the container includes an `updateguest` command:
+
+```bash
+updateguest
+```
+
+Preview the steps without making changes:
+
+```bash
+updateguest --dry-run
+```
+
+Skip the confirmation prompt:
+
+```bash
+updateguest -y
+```
+
+You can also run it from the Proxmox host without entering the container:
+
+```bash
+pct exec <ctid> -- updateguest
+```
+
+`updateguest` will:
+
+1. `git pull --ff-only` in `/opt/guest-portal`
+2. Run `npm install`
+3. Ensure upload directories and ownership are correct
+4. Refresh the `updateguest` command itself
+5. Restart the `guest-portal` service
+
+Use `setup.sh --update` when you also need to rewrite the systemd service, fix `/etc/guest-portal` ownership, or change the NAS upload path with prompts. Use `updateguest` for routine code updates from the LXC console.
+
+---
+
 ## 📸 Photo Storage
 
 Guest photos are stored locally by default in `/opt/guest-portal/uploads/`. To store photos on a NAS:
@@ -106,6 +154,7 @@ See [BACKUP.md](BACKUP.md) for config backup, restore, and NAS permission checks
 - [ ] Confirm service restarts after `systemctl restart guest-portal`
 - [ ] Run `bash setup.sh --dry-run` before future install changes
 - [ ] Use `bash setup.sh --update <ctid>` for existing installs and confirm prompts before changes
+- [ ] Run `updateguest --dry-run` inside the LXC, then `updateguest` for routine code updates
 
 ---
 
@@ -114,6 +163,7 @@ See [BACKUP.md](BACKUP.md) for config backup, restore, and NAS permission checks
 | Path | Description |
 |------|-------------|
 | `/opt/guest-portal/` | Application code |
+| `/usr/local/bin/updateguest` | In-container update command |
 | `/etc/guest-portal/config.json` | Admin credentials, upload path, settings |
 | `/etc/guest-portal/storage.json` | Rooms and guest data |
 | `/etc/guest-portal/sessions.json` | Active session codes |

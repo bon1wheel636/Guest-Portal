@@ -59,6 +59,8 @@ This roadmap tracks shareable project work only. Keep private domains, NAS hostn
   - Change room affiliation for active sessions.
   - Clear linked devices, extend stays, check out, and purge expired sessions.
   - Remove or bulk-clean registration history entries.
+- [x] **In-container update command**
+  - `updateguest` runs git pull, npm install, ownership fixes, and service restart from the LXC console.
 
 ## Suggested next sprint: guest convenience and integration
 
