@@ -71,6 +71,10 @@ var_bridge="vmbr0"
 var_net="dhcp"
 var_os_template="local:vztmpl/debian-12-standard_12.0-1_amd64.tar.zst"
 var_repo="https://github.com/bon1wheel636/guest-portal.git"
+var_app_dir="/opt/guest-portal"
+var_app_user="guestportal"
+var_app_group="guestportal"
+var_unprivileged=1
 
 # Auto-detect next available CT ID
 NEXT_ID=$(pvesh get /cluster/nextid 2>/dev/null || echo "100")
@@ -93,6 +97,8 @@ CT_DISK="$var_disk"
 CT_BRIDGE="$var_bridge"
 CT_NET_STRING=""
 CT_IP_DISPLAY="DHCP"
+CT_UNPRIVILEGED="$var_unprivileged"
+CT_PRIVILEGE_DISPLAY="Unprivileged"
 
 if [[ "$SETTINGS_CHOICE" == "2" ]]; then
   header_info
@@ -153,6 +159,19 @@ if [[ "$SETTINGS_CHOICE" == "2" ]]; then
     CT_NET_STRING="name=eth0,bridge=${CT_BRIDGE},ip=dhcp"
     CT_IP_DISPLAY="DHCP"
   fi
+
+  # Container privilege mode
+  echo ""
+  echo -e "${TAB}Container Isolation:"
+  echo -e "${TAB}  1)  Unprivileged (recommended)"
+  echo -e "${TAB}  2)  Privileged (only if container-managed NFS/SMB mounting requires it)"
+  echo ""
+  read -p "  Select [1/2] (default: 1): " privilege_choice
+  privilege_choice=${privilege_choice:-1}
+  if [[ "$privilege_choice" == "2" ]]; then
+    CT_UNPRIVILEGED=0
+    CT_PRIVILEGE_DISPLAY="Privileged"
+  fi
 else
   CT_NET_STRING="name=eth0,bridge=${CT_BRIDGE},ip=dhcp"
 fi
@@ -169,6 +188,7 @@ echo -e "${CPUCORE}${BOLD}${DGN}CPU Cores: ${BGN}${CT_CPU}${CL}"
 echo -e "${RAMSIZE}${BOLD}${DGN}RAM Size: ${BGN}${CT_RAM} MiB${CL}"
 echo -e "${BRIDGE_ICON}${BOLD}${DGN}Bridge: ${BGN}${CT_BRIDGE}${CL}"
 echo -e "${NETWORK}${BOLD}${DGN}IPv4: ${BGN}${CT_IP_DISPLAY}${CL}"
+echo -e "${TAB}${BOLD}${DGN}Isolation: ${BGN}${CT_PRIVILEGE_DISPLAY}${CL}"
 echo ""
 read -p "  Continue with these settings? [y/n] (default: y): " confirm
 confirm=${confirm:-y}
@@ -189,7 +209,7 @@ pct create "$CT_ID" "$var_os_template" \
   --rootfs local-lvm:"$CT_DISK" \
   --onboot 1 \
   --features nesting=1 \
-  --unprivileged 0 >/dev/null 2>&1
+  --unprivileged "$CT_UNPRIVILEGED" >/dev/null 2>&1
 msg_ok "Created LXC container ${CT_ID}"
 
 msg_info "Starting container"
@@ -207,17 +227,30 @@ pct exec "$CT_ID" -- bash -c "
 " >/dev/null 2>&1
 msg_ok "Installed OS dependencies"
 
+# ─── Service User ───────────────────────────────────────────────────────────
+
+msg_info "Creating application service user"
+pct exec "$CT_ID" -- bash -c "
+  groupadd --system '${var_app_group}' 2>/dev/null || true
+  id -u '${var_app_user}' >/dev/null 2>&1 || useradd --system --gid '${var_app_group}' --home-dir '${var_app_dir}' --shell /usr/sbin/nologin '${var_app_user}'
+  mkdir -p '${var_app_dir}' /etc/guest-portal
+  chown '${var_app_user}:${var_app_group}' '${var_app_dir}' /etc/guest-portal
+" >/dev/null 2>&1
+msg_ok "Application service user ready"
+
 # ─── Clone Repository Inside Container ──────────────────────────────────────
 
 msg_info "Cloning Guest Portal repository"
 pct exec "$CT_ID" -- bash -c "
-  git clone ${var_repo} /root/guest-portal >/dev/null 2>&1
+  git clone ${var_repo} '${var_app_dir}' >/dev/null 2>&1
 " >/dev/null 2>&1
 msg_ok "Cloned repository into container"
 
 msg_info "Installing Node.js dependencies"
 pct exec "$CT_ID" -- bash -c "
-  cd /root/guest-portal && npm install >/dev/null 2>&1
+  cd '${var_app_dir}' && npm install >/dev/null 2>&1
+  mkdir -p '${var_app_dir}/uploads/backgrounds'
+  chown -R '${var_app_user}:${var_app_group}' '${var_app_dir}' /etc/guest-portal
 " >/dev/null 2>&1
 msg_ok "Installed Node.js dependencies"
 
@@ -325,7 +358,15 @@ pct exec "$CT_ID" -- bash -c "
     echo 'Existing storage.json found — skipping overwrite'
   fi
 "
+pct exec "$CT_ID" -- bash -c "
+  [ -f /etc/guest-portal/sessions.json ] || echo '{}' > /etc/guest-portal/sessions.json
+  [ -f /etc/guest-portal/guest-tokens.json ] || echo '{}' > /etc/guest-portal/guest-tokens.json
+  chown -R '${var_app_user}:${var_app_group}' /etc/guest-portal '${var_app_dir}/uploads'
+"
 msg_ok "Configuration files written"
+
+APP_UID=$(pct exec "$CT_ID" -- id -u "${var_app_user}" | tr -d '[:space:]')
+APP_GID=$(pct exec "$CT_ID" -- id -g "${var_app_user}" | tr -d '[:space:]')
 
 # ─── Systemd Service ───────────────────────────────────────────────────────
 
@@ -338,11 +379,18 @@ After=network.target
 
 [Service]
 Type=simple
-WorkingDirectory=/root/guest-portal
+User=${var_app_user}
+Group=${var_app_group}
+WorkingDirectory=${var_app_dir}
 ExecStart=/usr/bin/node server.js
 Restart=always
 RestartSec=5
 Environment=NODE_ENV=production
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=full
+ReadWritePaths=/etc/guest-portal ${var_app_dir}/uploads /mnt
 
 [Install]
 WantedBy=multi-user.target
@@ -358,15 +406,29 @@ msg_ok "Systemd service enabled and started"
 header_info
 echo -e "${TAB}${BOLD}Photo Upload Storage${CL}"
 echo ""
-echo -e "${INFO}${YW}By default, photos are stored locally at /root/guest-portal/uploads/${CL}"
-echo -e "${TAB}  Mount a NAS share so photos are saved to your Synology, TrueNAS, etc."
+echo -e "${INFO}${YW}By default, photos are stored locally at ${var_app_dir}/uploads/${CL}"
+echo -e "${TAB}  For unprivileged LXCs, prefer mounting NAS storage on the Proxmox host"
+echo -e "${TAB}  and bind-mounting it into the container, then choose option 3."
 echo ""
 echo -e "${TAB}  1)  Mount an NFS share"
 echo -e "${TAB}  2)  Mount an SMB/CIFS share"
-echo -e "${TAB}  3)  Skip — use local storage (configure later in Admin panel)"
+echo -e "${TAB}  3)  Use an existing mounted directory"
+echo -e "${TAB}  4)  Skip — use local storage (configure later in Admin panel)"
 echo ""
-read -p "  Select [1/2/3] (default: 3): " storage_choice
-storage_choice=${storage_choice:-3}
+read -p "  Select [1/2/3/4] (default: 4): " storage_choice
+storage_choice=${storage_choice:-4}
+
+if [[ "$CT_UNPRIVILEGED" == "1" && ( "$storage_choice" == "1" || "$storage_choice" == "2" ) ]]; then
+  echo ""
+  echo -e "${INFO}${YW}Container-managed NFS/SMB mounts often require privileged containers or extra Proxmox features.${CL}"
+  echo -e "${TAB}  Recommended: mount the NAS share on the Proxmox host, bind-mount it into this LXC,"
+  echo -e "${TAB}  then rerun setup or configure option 3 with that in-container path."
+  read -p "  Continue with container-managed mounting anyway? [y/n] (default: n): " mount_confirm
+  mount_confirm=${mount_confirm:-n}
+  if [[ "${mount_confirm,,}" != "y" ]]; then
+    storage_choice=4
+  fi
+fi
 
 case "$storage_choice" in
   1)
@@ -380,23 +442,25 @@ case "$storage_choice" in
     pct exec "$CT_ID" -- bash -c "
       apt-get install -y nfs-common >/dev/null 2>&1 &&
       mkdir -p '${nas_mount}' &&
-      mount -t nfs '${nas_ip}:${nas_export}' '${nas_mount}' &&
+      mount -t nfs -o nosuid,nodev,noexec '${nas_ip}:${nas_export}' '${nas_mount}' &&
       mkdir -p '${nas_mount}/backgrounds' &&
-      echo '${nas_ip}:${nas_export} ${nas_mount} nfs defaults,_netdev 0 0' >> /etc/fstab
+      (chown -R '${var_app_user}:${var_app_group}' '${nas_mount}' 2>/dev/null || true) &&
+      echo '${nas_ip}:${nas_export} ${nas_mount} nfs defaults,_netdev,nosuid,nodev,noexec 0 0' >> /etc/fstab
     "
 
-    if pct exec "$CT_ID" -- bash -c "mountpoint -q '${nas_mount}'" 2>/dev/null; then
+    if pct exec "$CT_ID" -- bash -c "mountpoint -q '${nas_mount}' && su -s /bin/sh -c 'test -w \"${nas_mount}\"' '${var_app_user}'" 2>/dev/null; then
       msg_ok "NFS share mounted at ${nas_mount}"
 
       NAS_MOUNT_B64=$(printf '%s' "$nas_mount" | base64 -w0)
       pct exec "$CT_ID" -- bash -c "
         export MOUNT_B64=$NAS_MOUNT_B64
         node -e 'var fs=require(\"fs\");var c=JSON.parse(fs.readFileSync(\"/etc/guest-portal/config.json\",\"utf8\"));c.uploadDir=Buffer.from(process.env.MOUNT_B64,\"base64\").toString();fs.writeFileSync(\"/etc/guest-portal/config.json\",JSON.stringify(c,null,2))'
+        chown -R '${var_app_user}:${var_app_group}' /etc/guest-portal
       "
       pct exec "$CT_ID" -- systemctl restart guest-portal
       msg_ok "Upload path set to ${nas_mount}"
     else
-      msg_error "Mount failed. Check your NAS settings."
+      msg_error "Mount failed or is not writable by ${var_app_user}. Check NAS export permissions."
       echo -e "${INFO}${YW}You can configure the upload path later in the Admin panel.${CL}"
     fi
     ;;
@@ -424,27 +488,48 @@ case "$storage_choice" in
         var p = Buffer.from(process.env.SMB_P_B64, \"base64\").toString();
         fs.writeFileSync(\"/etc/guest-portal/.smbcredentials\", \"username=\" + u + \"\npassword=\" + p + \"\n\", { mode: 0o600 });
       ' &&
-      mount -t cifs '//${nas_ip}/${smb_share}' '${nas_mount}' -o credentials=/etc/guest-portal/.smbcredentials,uid=0,gid=0,file_mode=0660,dir_mode=0770 &&
+      mount -t cifs '//${nas_ip}/${smb_share}' '${nas_mount}' -o credentials=/etc/guest-portal/.smbcredentials,uid=${APP_UID},gid=${APP_GID},file_mode=0660,dir_mode=0770,nosuid,nodev,noexec &&
       mkdir -p '${nas_mount}/backgrounds' &&
-      echo '//${nas_ip}/${smb_share} ${nas_mount} cifs credentials=/etc/guest-portal/.smbcredentials,uid=0,gid=0,file_mode=0660,dir_mode=0770,_netdev 0 0' >> /etc/fstab
+      echo '//${nas_ip}/${smb_share} ${nas_mount} cifs credentials=/etc/guest-portal/.smbcredentials,uid=${APP_UID},gid=${APP_GID},file_mode=0660,dir_mode=0770,nosuid,nodev,noexec,_netdev 0 0' >> /etc/fstab
     "
 
-    if pct exec "$CT_ID" -- bash -c "mountpoint -q '${nas_mount}'" 2>/dev/null; then
+    if pct exec "$CT_ID" -- bash -c "mountpoint -q '${nas_mount}' && su -s /bin/sh -c 'test -w \"${nas_mount}\"' '${var_app_user}'" 2>/dev/null; then
       msg_ok "SMB share mounted at ${nas_mount}"
 
       NAS_MOUNT_B64=$(printf '%s' "$nas_mount" | base64 -w0)
       pct exec "$CT_ID" -- bash -c "
         export MOUNT_B64=$NAS_MOUNT_B64
         node -e 'var fs=require(\"fs\");var c=JSON.parse(fs.readFileSync(\"/etc/guest-portal/config.json\",\"utf8\"));c.uploadDir=Buffer.from(process.env.MOUNT_B64,\"base64\").toString();fs.writeFileSync(\"/etc/guest-portal/config.json\",JSON.stringify(c,null,2))'
+        chown -R '${var_app_user}:${var_app_group}' /etc/guest-portal
       "
       pct exec "$CT_ID" -- systemctl restart guest-portal
       msg_ok "Upload path set to ${nas_mount}"
     else
-      msg_error "Mount failed. Check your NAS/SMB settings."
+      msg_error "Mount failed or is not writable by ${var_app_user}. Check NAS/SMB permissions."
       echo -e "${INFO}${YW}You can configure the upload path later in the Admin panel.${CL}"
     fi
     ;;
   3)
+    echo ""
+    read -p "  Existing mounted upload path (default: /mnt/nas/guest-photos): " nas_mount
+    nas_mount=${nas_mount:-/mnt/nas/guest-photos}
+
+    if pct exec "$CT_ID" -- bash -c "[ -d '${nas_mount}' ] && su -s /bin/sh -c 'test -w \"${nas_mount}\"' '${var_app_user}'" 2>/dev/null; then
+      NAS_MOUNT_B64=$(printf '%s' "$nas_mount" | base64 -w0)
+      pct exec "$CT_ID" -- bash -c "
+        su -s /bin/sh -c 'mkdir -p \"${nas_mount}/backgrounds\"' '${var_app_user}'
+        export MOUNT_B64=$NAS_MOUNT_B64
+        node -e 'var fs=require(\"fs\");var c=JSON.parse(fs.readFileSync(\"/etc/guest-portal/config.json\",\"utf8\"));c.uploadDir=Buffer.from(process.env.MOUNT_B64,\"base64\").toString();fs.writeFileSync(\"/etc/guest-portal/config.json\",JSON.stringify(c,null,2))'
+        chown -R '${var_app_user}:${var_app_group}' /etc/guest-portal
+      "
+      pct exec "$CT_ID" -- systemctl restart guest-portal
+      msg_ok "Upload path set to existing mount ${nas_mount}"
+    else
+      msg_error "Path does not exist or is not writable by ${var_app_user}."
+      echo -e "${INFO}${YW}Create or bind-mount the NAS path first, then configure it in the Admin panel.${CL}"
+    fi
+    ;;
+  4)
     echo -e "${CM}${GN}Using default local storage${CL}"
     echo -e "${INFO}${YW}Configure NAS mount later from Admin panel > Upload Storage Path.${CL}"
     ;;
@@ -497,15 +582,20 @@ case "$proxy_choice" in
     echo ""
     echo -e "${TAB}  ${BOLD}SSL tab:${CL}"
     echo -e "${TAB}    [x] Request a new SSL Certificate"
+    echo -e "${TAB}    [x] Use DNS Challenge for internal-only hostnames"
     echo -e "${TAB}    [x] Force SSL"
     echo -e "${TAB}    [x] HTTP/2 Support"
     echo -e "${TAB}    [x] HSTS Enabled"
+    echo -e "${TAB}    Store DNS provider API tokens in NPM only, never in this repo."
     echo ""
     echo -e "${TAB}  ${BOLD}Advanced tab (optional security headers):${CL}"
     echo -e "${TAB}    add_header X-Content-Type-Options nosniff always;"
     echo -e "${TAB}    add_header X-Frame-Options DENY always;"
     echo -e "${TAB}    add_header Referrer-Policy strict-origin-when-cross-origin always;"
+    echo -e "${TAB}    add_header Permissions-Policy \"camera=(), microphone=(), geolocation=()\" always;"
     echo -e "${TAB}    client_max_body_size 50M;"
+    echo ""
+    echo -e "${TAB}  See PROXY.md for split DNS, Cloudflare DNS challenge, and hardening notes."
     echo ""
     ;;
   2)
@@ -547,7 +637,7 @@ case "$proxy_choice" in
       --net0 "$nginx_net" \
       --rootfs local-lvm:2 \
       --onboot 1 \
-      --unprivileged 0 >/dev/null 2>&1
+      --unprivileged 1 >/dev/null 2>&1
     msg_ok "Created NGINX container ${nginx_id}"
 
     msg_info "Starting NGINX container and installing nginx"
@@ -574,6 +664,10 @@ server {
     listen 80;
     server_name guestportal.yourdomain.com;
     client_max_body_size 50M;
+    add_header X-Content-Type-Options nosniff always;
+    add_header X-Frame-Options DENY always;
+    add_header Referrer-Policy strict-origin-when-cross-origin always;
+    add_header Permissions-Policy \"camera=(), microphone=(), geolocation=()\" always;
 
     location / {
         proxy_pass http://${NODEJS_IP}:3000;
@@ -600,8 +694,8 @@ systemctl restart nginx
     echo -e "${CM}${GN}Skipping reverse proxy setup${CL}"
     echo ""
     echo -e "${INFO}${YW}Point your reverse proxy to: ${GN}http://${NODEJS_IP}:3000${CL}"
-    echo -e "${TAB}  An example nginx config is included in the repo at:"
-    echo -e "${TAB}  /root/guest-portal/nginx/guestportal.conf"
+    echo -e "${TAB}  See PROXY.md and the example nginx config in the repo at:"
+    echo -e "${TAB}  ${var_app_dir}/nginx/guestportal.conf"
     echo ""
     ;;
   *)
@@ -619,7 +713,7 @@ echo -e "${GATEWAY}${BOLD}${DGN}Backend: ${BGN}http://${NODEJS_IP}:3000${CL}"
 echo -e "${PROXY}${BOLD}${DGN}Admin Panel: ${BGN}http://${NODEJS_IP}:3000/admin.html${CL}"
 echo ""
 echo -e "${TAB}${BOLD}Key Paths (inside container):${CL}"
-echo -e "${TAB}  Application:   /root/guest-portal/"
+echo -e "${TAB}  Application:   ${var_app_dir}/"
 echo -e "${TAB}  Config:        /etc/guest-portal/config.json"
 echo -e "${TAB}  Data:          /etc/guest-portal/storage.json"
 echo -e "${TAB}  Service:       systemctl status guest-portal"
@@ -628,7 +722,7 @@ echo -e "${TAB}${BOLD}Useful Commands:${CL}"
 echo -e "${TAB}  ${DGN}pct enter ${CT_ID}${CL}                    Enter the container"
 echo -e "${TAB}  ${DGN}pct exec ${CT_ID} -- systemctl status guest-portal${CL}"
 echo -e "${TAB}  ${DGN}pct exec ${CT_ID} -- journalctl -u guest-portal -f${CL}"
-echo -e "${TAB}  ${DGN}cd /root/guest-portal && git pull${CL}     Update to latest version"
+echo -e "${TAB}  ${DGN}cd ${var_app_dir} && git pull${CL}     Update to latest version"
 echo ""
 if [[ -z "$ADMIN_HASH" || "$ADMIN_HASH" == *"placeholder"* ]]; then
   echo -e "${INFO}${YW}Visit /admin.html to create your admin account on first login.${CL}"

@@ -8,11 +8,15 @@ All notable changes to this project will be documented here.
 
 ### Added
 - UniFi guest WiFi deployment guide with guest VLAN, Home Assistant isolation, NAS upload, and future external portal guidance.
+- Reverse proxy/HTTPS guide for Nginx Proxy Manager, split DNS, DNS challenge certificates, and generic security headers.
+- Backup and restore guide for `/etc/guest-portal`, local uploads, NAS-backed uploads, and permission checks.
 - Test coverage for unauthenticated admin mutations, token-required uploads, token-authenticated PDF uploads, and code upload rejection.
 
 ### Changed
 - Guest uploads now require an active guest token and store files in server-derived per-guest folders.
 - Guest upload UI now documents that photos, videos, and PDF letters are allowed while code, scripts, archives, and macro documents are blocked.
+- Proxmox setup now defaults to an unprivileged app LXC, installs the app under `/opt/guest-portal`, and runs `guest-portal.service` as a dedicated `guestportal` user.
+- NAS setup now supports existing mounted directories for host-managed NAS mounts and verifies upload paths as the runtime service user.
 - Production dependencies updated to clear current `npm audit --omit=dev --audit-level=moderate` findings.
 - `.gitignore` expanded to keep runtime uploads, local config, credentials, generated archives, certificates, and temporary files out of version control.
 

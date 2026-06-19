@@ -19,12 +19,14 @@ bash setup.sh
 
 The interactive script will walk you through:
 - Node.js LXC container creation (name, ID, cores, memory, network)
+- Container isolation selection, defaulting to an unprivileged LXC
 - Guest room configuration with Home Assistant dashboard URLs
 - Admin credentials (bcrypt hashed)
 - NAS storage setup (optional) — choose one of:
   1. **NFS mount** — installs nfs-common, mounts the share, adds fstab entry
   2. **SMB/CIFS mount** — installs cifs-utils, stores credentials securely, mounts and adds fstab entry
-  3. **Skip** — use local storage or configure from admin panel later
+  3. **Existing mounted directory** — best for host-mounted NAS shares bind-mounted into an unprivileged LXC
+  4. **Skip** — use local storage or configure from admin panel later
 - Reverse proxy setup — choose one of:
   1. **Nginx Proxy Manager** — prints step-by-step NPM dashboard config
   2. **New NGINX container** — creates a dedicated LXC with TLS-ready config
@@ -32,7 +34,8 @@ The interactive script will walk you through:
 
 The script automatically:
 - Installs Node.js and dependencies inside the container
-- Deploys a systemd service (`guest-portal.service`) for auto-restart and boot persistence
+- Creates a dedicated `guestportal` service user
+- Deploys a non-root systemd service (`guest-portal.service`) for auto-restart and boot persistence
 - Detects the container IP and displays it in the setup summary
 
 3. **Access the Portal:**
@@ -41,16 +44,16 @@ The script automatically:
 - Admin Panel: `https://guestportal.<your-fqdn>/admin.html`
 - Protected Uploads: `https://guestportal.<your-fqdn>/admin/uploads`
 
-For UniFi guest WiFi deployments, use the UniFi hotspot or guest network as the admission gate and set its post-authorization redirect to the Guest Portal registration URL. See [UNIFI.md](UNIFI.md) for the recommended configuration path and the future external portal integration option.
+For UniFi guest WiFi deployments, use the UniFi hotspot or guest network as the admission gate and set its post-authorization redirect to the Guest Portal registration URL. See [UNIFI.md](UNIFI.md) for the recommended configuration path and the future external portal integration option. See [PROXY.md](PROXY.md) for Nginx Proxy Manager and HTTPS guidance.
 
 ---
 
 ## 📸 Photo Storage
 
-Guest photos are stored locally by default in `./uploads/`. To store photos on a NAS:
+Guest photos are stored locally by default in `/opt/guest-portal/uploads/`. To store photos on a NAS:
 
 ### During Setup
-The setup script offers NFS and SMB mount options that automatically configure the mount point, fstab entry, and upload path in the application config.
+The setup script offers NFS and SMB mount options that automatically configure the mount point, fstab entry, and upload path in the application config. For unprivileged LXCs, prefer mounting the NAS share on the Proxmox host and bind-mounting it into the container, then choose the existing mounted directory option.
 
 ### After Setup
 From the admin panel under **Upload Storage Path**, you can change the upload directory to any mounted path (e.g. `/mnt/nas/guest-photos`). The directory must exist and be writable.
@@ -62,6 +65,8 @@ From the admin panel **Guest Photos** section:
 - Delete individual folders or all photos after backing up
 
 Only photos, videos, and PDFs are accepted. Keep the NAS share dedicated to guest uploads, quota-limited, and mounted with restrictive options such as `noexec,nodev,nosuid` when possible.
+
+See [BACKUP.md](BACKUP.md) for config backup, restore, and NAS permission checks.
 
 ---
 
@@ -91,12 +96,12 @@ Only photos, videos, and PDFs are accepted. Keep the NAS share dedicated to gues
 
 | Path | Description |
 |------|-------------|
-| `/root/guest-portal/` | Application code |
+| `/opt/guest-portal/` | Application code |
 | `/etc/guest-portal/config.json` | Admin credentials, upload path, settings |
 | `/etc/guest-portal/storage.json` | Rooms and guest data |
 | `/etc/guest-portal/sessions.json` | Active session codes |
 | `/etc/guest-portal/guest-tokens.json` | Persistent guest tokens |
-| `/root/guest-portal/uploads/` | Guest photos (default, configurable) |
+| `/opt/guest-portal/uploads/` | Guest photos (default, configurable) |
 | `/mnt/nas/guest-photos/` | Guest photos (if NAS mount configured) |
 | `/etc/guest-portal/.smbcredentials` | SMB credentials (if SMB mount used) |
 

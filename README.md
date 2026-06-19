@@ -79,6 +79,8 @@ bash setup.sh
 
 - [Deployment Guide](DEPLOY.md)
 - [UniFi Guest WiFi Guide](UNIFI.md)
+- [Reverse Proxy and HTTPS Guide](PROXY.md)
+- [Backup and Restore Guide](BACKUP.md)
 - [Roadmap](ROADMAP.md)
 - [Changelog](CHANGELOG.md)
 - [Code Review Findings](CODE_REVIEW_FINDINGS.md)
