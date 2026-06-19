@@ -108,6 +108,76 @@ function getGuestSession(token) {
   return { guest };
 }
 
+function validateGuestNameAndRoom(name, room) {
+  if (!name || !room || typeof name !== 'string' || typeof room !== 'string') {
+    return 'Invalid name or room';
+  }
+  if (/[^\w\s]/.test(name) || /[^\w\s]/.test(room)) {
+    return 'Invalid name or room';
+  }
+  return null;
+}
+
+function resolveRoomDashboard(roomName) {
+  const roomData = guestData.rooms.find(r => r.name === roomName);
+  return roomData ? roomData.dashboardUrl : null;
+}
+
+function findGuestTokenEntryByGuestId(guestId) {
+  return Object.entries(guestTokens).find(([_, guest]) => guest.id === guestId) || null;
+}
+
+function countGuestSessionsByExpiry() {
+  const now = new Date();
+  let active = 0;
+  let expired = 0;
+  Object.values(guestTokens).forEach(guest => {
+    if (new Date(guest.checkoutDate) >= now) {
+      active += 1;
+    } else {
+      expired += 1;
+    }
+  });
+  return { active, expired };
+}
+
+function createGuestRegistration(name, room, stayDays, userAgent) {
+  const days = Math.min(Math.max(parseInt(stayDays, 10) || 7, 1), 30);
+  const checkoutDate = new Date();
+  checkoutDate.setDate(checkoutDate.getDate() + days);
+
+  const token = generateToken();
+  const guestId = `guest_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
+  const dashboardUrl = resolveRoomDashboard(room);
+  const createdAt = new Date().toISOString();
+
+  guestTokens[token] = {
+    id: guestId,
+    name,
+    room,
+    dashboardUrl,
+    checkoutDate: checkoutDate.toISOString(),
+    createdAt,
+    devices: [{ addedAt: createdAt, userAgent: userAgent || 'Unknown' }]
+  };
+  saveGuestTokens();
+
+  guestData.guests.push({ name, room, timestamp: createdAt, guestId });
+  saveGuestData();
+
+  return {
+    token,
+    guestId,
+    guest: {
+      id: guestId,
+      name,
+      room,
+      dashboardUrl,
+      checkoutDate: checkoutDate.toISOString()
+    }
+  };
+}
+
 function bufferStartsWith(buffer, signature) {
   return signature.every((byte, index) => buffer[index] === byte);
 }
@@ -452,43 +522,15 @@ app.use('/uploads/backgrounds', (req, res, next) => {
 
 app.post('/register', (req, res) => {
   const { name, room, stayDays } = req.body;
-  if (!name || !room || /[^\w\s]/.test(name) || /[^\w\s]/.test(room)) {
-    return res.status(400).send('Invalid name or room');
+  const validationError = validateGuestNameAndRoom(name, room);
+  if (validationError) {
+    return res.status(400).send(validationError);
   }
 
-  const days = Math.min(Math.max(parseInt(stayDays, 10) || 7, 1), 30);
-  const checkoutDate = new Date();
-  checkoutDate.setDate(checkoutDate.getDate() + days);
-
-  const token = generateToken();
-  const guestId = `guest_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
-
-  const roomData = guestData.rooms.find(r => r.name === room);
-  const dashboardUrl = roomData ? roomData.dashboardUrl : null;
-
-  guestTokens[token] = {
-    id: guestId,
-    name,
-    room,
-    dashboardUrl,
-    checkoutDate: checkoutDate.toISOString(),
-    createdAt: new Date().toISOString(),
-    devices: [{ addedAt: new Date().toISOString(), userAgent: req.get('User-Agent') || 'Unknown' }]
-  };
-  saveGuestTokens();
-
-  guestData.guests.push({ name, room, timestamp: new Date().toISOString(), guestId });
-  saveGuestData();
-
+  const registration = createGuestRegistration(name, room, stayDays, req.get('User-Agent') || 'Unknown');
   res.json({
-    token,
-    guest: {
-      id: guestId,
-      name,
-      room,
-      dashboardUrl,
-      checkoutDate: checkoutDate.toISOString()
-    }
+    token: registration.token,
+    guest: registration.guest
   });
 });
 
@@ -630,8 +672,7 @@ app.get('/admin-api/deployment-status', authMiddleware, async (req, res) => {
   })));
 
   const now = new Date();
-  const activeGuestSessions = Object.values(guestTokens)
-    .filter(guest => new Date(guest.checkoutDate) >= now).length;
+  const sessionCounts = countGuestSessionsByExpiry();
 
   res.json({
     generatedAt: now.toISOString(),
@@ -646,8 +687,9 @@ app.get('/admin-api/deployment-status', authMiddleware, async (req, res) => {
     reverseProxy: getReverseProxyStatus(req),
     data: {
       rooms: rooms.length,
-      registeredGuests: (guestData.guests || []).length,
-      activeGuestSessions,
+      registrationHistory: (guestData.guests || []).length,
+      activeGuestSessions: sessionCounts.active,
+      expiredGuestSessions: sessionCounts.expired,
       pendingSessionCodes: Object.values(sessionCodes).filter(entry => entry.expires > Date.now()).length
     },
     dashboards: {
@@ -947,7 +989,7 @@ app.post('/admin-api/guest-sessions/:guestId/extend', authMiddleware, (req, res)
   const { guestId } = req.params;
   const { days } = req.body;
 
-  const entry = Object.entries(guestTokens).find(([_, g]) => g.id === guestId);
+  const entry = findGuestTokenEntryByGuestId(guestId);
   if (!entry) {
     return res.status(404).send('Guest not found');
   }
@@ -961,10 +1003,64 @@ app.post('/admin-api/guest-sessions/:guestId/extend', authMiddleware, (req, res)
   res.json({ success: true, newCheckoutDate: guest.checkoutDate });
 });
 
+app.patch('/admin-api/guest-sessions/:guestId', authMiddleware, (req, res) => {
+  const { guestId } = req.params;
+  const { room } = req.body;
+
+  const validationError = validateGuestNameAndRoom('Guest', room);
+  if (validationError) {
+    return res.status(400).send('Invalid room');
+  }
+  if (!guestData.rooms.some(r => r.name === room)) {
+    return res.status(400).send('Room not found');
+  }
+
+  const entry = findGuestTokenEntryByGuestId(guestId);
+  if (!entry) {
+    return res.status(404).send('Guest not found');
+  }
+
+  const [, guest] = entry;
+  guest.room = room;
+  guest.dashboardUrl = resolveRoomDashboard(room);
+  saveGuestTokens();
+
+  const historyEntry = (guestData.guests || []).find(g => g.guestId === guestId);
+  if (historyEntry) {
+    historyEntry.room = room;
+    saveGuestData();
+  }
+
+  res.json({
+    success: true,
+    guest: {
+      id: guest.id,
+      name: guest.name,
+      room: guest.room,
+      dashboardUrl: guest.dashboardUrl,
+      checkoutDate: guest.checkoutDate
+    }
+  });
+});
+
+app.delete('/admin-api/guest-sessions/:guestId/devices', authMiddleware, (req, res) => {
+  const { guestId } = req.params;
+  const entry = findGuestTokenEntryByGuestId(guestId);
+  if (!entry) {
+    return res.status(404).send('Guest not found');
+  }
+
+  const [, guest] = entry;
+  guest.devices = [];
+  saveGuestTokens();
+
+  res.json({ success: true, devicesCleared: true });
+});
+
 app.delete('/admin-api/guest-sessions/:guestId', authMiddleware, (req, res) => {
   const { guestId } = req.params;
 
-  const entry = Object.entries(guestTokens).find(([_, g]) => g.id === guestId);
+  const entry = findGuestTokenEntryByGuestId(guestId);
   if (!entry) {
     return res.status(404).send('Guest not found');
   }
@@ -974,6 +1070,103 @@ app.delete('/admin-api/guest-sessions/:guestId', authMiddleware, (req, res) => {
   saveGuestTokens();
 
   res.json({ success: true });
+});
+
+app.post('/admin-api/guest-sessions/purge-expired', authMiddleware, (req, res) => {
+  const now = new Date();
+  let removed = 0;
+  Object.entries(guestTokens).forEach(([token, guest]) => {
+    if (new Date(guest.checkoutDate) < now) {
+      delete guestTokens[token];
+      removed += 1;
+    }
+  });
+  if (removed > 0) {
+    saveGuestTokens();
+  }
+  res.json({ success: true, removed });
+});
+
+app.get('/admin-api/guests', authMiddleware, (req, res) => {
+  const now = new Date();
+  const activeGuestIds = new Set(
+    Object.values(guestTokens)
+      .filter(guest => new Date(guest.checkoutDate) >= now)
+      .map(guest => guest.id)
+  );
+
+  const guests = (guestData.guests || [])
+    .map(entry => ({
+      ...entry,
+      hasActiveSession: activeGuestIds.has(entry.guestId)
+    }))
+    .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+
+  res.json(guests);
+});
+
+app.post('/admin-api/guests', authMiddleware, (req, res) => {
+  const { name, room, stayDays } = req.body;
+  const validationError = validateGuestNameAndRoom(name, room);
+  if (validationError) {
+    return res.status(400).send(validationError);
+  }
+  if (!guestData.rooms.some(r => r.name === room)) {
+    return res.status(400).send('Room not found');
+  }
+
+  const registration = createGuestRegistration(name, room, stayDays, 'Admin registration');
+  res.json({
+    success: true,
+    token: registration.token,
+    guest: registration.guest
+  });
+});
+
+app.delete('/admin-api/guests/:guestId', authMiddleware, (req, res) => {
+  const { guestId } = req.params;
+  const endSession = req.query.endSession === 'true';
+
+  const beforeCount = (guestData.guests || []).length;
+  guestData.guests = (guestData.guests || []).filter(g => g.guestId !== guestId);
+  if (guestData.guests.length === beforeCount) {
+    return res.status(404).send('Registration history entry not found');
+  }
+  saveGuestData();
+
+  let sessionEnded = false;
+  if (endSession) {
+    const entry = findGuestTokenEntryByGuestId(guestId);
+    if (entry) {
+      const [token] = entry;
+      delete guestTokens[token];
+      saveGuestTokens();
+      sessionEnded = true;
+    }
+  }
+
+  res.json({ success: true, sessionEnded });
+});
+
+app.post('/admin-api/guests/purge-history', authMiddleware, (req, res) => {
+  const { inactiveOnly } = req.body || {};
+  const now = new Date();
+  const activeGuestIds = new Set(
+    Object.values(guestTokens)
+      .filter(guest => new Date(guest.checkoutDate) >= now)
+      .map(guest => guest.id)
+  );
+
+  const beforeCount = (guestData.guests || []).length;
+  if (inactiveOnly) {
+    guestData.guests = (guestData.guests || []).filter(entry => activeGuestIds.has(entry.guestId));
+  } else {
+    guestData.guests = [];
+  }
+  const removed = beforeCount - guestData.guests.length;
+  saveGuestData();
+
+  res.json({ success: true, removed });
 });
 
 app.get('/api/guests', authMiddleware, (req, res) => res.json(guestData));

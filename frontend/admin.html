@@ -101,11 +101,33 @@
 <h2>Active Session Codes</h2>
 <ul id="sessionList"></ul>
 
-<h2>Registered Guests</h2>
+<h2>Register Guest (Admin)</h2>
+<p style="font-size: 0.9em; color: #666;">Create a guest session on behalf of a guest. Share the returned token or have them register normally on the portal.</p>
+<form id="adminRegisterForm">
+  <label>Guest Name:</label>
+  <input type="text" id="adminGuestName" required />
+  <label>Room:</label>
+  <select id="adminGuestRoom" required></select>
+  <label>Stay (days):</label>
+  <input type="number" id="adminGuestStayDays" min="1" max="30" value="7" required />
+  <button type="submit">Register Guest</button>
+</form>
+<div id="adminRegisterResult" style="margin-top:10px;"></div>
+
+<h2>Registration History</h2>
+<p style="font-size: 0.9em; color: #666;">Every registration is logged here. Repeated registrations (tests, re-registers) add new rows — this is not the same as active sessions below.</p>
+<div style="margin-bottom:10px;">
+  <button id="purgeInactiveHistory" style="background:#6c757d;">Remove Inactive History</button>
+  <button id="purgeAllHistory" style="background:#dc3545;margin-left:5px;">Clear All History</button>
+</div>
 <div id="guestList"></div>
 
 <h2>Guest Sessions</h2>
-<p style="font-size: 0.9em; color: #666;">Guests with persistent sessions (can return during their stay)</p>
+<p style="font-size: 0.9em; color: #666;">Guests with persistent sessions (can return during their stay). Extend stays, change rooms, clear linked devices, or check out.</p>
+<div style="margin-bottom:10px;">
+  <button id="purgeExpiredSessions" style="background:#6c757d;">Purge Expired Sessions</button>
+  <button id="refreshGuestSessions" style="background:#6c757d;margin-left:5px;">Refresh</button>
+</div>
 <div id="guestSessionList"></div>
 
   </div>
@@ -115,6 +137,25 @@
       const rooms = await res.json();
       const list = document.getElementById('roomList');
       list.innerHTML = '';
+      const adminRoomSelect = document.getElementById('adminGuestRoom');
+      if (adminRoomSelect) {
+        adminRoomSelect.innerHTML = '';
+        if (rooms.length === 0) {
+          const option = document.createElement('option');
+          option.value = '';
+          option.textContent = 'Add a room first';
+          adminRoomSelect.appendChild(option);
+          adminRoomSelect.disabled = true;
+        } else {
+          adminRoomSelect.disabled = false;
+          rooms.forEach(room => {
+            const option = document.createElement('option');
+            option.value = room.name;
+            option.textContent = room.name;
+            adminRoomSelect.appendChild(option);
+          });
+        }
+      }
       rooms.forEach(room => {
         const li = document.createElement('li');
         const strong = document.createElement('strong');
@@ -226,7 +267,7 @@ function renderDeploymentStatus(data) {
   }
   html += `<p><strong>Reverse proxy:</strong> ${escapeHtml(proxyText)} `;
   html += `<small>host: ${escapeHtml(data.reverseProxy.forwardedHost || data.reverseProxy.host || 'unknown')}, proto: ${escapeHtml(data.reverseProxy.forwardedProto || 'none')}</small></p>`;
-  html += `<p><strong>Data:</strong> ${data.data.rooms} room(s), ${data.data.registeredGuests} registered guest(s), ${data.data.activeGuestSessions} active guest session(s), ${data.data.pendingSessionCodes} pending code(s)</p>`;
+  html += `<p><strong>Data:</strong> ${data.data.rooms} room(s), ${data.data.registrationHistory} registration history entr${data.data.registrationHistory === 1 ? 'y' : 'ies'}, ${data.data.activeGuestSessions} active guest session(s), ${data.data.expiredGuestSessions} expired session(s), ${data.data.pendingSessionCodes} pending code(s)</p>`;
 
   if (data.dashboards.rooms.length > 0) {
     html += '<p><strong>Dashboard URLs:</strong></p><ul>';
@@ -397,24 +438,133 @@ document.getElementById('timeoutForm').addEventListener('submit', async (e) => {
 });
 
 async function loadGuests() {
-  const res = await fetch('/api/guests', {
-    headers: { 'Authorization': getAuthHeader() }
-  });
-  const data = await res.json();
-  const container = document.getElementById('guestList');
-  container.innerHTML = '';
-  if (!data.guests || data.guests.length === 0) {
-    container.innerHTML = '<p style="color:#666;font-style:italic;">No registered guests</p>';
-    return;
+  try {
+    const res = await fetch('/admin-api/guests', {
+      headers: { 'Authorization': getAuthHeader() }
+    });
+    if (!res.ok) return;
+    const guests = await res.json();
+    const container = document.getElementById('guestList');
+    container.innerHTML = '';
+    if (!guests || guests.length === 0) {
+      container.innerHTML = '<p style="color:#666;font-style:italic;">No registration history</p>';
+      return;
+    }
+
+    guests.forEach(g => {
+      const div = document.createElement('div');
+      div.style.cssText = 'border:1px solid #ddd;padding:8px;margin:8px 0;border-radius:5px;';
+
+      const status = g.hasActiveSession
+        ? '<span style="color:#1b7f37;font-weight:bold;">Active session</span>'
+        : '<span style="color:#666;">No active session</span>';
+
+      let html = `<strong>${escapeHtml(g.name)}</strong> - Room: ${escapeHtml(g.room)}<br>`;
+      html += `<small>Registered ${new Date(g.timestamp).toLocaleString()} | ${status}</small>`;
+      div.innerHTML = html;
+
+      const removeBtn = document.createElement('button');
+      removeBtn.textContent = 'Remove';
+      removeBtn.style.cssText = 'margin-top:8px;margin-right:5px;font-size:0.85em;background:#dc3545;';
+      removeBtn.onclick = async () => {
+        const endSession = g.hasActiveSession && confirm('Also end this guest\'s active session?');
+        const url = `/admin-api/guests/${encodeURIComponent(g.guestId)}?endSession=${endSession ? 'true' : 'false'}`;
+        const res = await fetch(url, {
+          method: 'DELETE',
+          headers: { 'Authorization': getAuthHeader() }
+        });
+        if (res.ok) {
+          loadGuests();
+          loadGuestSessions();
+          loadDeploymentStatus(false);
+        } else {
+          alert('Failed to remove history entry: ' + await res.text());
+        }
+      };
+      div.appendChild(removeBtn);
+
+      container.appendChild(div);
+    });
+  } catch (err) {
+    console.error('Failed to load registration history:', err);
   }
-  const ul = document.createElement('ul');
-  data.guests.forEach(g => {
-    const li = document.createElement('li');
-    li.textContent = `${g.name} (${g.room}) at ${new Date(g.timestamp).toLocaleString()}`;
-    ul.appendChild(li);
-  });
-  container.appendChild(ul);
 }
+
+document.getElementById('purgeInactiveHistory')?.addEventListener('click', async () => {
+  if (!confirm('Remove registration history entries that no longer have an active session?')) return;
+  try {
+    const res = await fetch('/admin-api/guests/purge-history', {
+      method: 'POST',
+      headers: { 'Authorization': getAuthHeader(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ inactiveOnly: true })
+    });
+    if (res.ok) {
+      const data = await res.json();
+      alert('Removed ' + data.removed + ' history entr' + (data.removed === 1 ? 'y' : 'ies') + '.');
+      loadGuests();
+      loadDeploymentStatus(false);
+    } else {
+      alert('Failed: ' + await res.text());
+    }
+  } catch (err) {
+    alert('Failed: ' + err.message);
+  }
+});
+
+document.getElementById('purgeAllHistory')?.addEventListener('click', async () => {
+  if (!confirm('Clear ALL registration history? Active sessions will remain until checked out.')) return;
+  try {
+    const res = await fetch('/admin-api/guests/purge-history', {
+      method: 'POST',
+      headers: { 'Authorization': getAuthHeader(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ inactiveOnly: false })
+    });
+    if (res.ok) {
+      const data = await res.json();
+      alert('Removed ' + data.removed + ' history entr' + (data.removed === 1 ? 'y' : 'ies') + '.');
+      loadGuests();
+      loadDeploymentStatus(false);
+    } else {
+      alert('Failed: ' + await res.text());
+    }
+  } catch (err) {
+    alert('Failed: ' + err.message);
+  }
+});
+
+document.getElementById('adminRegisterForm')?.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const name = document.getElementById('adminGuestName').value.trim();
+  const room = document.getElementById('adminGuestRoom').value;
+  const stayDays = parseInt(document.getElementById('adminGuestStayDays').value, 10) || 7;
+  const resultBox = document.getElementById('adminRegisterResult');
+
+  try {
+    const res = await fetch('/admin-api/guests', {
+      method: 'POST',
+      headers: { 'Authorization': getAuthHeader(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, room, stayDays })
+    });
+    if (!res.ok) {
+      resultBox.innerHTML = '<p style="color:#b42318;">Registration failed: ' + escapeHtml(await res.text()) + '</p>';
+      return;
+    }
+    const data = await res.json();
+
+    resultBox.innerHTML = `
+      <p style="color:#1b7f37;"><strong>Guest registered.</strong> ${escapeHtml(data.guest.name)} in ${escapeHtml(data.guest.room)}.</p>
+      <p><small>Checkout: ${escapeHtml(new Date(data.guest.checkoutDate).toLocaleString())}</small></p>
+      <p style="font-family:monospace;font-size:0.85em;word-break:break-all;">Token (share securely): ${escapeHtml(data.token)}</p>
+    `;
+    document.getElementById('adminRegisterForm').reset();
+    document.getElementById('adminGuestStayDays').value = '7';
+    loadGuests();
+    loadGuestSessions();
+    loadDeploymentStatus(false);
+  } catch (err) {
+    resultBox.innerHTML = '<p style="color:#b42318;">Registration failed: ' + escapeHtml(err.message) + '</p>';
+  }
+});
 
 // Background image handling
 async function loadBackground() {
@@ -641,8 +791,13 @@ document.getElementById('refreshPhotos')?.addEventListener('click', () => {
 });
 
 // Guest session management
+let cachedRooms = [];
+
 async function loadGuestSessions() {
   try {
+    const roomsRes = await fetch('/admin-api/rooms');
+    cachedRooms = roomsRes.ok ? await roomsRes.json() : [];
+
     const res = await fetch('/admin-api/guest-sessions', {
       headers: { 'Authorization': getAuthHeader() }
     });
@@ -652,7 +807,7 @@ async function loadGuestSessions() {
     container.innerHTML = '';
 
     if (sessions.length === 0) {
-      container.innerHTML = '<p style="color:#666;font-style:italic;">No active guest sessions</p>';
+      container.innerHTML = '<p style="color:#666;font-style:italic;">No guest sessions</p>';
       return;
     }
 
@@ -662,12 +817,15 @@ async function loadGuestSessions() {
 
       const daysLeft = Math.ceil((new Date(guest.checkoutDate) - new Date()) / (1000*60*60*24));
       const checkoutStr = new Date(guest.checkoutDate).toLocaleDateString();
+      const expiredLabel = guest.isExpired
+        ? ' <span style="color:#b42318;font-weight:bold;">(expired)</span>'
+        : '';
 
-      let html = `<strong>${escapeHtml(guest.name)}</strong> - Room: ${escapeHtml(guest.room)}<br>`;
+      let html = `<strong>${escapeHtml(guest.name)}</strong> - Room: ${escapeHtml(guest.room)}${expiredLabel}<br>`;
       html += `<small>Checkout: ${checkoutStr} (${daysLeft} days remaining)</small><br>`;
       html += `<small>Devices (${guest.devices.length}):</small><ul style="margin:5px 0;padding-left:20px;">`;
 
-      guest.devices.forEach((device, idx) => {
+      guest.devices.forEach((device) => {
         const addedDate = new Date(device.addedAt).toLocaleString();
         const ua = device.userAgent || 'Unknown device';
         const shortUa = ua.length > 50 ? ua.substring(0, 50) + '...' : ua;
@@ -677,7 +835,56 @@ async function loadGuestSessions() {
 
       div.innerHTML = html;
 
-      // Extend stay button
+      const roomSelect = document.createElement('select');
+      roomSelect.style.cssText = 'margin-right:10px;font-size:0.9em;';
+      cachedRooms.forEach(room => {
+        const option = document.createElement('option');
+        option.value = room.name;
+        option.textContent = room.name;
+        if (room.name === guest.room) option.selected = true;
+        roomSelect.appendChild(option);
+      });
+
+      const changeRoomBtn = document.createElement('button');
+      changeRoomBtn.textContent = 'Change Room';
+      changeRoomBtn.style.marginRight = '10px';
+      changeRoomBtn.onclick = async () => {
+        const room = roomSelect.value;
+        if (!room || room === guest.room) return;
+        const res = await fetch(`/admin-api/guest-sessions/${guest.id}`, {
+          method: 'PATCH',
+          headers: { 'Authorization': getAuthHeader(), 'Content-Type': 'application/json' },
+          body: JSON.stringify({ room })
+        });
+        if (res.ok) {
+          alert('Room updated');
+          loadGuestSessions();
+          loadGuests();
+        } else {
+          alert('Failed to change room: ' + await res.text());
+        }
+      };
+      div.appendChild(roomSelect);
+      div.appendChild(changeRoomBtn);
+
+      const clearDevicesBtn = document.createElement('button');
+      clearDevicesBtn.textContent = 'Clear Devices';
+      clearDevicesBtn.style.marginRight = '10px';
+      clearDevicesBtn.onclick = async () => {
+        if (!confirm(`Clear all linked devices for ${guest.name}? They can link devices again with a new link code.`)) return;
+        const res = await fetch(`/admin-api/guest-sessions/${guest.id}/devices`, {
+          method: 'DELETE',
+          headers: { 'Authorization': getAuthHeader() }
+        });
+        if (res.ok) {
+          alert('Linked devices cleared');
+          loadGuestSessions();
+        } else {
+          alert('Failed to clear devices: ' + await res.text());
+        }
+      };
+      div.appendChild(clearDevicesBtn);
+
       const extendBtn = document.createElement('button');
       extendBtn.textContent = 'Extend Stay';
       extendBtn.style.marginRight = '10px';
@@ -692,13 +899,13 @@ async function loadGuestSessions() {
         if (res.ok) {
           alert('Stay extended!');
           loadGuestSessions();
+          loadDeploymentStatus(false);
         } else {
           alert('Failed to extend stay');
         }
       };
       div.appendChild(extendBtn);
 
-      // Check out button
       const checkoutBtn = document.createElement('button');
       checkoutBtn.textContent = 'Check Out';
       checkoutBtn.style.background = '#dc3545';
@@ -711,6 +918,8 @@ async function loadGuestSessions() {
         if (res.ok) {
           alert('Guest checked out');
           loadGuestSessions();
+          loadGuests();
+          loadDeploymentStatus(false);
         } else {
           alert('Failed to check out guest');
         }
@@ -723,6 +932,30 @@ async function loadGuestSessions() {
     console.error('Failed to load guest sessions:', err);
   }
 }
+
+document.getElementById('purgeExpiredSessions')?.addEventListener('click', async () => {
+  if (!confirm('Remove all expired guest sessions from storage?')) return;
+  try {
+    const res = await fetch('/admin-api/guest-sessions/purge-expired', {
+      method: 'POST',
+      headers: { 'Authorization': getAuthHeader() }
+    });
+    if (res.ok) {
+      const data = await res.json();
+      alert('Removed ' + data.removed + ' expired session(s).');
+      loadGuestSessions();
+      loadDeploymentStatus(false);
+    } else {
+      alert('Failed: ' + await res.text());
+    }
+  } catch (err) {
+    alert('Failed: ' + err.message);
+  }
+});
+
+document.getElementById('refreshGuestSessions')?.addEventListener('click', () => {
+  loadGuestSessions();
+});
 
 function escapeHtml(text) {
   const div = document.createElement('div');

@@ -13,6 +13,7 @@ All notable changes to this project will be documented here.
 - Authenticated deployment status endpoint and admin panel view for app health, upload storage, reverse proxy headers, app data counts, and optional dashboard URL reachability checks.
 - `setup.sh --dry-run` and `setup.sh --update [ctid]` flows for safer install planning and existing-container updates.
 - Test coverage for unauthenticated admin mutations, token-required uploads, token-authenticated PDF uploads, and code upload rejection.
+- Admin guest management: register guests on behalf of visitors, view registration history separately from active sessions, remove history entries, purge inactive history, change guest room affiliation, clear linked devices, purge expired sessions, and check out guests.
 
 ### Changed
 - Guest uploads now require an active guest token and store files in server-derived per-guest folders.
@@ -23,6 +24,7 @@ All notable changes to this project will be documented here.
 - Existing-install updates now prompt before code updates, app state ownership fixes, service rewrites, NAS upload path changes, and service restarts.
 - Production dependencies updated to clear current `npm audit --omit=dev --audit-level=moderate` findings.
 - `.gitignore` expanded to keep runtime uploads, local config, credentials, generated archives, certificates, and temporary files out of version control.
+- Deployment status and admin panel now distinguish registration history from active guest sessions instead of showing a misleading "registered guests" total.
 
 ### Security
 - Guest uploads are restricted by MIME type, file extension, file count, file size, and file signature checks.

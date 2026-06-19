@@ -18,6 +18,7 @@ This roadmap tracks shareable project work only. Keep private domains, NAS hostn
 - [x] Authenticated deployment status checks for app health, proxy headers, upload storage, data counts, and dashboard URL reachability
 - [x] Setup dry-run and existing-install update mode with prompts before sensitive changes
 - [x] Guest upload UX with per-file validation, progress, and clearer PDF/photo guidance
+- [x] Admin guest and session management (register guests, change rooms, clear devices, check out, purge expired sessions, registration history cleanup)
 
 ## Completed sprint: deployment safety foundation
 
@@ -47,6 +48,17 @@ This roadmap tracks shareable project work only. Keep private domains, NAS hostn
   - Show per-file validation errors.
   - Show upload progress for large videos.
   - Add clearer guidance for PDF letters and phone photo uploads.
+
+## Completed sprint: admin guest management
+
+- [x] **Clarify registration history vs active sessions**
+  - Deployment status and admin panel now show separate counts.
+  - Registration history explains that repeated registrations add new rows.
+- [x] **Admin guest controls**
+  - Register guests on behalf of visitors.
+  - Change room affiliation for active sessions.
+  - Clear linked devices, extend stays, check out, and purge expired sessions.
+  - Remove or bulk-clean registration history entries.
 
 ## Suggested next sprint: guest convenience and integration
 
