@@ -115,6 +115,15 @@ var_app_user="guestportal"
 var_app_group="guestportal"
 var_unprivileged=1
 
+install_updateguest_command() {
+  local target_ct="$1"
+  pct exec "$target_ct" -- bash -c "
+    if [ -f '${var_app_dir}/scripts/updateguest.sh' ]; then
+      install -m 755 '${var_app_dir}/scripts/updateguest.sh' /usr/local/bin/updateguest
+    fi
+  " >/dev/null 2>&1
+}
+
 # Auto-detect next available CT ID
 NEXT_ID=$(pvesh get /cluster/nextid 2>/dev/null || echo "100")
 
@@ -194,7 +203,14 @@ update_existing_install() {
       mkdir -p '${var_app_dir}/uploads/backgrounds'
       chown -R '${var_app_user}:${var_app_group}' '${var_app_dir}' /etc/guest-portal
     " >/dev/null 2>&1
+    install_updateguest_command "$target_ct"
     msg_ok "Application code updated"
+  fi
+
+  if prompt_yes_no "  Install or refresh the in-container updateguest command?" "y"; then
+    msg_info "Installing updateguest command"
+    install_updateguest_command "$target_ct"
+    msg_ok "updateguest command installed"
   fi
 
   if prompt_yes_no "  Initialize missing state files and fix /etc/guest-portal ownership?" "y"; then
@@ -463,6 +479,7 @@ pct exec "$CT_ID" -- bash -c "
   mkdir -p '${var_app_dir}/uploads/backgrounds'
   chown -R '${var_app_user}:${var_app_group}' '${var_app_dir}' /etc/guest-portal
 " >/dev/null 2>&1
+install_updateguest_command "$CT_ID"
 msg_ok "Installed Node.js dependencies"
 
 # ─── Guest Room Configuration ───────────────────────────────────────────────
@@ -933,7 +950,8 @@ echo -e "${TAB}${BOLD}Useful Commands:${CL}"
 echo -e "${TAB}  ${DGN}pct enter ${CT_ID}${CL}                    Enter the container"
 echo -e "${TAB}  ${DGN}pct exec ${CT_ID} -- systemctl status guest-portal${CL}"
 echo -e "${TAB}  ${DGN}pct exec ${CT_ID} -- journalctl -u guest-portal -f${CL}"
-echo -e "${TAB}  ${DGN}cd ${var_app_dir} && git pull${CL}     Update to latest version"
+echo -e "${TAB}  ${DGN}pct exec ${CT_ID} -- updateguest${CL}         Update app from inside container"
+echo -e "${TAB}  ${DGN}pct exec ${CT_ID} -- updateguest --dry-run${CL} Preview update steps"
 echo ""
 if [[ -z "$ADMIN_HASH" || "$ADMIN_HASH" == *"placeholder"* ]]; then
   echo -e "${INFO}${YW}Visit /admin.html to create your admin account on first login.${CL}"
