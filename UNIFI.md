@@ -18,6 +18,8 @@ This app should not be the only security boundary for guests. Use UniFi and your
 
 With this model, UniFi decides who may join the guest network. Guest Portal then creates the room session, stores the guest token in the browser, and requires that token for uploads.
 
+Use [PROXY.md](PROXY.md) for HTTPS, split DNS, and Nginx Proxy Manager guidance. Use [BACKUP.md](BACKUP.md) for NAS backup and permission checks.
+
 ## Home Assistant isolation checklist
 
 - Use a dedicated Home Assistant guest user.

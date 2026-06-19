@@ -12,25 +12,28 @@ This roadmap tracks shareable project work only. Keep private domains, NAS hostn
 - [x] Guest uploads reject scripts and executable file types
 - [x] UniFi guest WiFi deployment guidance
 - [x] Dependency audit currently passes for production dependencies
+- [x] Least-privilege LXC defaults with a non-root `guestportal` service user
+- [x] Generic Nginx Proxy Manager, split DNS, and DNS challenge HTTPS guidance
+- [x] Backup/restore guidance for config, app state, uploads, and NAS permissions
 
-## Suggested next sprint: deployment safety and observability
+## Completed sprint: deployment safety foundation
 
-### High priority
-
-- [ ] **Use least-privilege LXC defaults**
+- [x] **Use least-privilege LXC defaults**
   - Prefer unprivileged containers where NAS mount requirements allow it.
   - Run the Node service as a dedicated non-root user.
   - Document the tradeoff if a privileged container is required for a specific NAS mount.
-- [ ] **Harden reverse proxy deployment**
+- [x] **Harden reverse proxy deployment**
   - Add generic Nginx Proxy Manager guidance for internal DNS, HTTPS, HSTS, and upload size limits.
   - Keep domain names and Cloudflare tokens out of repo files.
   - Document Cloudflare DNS challenge setup using placeholders only.
-- [ ] **Add backup and restore guidance**
+- [x] **Add backup and restore guidance**
   - Document what to back up from `/etc/guest-portal`.
   - Document how to restore config, rooms, guest sessions, and upload metadata.
   - Include NAS share permission and quota checks.
 
-### Medium priority
+## Suggested next sprint: deployment checks and update safety
+
+### High priority
 
 - [ ] **Add deployment health checks**
   - Add a lightweight authenticated admin status view.
@@ -39,6 +42,9 @@ This roadmap tracks shareable project work only. Keep private domains, NAS hostn
   - Detect existing installs.
   - Prompt before changing config, storage, service files, or NAS mount settings.
   - Add a dry-run option for setup changes.
+
+### Medium priority
+
 - [ ] **Improve guest upload UX**
   - Show per-file validation errors.
   - Show upload progress for large videos.
