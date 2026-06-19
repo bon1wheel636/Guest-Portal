@@ -63,3 +63,176 @@ a {
 a:hover {
   text-decoration: underline;
 }
+
+/* Admin panel */
+.admin-container {
+  max-width: 960px;
+}
+
+.admin-header {
+  margin-bottom: 1.5rem;
+}
+
+.admin-subtitle {
+  margin: 0.25rem 0 0;
+  color: #666;
+  font-size: 0.95rem;
+}
+
+.admin-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 1.5rem;
+  border-bottom: 1px solid #ddd;
+  padding-bottom: 0.75rem;
+}
+
+.admin-tab {
+  margin-top: 0;
+  padding: 0.55rem 1rem;
+  background: #eef2f7;
+  color: #333;
+  border: 1px solid #d7dee8;
+  border-radius: 999px;
+  font-size: 0.95rem;
+}
+
+.admin-tab.active {
+  background: #0078d4;
+  color: #fff;
+  border-color: #0078d4;
+}
+
+.admin-panel {
+  display: none;
+}
+
+.admin-panel.active {
+  display: block;
+}
+
+.admin-panel h2 {
+  margin-top: 0;
+}
+
+.admin-panel h2:not(:first-child),
+.admin-panel h3 {
+  margin-top: 2rem;
+}
+
+.admin-help {
+  color: #666;
+  font-size: 0.92rem;
+  margin-top: -0.5rem;
+}
+
+.admin-card {
+  padding: 1rem;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  background: #fafafa;
+  margin-bottom: 1rem;
+}
+
+.admin-item {
+  border: 1px solid #ddd;
+  padding: 0.85rem;
+  margin: 0.75rem 0;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.admin-item-meta {
+  float: right;
+  color: #666;
+  font-size: 0.9rem;
+}
+
+.admin-list {
+  padding-left: 1.25rem;
+}
+
+.admin-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.admin-actions button,
+.admin-item button,
+.admin-list button {
+  margin-top: 0.5rem;
+  margin-right: 0.5rem;
+}
+
+.admin-muted {
+  color: #666;
+  font-style: italic;
+}
+
+.admin-error-text {
+  color: #b42318;
+}
+
+.admin-ok {
+  color: #1b7f37;
+  font-weight: bold;
+}
+
+.admin-ok-block {
+  border-color: #b7ebc6;
+  background: #f3fff6;
+}
+
+.admin-mono {
+  font-family: monospace;
+  font-size: 0.9rem;
+  word-break: break-all;
+}
+
+.admin-bg-preview {
+  max-width: 220px;
+  max-height: 160px;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+}
+
+.admin-device-list {
+  margin: 0.35rem 0 0.75rem;
+  padding-left: 1.25rem;
+  font-size: 0.9rem;
+}
+
+.btn-secondary {
+  background: #6c757d;
+}
+
+.btn-secondary:hover {
+  background: #5a6268;
+}
+
+.btn-success {
+  background: #28a745;
+}
+
+.btn-success:hover {
+  background: #218838;
+}
+
+.btn-danger,
+.btn-danger-inline {
+  background: #dc3545;
+}
+
+.btn-danger:hover,
+.btn-danger-inline:hover {
+  background: #c82333;
+}
+
+.btn-danger-inline {
+  margin-top: 0.5rem;
+  padding: 0.45rem 0.75rem;
+  font-size: 0.9rem;
+}

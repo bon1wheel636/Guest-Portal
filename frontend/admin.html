@@ -7,133 +7,247 @@
   <link rel="stylesheet" href="styles.css"/>
 </head>
 <body>
-  <div class="container">
-<div id="adminSetupForm" style="display:none;">
-  <h2>Initial Admin Setup</h2>
-  <p>No admin account configured. Create one to get started.</p>
-  <form id="setupForm">
-    <label>Username:</label>
-    <input type="text" id="setupUser" minlength="3" maxlength="50" pattern="[a-zA-Z0-9_-]+" required />
-    <small>3-50 characters, letters/numbers/underscore/hyphen only</small>
-    <label>Password:</label>
-    <input type="password" id="setupPass" minlength="8" required />
-    <small>Minimum 8 characters</small>
-    <label>Confirm Password:</label>
-    <input type="password" id="setupPassConfirm" minlength="8" required />
-    <button type="submit">Create Admin Account</button>
-  </form>
-</div>
-<div id="adminLoginForm" style="display:none;">
-  <h2>Admin Login</h2>
-  <form id="loginForm">
-    <label>Username:</label>
-    <input type="text" id="adminUser" required />
-    <label>Password:</label>
-    <input type="password" id="adminPass" required />
-    <button type="submit">Login</button>
-  </form>
-</div>
-<div id="adminContent" style="display:none;">
-    <h1>Admin Panel</h1>
-    <h2>Deployment Status</h2>
-    <p style="font-size: 0.9em; color: #666;">Checks service health, reverse proxy headers, upload storage, and optional dashboard URL reachability.</p>
-    <div style="margin-bottom:10px;">
-      <button id="refreshDeploymentStatus" style="background:#6c757d;">Refresh Status</button>
-      <button id="checkDashboardUrls" style="background:#28a745;margin-left:5px;">Check Dashboard URLs</button>
+  <div class="container admin-container">
+    <div id="adminSetupForm" style="display:none;">
+      <h2>Initial Admin Setup</h2>
+      <p>No admin account configured. Create one to get started.</p>
+      <form id="setupForm">
+        <label>Username:</label>
+        <input type="text" id="setupUser" minlength="3" maxlength="50" pattern="[a-zA-Z0-9_-]+" required />
+        <small>3-50 characters, letters/numbers/underscore/hyphen only</small>
+        <label>Password:</label>
+        <input type="password" id="setupPass" minlength="8" required />
+        <small>Minimum 8 characters</small>
+        <label>Confirm Password:</label>
+        <input type="password" id="setupPassConfirm" minlength="8" required />
+        <button type="submit">Create Admin Account</button>
+      </form>
     </div>
-    <div id="deploymentStatus" style="margin-bottom:15px;padding:10px;border:1px solid #ddd;border-radius:5px;background:#fafafa;"></div>
 
-    <h2>Add or Update Room</h2>
-    <form id="roomForm">
-      <label for="roomName">Room Name:</label>
-      <input type="text" id="roomName" required />
-      <label for="dashboardUrl">Dashboard URL:</label>
-      <input type="text" id="dashboardUrl" required />
-      <button type="submit">Save Room</button>
-    </form>
-    <h2>Current Rooms</h2>
-    <ul id="roomList"></ul>
-<h2>Landing Page Background</h2>
-<div id="bgPreview" style="margin-bottom:10px;">
-  <img id="bgImage" src="" alt="Current background" style="max-width:200px;max-height:150px;display:none;border:1px solid #ccc;" />
-  <p id="noBgText">No background image set</p>
-</div>
-<form id="bgForm" enctype="multipart/form-data">
-  <label>Upload Background Image:</label>
-  <input type="file" id="bgFile" name="background" accept="image/*" required />
-  <small>Max 5MB. Supported: JPG, PNG, GIF, WebP</small>
-  <button type="submit">Upload Background</button>
-</form>
-<button id="removeBg" style="margin-top:10px;background:#dc3545;">Remove Background</button>
+    <div id="adminContent" style="display:none;">
+      <header class="admin-header">
+        <div>
+          <h1>Admin Panel</h1>
+          <p class="admin-subtitle">Signed in with browser HTTP Basic Auth. Close the browser tab to end your admin session.</p>
+        </div>
+      </header>
 
-<h2>Upload Storage Path</h2>
-<p style="font-size: 0.9em; color: #666;">Where guest photos are saved. Point this to an NFS/SMB mount for NAS storage.</p>
-<div id="uploadPathStatus" style="margin-bottom:10px;padding:8px;border-radius:5px;background:#f0f0f0;font-family:monospace;font-size:0.9em;"></div>
-<form id="uploadPathForm">
-  <label>Upload Directory (absolute path):</label>
-  <input type="text" id="uploadPathInput" placeholder="/mnt/nas/guest-photos" required />
-  <small>Directory must exist and be writable. Mount your NFS/SMB share first.</small>
-  <button type="submit">Update Upload Path</button>
-</form>
-<button id="resetUploadPath" style="margin-top:10px;background:#6c757d;">Reset to Default</button>
+      <nav class="admin-tabs" role="tablist" aria-label="Admin sections">
+        <button type="button" class="admin-tab active" data-tab="overview" role="tab" aria-selected="true">Overview</button>
+        <button type="button" class="admin-tab" data-tab="rooms" role="tab" aria-selected="false">Rooms &amp; Portal</button>
+        <button type="button" class="admin-tab" data-tab="guests" role="tab" aria-selected="false">Guests</button>
+        <button type="button" class="admin-tab" data-tab="storage" role="tab" aria-selected="false">Photos &amp; Storage</button>
+        <button type="button" class="admin-tab" data-tab="settings" role="tab" aria-selected="false">Settings</button>
+      </nav>
 
-<h2>Guest Photos</h2>
-<p style="font-size: 0.9em; color: #666;">Browse and download guest photo uploads. Download to your NAS or local backup.</p>
-<div style="margin-bottom:10px;">
-  <button id="downloadAllPhotos" style="background:#28a745;">Download All Photos (.zip)</button>
-  <button id="deleteAllPhotos" style="background:#dc3545;margin-left:5px;">Delete All Photos</button>
-  <button id="refreshPhotos" style="background:#6c757d;margin-left:5px;">Refresh</button>
-</div>
-<div id="photoFolderList"></div>
+      <section class="admin-panel active" data-panel="overview" role="tabpanel">
+        <h2>Deployment Status</h2>
+        <p class="admin-help">Service health, reverse proxy headers, upload storage, and optional dashboard URL reachability.</p>
+        <div class="admin-actions">
+          <button id="refreshDeploymentStatus" class="btn-secondary">Refresh Status</button>
+          <button id="checkDashboardUrls" class="btn-success">Check Dashboard URLs</button>
+        </div>
+        <div id="deploymentStatus" class="admin-card"></div>
+      </section>
 
-<h2>Session Settings</h2>
-<form id="timeoutForm">
-  <label>Admin Auto-Logout Timeout (minutes):</label>
-  <input type="number" id="adminTimeoutMinutes" min="1" value="15" required />
-  <button type="submit">Update Timeout</button>
-</form>
-<form id="expirationForm">
-  <label>Session Code Expiration (minutes):</label>
-  <input type="number" id="expirationMinutes" min="1" value="10" required />
-  <button type="submit">Update Expiration</button>
-</form>
+      <section class="admin-panel" data-panel="rooms" role="tabpanel">
+        <h2>Rooms</h2>
+        <p class="admin-help">Map guest rooms to Home Assistant dashboard URLs.</p>
+        <form id="roomForm" class="admin-card">
+          <label for="roomName">Room Name:</label>
+          <input type="text" id="roomName" required />
+          <label for="dashboardUrl">Dashboard URL:</label>
+          <input type="text" id="dashboardUrl" required />
+          <button type="submit">Save Room</button>
+        </form>
+        <h3>Current Rooms</h3>
+        <ul id="roomList" class="admin-list"></ul>
 
-<h2>Active Session Codes</h2>
-<ul id="sessionList"></ul>
+        <h2>Landing Page Background</h2>
+        <div id="bgPreview" class="admin-card">
+          <img id="bgImage" src="" alt="Current background" class="admin-bg-preview" style="display:none;" />
+          <p id="noBgText">No background image set</p>
+        </div>
+        <form id="bgForm" enctype="multipart/form-data" class="admin-card">
+          <label>Upload Background Image:</label>
+          <input type="file" id="bgFile" name="background" accept="image/*" required />
+          <small>Max 5MB. Supported: JPG, PNG, GIF, WebP</small>
+          <button type="submit">Upload Background</button>
+        </form>
+        <button id="removeBg" class="btn-danger">Remove Background</button>
+      </section>
 
-<h2>Register Guest (Admin)</h2>
-<p style="font-size: 0.9em; color: #666;">Create a guest session on behalf of a guest. Share the returned token or have them register normally on the portal.</p>
-<form id="adminRegisterForm">
-  <label>Guest Name:</label>
-  <input type="text" id="adminGuestName" required />
-  <label>Room:</label>
-  <select id="adminGuestRoom" required></select>
-  <label>Stay (days):</label>
-  <input type="number" id="adminGuestStayDays" min="1" max="30" value="7" required />
-  <button type="submit">Register Guest</button>
-</form>
-<div id="adminRegisterResult" style="margin-top:10px;"></div>
+      <section class="admin-panel" data-panel="guests" role="tabpanel">
+        <h2>Register Guest</h2>
+        <p class="admin-help">Create a guest session on behalf of a visitor. Share the returned token securely.</p>
+        <form id="adminRegisterForm" class="admin-card">
+          <label>Guest Name:</label>
+          <input type="text" id="adminGuestName" required />
+          <label>Room:</label>
+          <select id="adminGuestRoom" required></select>
+          <label>Stay (days):</label>
+          <input type="number" id="adminGuestStayDays" min="1" max="30" value="7" required />
+          <button type="submit">Register Guest</button>
+        </form>
+        <div id="adminRegisterResult"></div>
 
-<h2>Registration History</h2>
-<p style="font-size: 0.9em; color: #666;">Every registration is logged here. Repeated registrations (tests, re-registers) add new rows — this is not the same as active sessions below.</p>
-<div style="margin-bottom:10px;">
-  <button id="purgeInactiveHistory" style="background:#6c757d;">Remove Inactive History</button>
-  <button id="purgeAllHistory" style="background:#dc3545;margin-left:5px;">Clear All History</button>
-</div>
-<div id="guestList"></div>
+        <h2>Guest Sessions</h2>
+        <p class="admin-help">Active stays: extend, change room, clear devices, or check out.</p>
+        <div class="admin-actions">
+          <button id="purgeExpiredSessions" class="btn-secondary">Purge Expired Sessions</button>
+          <button id="refreshGuestSessions" class="btn-secondary">Refresh</button>
+        </div>
+        <div id="guestSessionList"></div>
 
-<h2>Guest Sessions</h2>
-<p style="font-size: 0.9em; color: #666;">Guests with persistent sessions (can return during their stay). Extend stays, change rooms, clear linked devices, or check out.</p>
-<div style="margin-bottom:10px;">
-  <button id="purgeExpiredSessions" style="background:#6c757d;">Purge Expired Sessions</button>
-  <button id="refreshGuestSessions" style="background:#6c757d;margin-left:5px;">Refresh</button>
-</div>
-<div id="guestSessionList"></div>
+        <h2>Registration History</h2>
+        <p class="admin-help">Audit log of registrations. Repeated registrations add new rows.</p>
+        <div class="admin-actions">
+          <button id="purgeInactiveHistory" class="btn-secondary">Remove Inactive History</button>
+          <button id="purgeAllHistory" class="btn-danger">Clear All History</button>
+        </div>
+        <div id="guestList"></div>
 
+        <h2>Active Session Codes</h2>
+        <p class="admin-help">Legacy one-time device link codes awaiting use.</p>
+        <ul id="sessionList" class="admin-list"></ul>
+      </section>
+
+      <section class="admin-panel" data-panel="storage" role="tabpanel">
+        <h2>Upload Storage Path</h2>
+        <p class="admin-help">Where guest photos are saved. Point this to an NFS/SMB mount for NAS storage.</p>
+        <div id="uploadPathStatus" class="admin-card admin-mono"></div>
+        <form id="uploadPathForm" class="admin-card">
+          <label>Upload Directory (absolute path):</label>
+          <input type="text" id="uploadPathInput" placeholder="/mnt/nas/guest-photos" required />
+          <small>Directory must exist and be writable. Mount your NFS/SMB share first.</small>
+          <button type="submit">Update Upload Path</button>
+        </form>
+        <button id="resetUploadPath" class="btn-secondary">Reset to Default</button>
+
+        <h2>Guest Photos</h2>
+        <p class="admin-help">Browse, download, and delete guest uploads.</p>
+        <div class="admin-actions">
+          <button id="downloadAllPhotos" class="btn-success">Download All (.zip)</button>
+          <button id="deleteAllPhotos" class="btn-danger">Delete All Photos</button>
+          <button id="refreshPhotos" class="btn-secondary">Refresh</button>
+        </div>
+        <div id="photoFolderList"></div>
+      </section>
+
+      <section class="admin-panel" data-panel="settings" role="tabpanel">
+        <h2>Session Settings</h2>
+        <form id="timeoutForm" class="admin-card">
+          <label>Admin Auto-Logout Timeout (minutes):</label>
+          <input type="number" id="adminTimeoutMinutes" min="1" value="15" required />
+          <small>Stored for future use. With HTTP Basic Auth, sign out by closing the browser tab.</small>
+          <button type="submit">Update Timeout</button>
+        </form>
+        <form id="expirationForm" class="admin-card">
+          <label>Session Code Expiration (minutes):</label>
+          <input type="number" id="expirationMinutes" min="1" value="10" required />
+          <button type="submit">Update Expiration</button>
+        </form>
+      </section>
+    </div>
   </div>
+
   <script>
+    const setupBox = document.getElementById('adminSetupForm');
+    const adminContent = document.getElementById('adminContent');
+    let cachedRooms = [];
+    let activeTab = 'overview';
+
+    function authFetch(url, options = {}) {
+      return fetch(url, { credentials: 'same-origin', ...options });
+    }
+
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    function statusBadge(ok, label) {
+      const color = ok ? '#1b7f37' : '#b42318';
+      const text = ok ? (label || 'OK') : (label || 'Needs attention');
+      return `<span style="color:${color};font-weight:bold;">${escapeHtml(text)}</span>`;
+    }
+
+    const TAB_LOADERS = {
+      overview: () => loadDeploymentStatus(false),
+      rooms: () => { loadRooms(); loadBackground(); },
+      guests: () => { loadGuestSessions(); loadGuests(); loadSessions(); },
+      storage: () => { loadUploadPath(); loadPhotos(); },
+      settings: () => loadTimeout()
+    };
+
+    function switchTab(tabId) {
+      activeTab = tabId;
+      document.querySelectorAll('.admin-tab').forEach(tab => {
+        const selected = tab.dataset.tab === tabId;
+        tab.classList.toggle('active', selected);
+        tab.setAttribute('aria-selected', selected ? 'true' : 'false');
+      });
+      document.querySelectorAll('.admin-panel').forEach(panel => {
+        panel.classList.toggle('active', panel.dataset.panel === tabId);
+      });
+      TAB_LOADERS[tabId]?.();
+    }
+
+    document.querySelectorAll('.admin-tab').forEach(tab => {
+      tab.addEventListener('click', () => switchTab(tab.dataset.tab));
+    });
+
+    async function checkSetupRequired() {
+      try {
+        const res = await fetch('/admin-api/setup-required');
+        const data = await res.json();
+        return data.setupRequired;
+      } catch {
+        return false;
+      }
+    }
+
+    async function initAdmin() {
+      const needsSetup = await checkSetupRequired();
+      if (needsSetup) {
+        setupBox.style.display = 'block';
+        adminContent.style.display = 'none';
+        return;
+      }
+      setupBox.style.display = 'none';
+      adminContent.style.display = 'block';
+      switchTab('overview');
+    }
+
+    document.getElementById('setupForm')?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const username = document.getElementById('setupUser').value;
+      const password = document.getElementById('setupPass').value;
+      const confirm = document.getElementById('setupPassConfirm').value;
+      if (password !== confirm) {
+        alert('Passwords do not match');
+        return;
+      }
+      try {
+        const res = await fetch('/admin-api/setup', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username, password })
+        });
+        if (res.ok) {
+          alert('Admin account created. The page will reload and your browser will ask you to sign in.');
+          location.reload();
+        } else {
+          alert('Setup failed: ' + await res.text());
+        }
+      } catch (err) {
+        alert('Setup failed: ' + err.message);
+      }
+    });
+
     async function loadRooms() {
-      const res = await fetch('/admin-api/rooms');
+      const res = await authFetch('/admin-api/rooms');
       const rooms = await res.json();
       const list = document.getElementById('roomList');
       list.innerHTML = '';
@@ -156,6 +270,7 @@
           });
         }
       }
+      cachedRooms = rooms;
       rooms.forEach(room => {
         const li = document.createElement('li');
         const strong = document.createElement('strong');
@@ -164,819 +279,535 @@
         li.appendChild(document.createTextNode(': ' + room.dashboardUrl + ' '));
         const btn = document.createElement('button');
         btn.textContent = 'Delete';
+        btn.className = 'btn-danger-inline';
         btn.onclick = () => deleteRoom(room.name);
         li.appendChild(btn);
         list.appendChild(li);
       });
     }
+
     async function deleteRoom(name) {
-      await fetch('/admin-api/rooms/' + encodeURIComponent(name), { method: 'DELETE', headers: { 'Authorization': getAuthHeader() } });
+      await authFetch('/admin-api/rooms/' + encodeURIComponent(name), { method: 'DELETE' });
       loadRooms();
     }
+
     document.getElementById('roomForm').addEventListener('submit', async e => {
       e.preventDefault();
-      const name = document.getElementById('roomName').value;
-      const dashboardUrl = document.getElementById('dashboardUrl').value;
-      await fetch('/admin-api/rooms', {
+      await authFetch('/admin-api/rooms', {
         method: 'POST',
-        headers: { 'Authorization': getAuthHeader(), 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, dashboardUrl })
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: document.getElementById('roomName').value,
+          dashboardUrl: document.getElementById('dashboardUrl').value
+        })
       });
       document.getElementById('roomForm').reset();
       loadRooms();
     });
-    loadRooms();
-  
-document.getElementById('expirationForm').addEventListener('submit', async (e) => {
-  e.preventDefault();
-  const minutes = parseInt(document.getElementById('expirationMinutes').value);
-  await fetch('/admin-api/session-expiration', {
-    method: 'POST',
-    headers: { 'Authorization': getAuthHeader(), 'Content-Type': 'application/json' },
-    body: JSON.stringify({ minutes })
-  });
-  alert('Updated expiration time.');
-});
 
-async function loadSessions() {
-  const res = await fetch('/admin-api/sessions', { headers: { 'Authorization': getAuthHeader() } });
-  const sessions = await res.json();
-  const ul = document.getElementById('sessionList');
-  ul.innerHTML = '';
-  sessions.forEach(sess => {
-    const li = document.createElement('li');
-    li.textContent = `${sess.code} → ${sess.guest.name} (${sess.guest.room}) [${Math.ceil(sess.minutesLeft)}m]`;
-    const btn = document.createElement('button');
-    btn.textContent = 'Revoke';
-    btn.onclick = async () => {
-      await fetch('/admin-api/sessions/' + sess.code, { method: 'DELETE', headers: { 'Authorization': getAuthHeader() } });
-      loadSessions();
-    };
-    li.appendChild(btn);
-    ul.appendChild(li);
-  });
-}
-loadSessions();
-
-
-const setupBox = document.getElementById('adminSetupForm');
-const loginForm = document.getElementById('loginForm');
-const loginBox = document.getElementById('adminLoginForm');
-const adminContent = document.getElementById('adminContent');
-let authHeader = '';
-
-function getAuthHeader() {
-  return sessionStorage.getItem('authHeader') || '';
-}
-
-function setAuthHeader(user, pass) {
-  const encoded = btoa(`${user}:${pass}`);
-  sessionStorage.setItem('authHeader', 'Basic ' + encoded);
-}
-
-function clearAuth() {
-  sessionStorage.removeItem('authHeader');
-  location.reload();
-}
-
-function statusBadge(ok, label) {
-  const color = ok ? '#1b7f37' : '#b42318';
-  const text = ok ? (label || 'OK') : (label || 'Needs attention');
-  return `<span style="color:${color};font-weight:bold;">${escapeHtml(text)}</span>`;
-}
-
-function renderDeploymentStatus(data) {
-  const container = document.getElementById('deploymentStatus');
-  if (!data) {
-    container.innerHTML = '<p style="color:#666;">Deployment status has not been loaded yet.</p>';
-    return;
-  }
-
-  const storageOk = data.storage.exists && data.storage.isDirectory && data.storage.writable;
-  const proxyText = data.reverseProxy.httpsDetected
-    ? 'HTTPS detected'
-    : (data.reverseProxy.usingForwardedHeaders ? 'Forwarded headers seen, HTTPS not detected' : 'Direct/internal request');
-
-  let html = '';
-  html += `<p><strong>App:</strong> ${statusBadge(data.app.status === 'ok', 'OK')} `;
-  html += `<small>v${escapeHtml(data.app.version)} | ${escapeHtml(data.app.environment)} | uptime ${data.app.uptimeSeconds}s</small></p>`;
-  html += `<p><strong>Upload storage:</strong> ${statusBadge(storageOk)} `;
-  html += `<small>${escapeHtml(data.storage.path)} (exists: ${data.storage.exists ? 'yes' : 'no'}, writable: ${data.storage.writable ? 'yes' : 'no'})</small></p>`;
-  if (data.storage.error) {
-    html += `<p style="color:#b42318;"><small>${escapeHtml(data.storage.error)}</small></p>`;
-  }
-  html += `<p><strong>Reverse proxy:</strong> ${escapeHtml(proxyText)} `;
-  html += `<small>host: ${escapeHtml(data.reverseProxy.forwardedHost || data.reverseProxy.host || 'unknown')}, proto: ${escapeHtml(data.reverseProxy.forwardedProto || 'none')}</small></p>`;
-  html += `<p><strong>Data:</strong> ${data.data.rooms} room(s), ${data.data.registrationHistory} registration history entr${data.data.registrationHistory === 1 ? 'y' : 'ies'}, ${data.data.activeGuestSessions} active guest session(s), ${data.data.expiredGuestSessions} expired session(s), ${data.data.pendingSessionCodes} pending code(s)</p>`;
-
-  if (data.dashboards.rooms.length > 0) {
-    html += '<p><strong>Dashboard URLs:</strong></p><ul>';
-    data.dashboards.rooms.forEach(room => {
-      let result = 'not checked';
-      if (room.checked) {
-        result = room.reachable ? `reachable (${room.status || 'no status'})` : `not reachable${room.error ? ': ' + room.error : ''}`;
+    function renderDeploymentStatus(data) {
+      const container = document.getElementById('deploymentStatus');
+      if (!data) {
+        container.innerHTML = '<p class="admin-muted">Deployment status has not been loaded yet.</p>';
+        return;
       }
-      html += `<li>${escapeHtml(room.name)} - ${escapeHtml(result)}<br><small>${escapeHtml(room.dashboardUrl || 'No URL')}</small></li>`;
-    });
-    html += '</ul>';
-  } else {
-    html += '<p><strong>Dashboard URLs:</strong> No rooms configured.</p>';
-  }
-
-  html += `<p><small>Generated ${escapeHtml(new Date(data.generatedAt).toLocaleString())}</small></p>`;
-  container.innerHTML = html;
-}
-
-async function loadDeploymentStatus(checkUrls = false) {
-  const container = document.getElementById('deploymentStatus');
-  container.innerHTML = '<p style="color:#666;">Checking deployment status...</p>';
-  try {
-    const res = await fetch('/admin-api/deployment-status?checkUrls=' + (checkUrls ? 'true' : 'false'), {
-      headers: { 'Authorization': getAuthHeader() }
-    });
-    if (!res.ok) {
-      container.innerHTML = '<p style="color:#b42318;">Failed to load deployment status: ' + escapeHtml(await res.text()) + '</p>';
-      return;
-    }
-    renderDeploymentStatus(await res.json());
-  } catch (err) {
-    container.innerHTML = '<p style="color:#b42318;">Failed to load deployment status: ' + escapeHtml(err.message) + '</p>';
-  }
-}
-
-document.getElementById('refreshDeploymentStatus')?.addEventListener('click', () => loadDeploymentStatus(false));
-document.getElementById('checkDashboardUrls')?.addEventListener('click', () => loadDeploymentStatus(true));
-
-async function checkSetupRequired() {
-  try {
-    const res = await fetch('/admin-api/setup-required');
-    const data = await res.json();
-    return data.setupRequired;
-  } catch {
-    return false;
-  }
-}
-
-async function verifyLogin() {
-  const res = await fetch('/admin-api/login', {
-    method: 'POST',
-    headers: { 'Authorization': getAuthHeader() }
-  });
-  return res.ok;
-}
-
-async function initAdmin() {
-  // Check if initial setup is needed
-  const needsSetup = await checkSetupRequired();
-  if (needsSetup) {
-    setupBox.style.display = 'block';
-    loginBox.style.display = 'none';
-    adminContent.style.display = 'none';
-    return;
-  }
-
-  const isLoggedIn = await verifyLogin();
-  if (!isLoggedIn) {
-    setupBox.style.display = 'none';
-    loginBox.style.display = 'block';
-    adminContent.style.display = 'none';
-    return;
-  }
-  setupBox.style.display = 'none';
-  loginBox.style.display = 'none';
-  adminContent.style.display = 'block';
-  loadRooms();
-  loadSessions();
-  loadTimeout();
-  loadGuests();
-  startInactivityTimer();
-}
-
-// Handle initial setup form
-document.getElementById('setupForm')?.addEventListener('submit', async (e) => {
-  e.preventDefault();
-  const username = document.getElementById('setupUser').value;
-  const password = document.getElementById('setupPass').value;
-  const confirm = document.getElementById('setupPassConfirm').value;
-
-  if (password !== confirm) {
-    alert('Passwords do not match');
-    return;
-  }
-
-  try {
-    const res = await fetch('/admin-api/setup', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username, password })
-    });
-
-    if (res.ok) {
-      alert('Admin account created! Please log in.');
-      setAuthHeader(username, password);
-      initAdmin();
-    } else {
-      const error = await res.text();
-      alert('Setup failed: ' + error);
-    }
-  } catch (err) {
-    alert('Setup failed: ' + err.message);
-  }
-});
-
-loginForm?.addEventListener('submit', async (e) => {
-  e.preventDefault();
-  const user = document.getElementById('adminUser').value;
-  const pass = document.getElementById('adminPass').value;
-  setAuthHeader(user, pass);
-  initAdmin();
-});
-
-// PATCH: Auto-logout
-let timeoutMinutes = 15;
-let activityTimeout;
-
-function resetTimer() {
-  clearTimeout(activityTimeout);
-  activityTimeout = setTimeout(() => {
-    clearAuth();
-    alert("Session expired due to inactivity.");
-  }, timeoutMinutes * 60 * 1000);
-}
-
-function startInactivityTimer() {
-  document.addEventListener('mousemove', resetTimer);
-  document.addEventListener('keydown', resetTimer);
-  resetTimer();
-}
-
-async function loadTimeout() {
-  try {
-    const res = await fetch('/admin-api/admin-timeout', { headers: { 'Authorization': getAuthHeader() }});
-    if (res.ok) {
-      const data = await res.json();
-      timeoutMinutes = data.minutes || 15;
-      document.getElementById('adminTimeoutMinutes').value = timeoutMinutes;
-    }
-  } catch {}
-}
-
-document.getElementById('timeoutForm').addEventListener('submit', async (e) => {
-  e.preventDefault();
-  const minutes = parseInt(document.getElementById('adminTimeoutMinutes').value);
-  timeoutMinutes = minutes;
-  await fetch('/admin-api/admin-timeout', {
-    method: 'POST',
-    headers: {
-      'Authorization': getAuthHeader(),
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({ minutes })
-  });
-  alert("Admin timeout updated.");
-  resetTimer();
-});
-
-async function loadGuests() {
-  try {
-    const res = await fetch('/admin-api/guests', {
-      headers: { 'Authorization': getAuthHeader() }
-    });
-    if (!res.ok) return;
-    const guests = await res.json();
-    const container = document.getElementById('guestList');
-    container.innerHTML = '';
-    if (!guests || guests.length === 0) {
-      container.innerHTML = '<p style="color:#666;font-style:italic;">No registration history</p>';
-      return;
-    }
-
-    guests.forEach(g => {
-      const div = document.createElement('div');
-      div.style.cssText = 'border:1px solid #ddd;padding:8px;margin:8px 0;border-radius:5px;';
-
-      const status = g.hasActiveSession
-        ? '<span style="color:#1b7f37;font-weight:bold;">Active session</span>'
-        : '<span style="color:#666;">No active session</span>';
-
-      let html = `<strong>${escapeHtml(g.name)}</strong> - Room: ${escapeHtml(g.room)}<br>`;
-      html += `<small>Registered ${new Date(g.timestamp).toLocaleString()} | ${status}</small>`;
-      div.innerHTML = html;
-
-      const removeBtn = document.createElement('button');
-      removeBtn.textContent = 'Remove';
-      removeBtn.style.cssText = 'margin-top:8px;margin-right:5px;font-size:0.85em;background:#dc3545;';
-      removeBtn.onclick = async () => {
-        const endSession = g.hasActiveSession && confirm('Also end this guest\'s active session?');
-        const url = `/admin-api/guests/${encodeURIComponent(g.guestId)}?endSession=${endSession ? 'true' : 'false'}`;
-        const res = await fetch(url, {
-          method: 'DELETE',
-          headers: { 'Authorization': getAuthHeader() }
+      const storageOk = data.storage.exists && data.storage.isDirectory && data.storage.writable;
+      const proxyText = data.reverseProxy.httpsDetected
+        ? 'HTTPS detected'
+        : (data.reverseProxy.usingForwardedHeaders ? 'Forwarded headers seen, HTTPS not detected' : 'Direct/internal request');
+      let html = '';
+      html += `<p><strong>App:</strong> ${statusBadge(data.app.status === 'ok', 'OK')} `;
+      html += `<small>v${escapeHtml(data.app.version)} | ${escapeHtml(data.app.environment)} | uptime ${data.app.uptimeSeconds}s</small></p>`;
+      html += `<p><strong>Upload storage:</strong> ${statusBadge(storageOk)} `;
+      html += `<small>${escapeHtml(data.storage.path)} (exists: ${data.storage.exists ? 'yes' : 'no'}, writable: ${data.storage.writable ? 'yes' : 'no'})</small></p>`;
+      if (data.storage.error) {
+        html += `<p class="admin-error-text"><small>${escapeHtml(data.storage.error)}</small></p>`;
+      }
+      html += `<p><strong>Reverse proxy:</strong> ${escapeHtml(proxyText)} `;
+      html += `<small>host: ${escapeHtml(data.reverseProxy.forwardedHost || data.reverseProxy.host || 'unknown')}, proto: ${escapeHtml(data.reverseProxy.forwardedProto || 'none')}</small></p>`;
+      html += `<p><strong>Data:</strong> ${data.data.rooms} room(s), ${data.data.registrationHistory} registration history entr${data.data.registrationHistory === 1 ? 'y' : 'ies'}, ${data.data.activeGuestSessions} active guest session(s), ${data.data.expiredGuestSessions} expired session(s), ${data.data.pendingSessionCodes} pending code(s)</p>`;
+      if (data.dashboards.rooms.length > 0) {
+        html += '<p><strong>Dashboard URLs:</strong></p><ul>';
+        data.dashboards.rooms.forEach(room => {
+          let result = 'not checked';
+          if (room.checked) {
+            result = room.reachable ? `reachable (${room.status || 'no status'})` : `not reachable${room.error ? ': ' + room.error : ''}`;
+          }
+          html += `<li>${escapeHtml(room.name)} - ${escapeHtml(result)}<br><small>${escapeHtml(room.dashboardUrl || 'No URL')}</small></li>`;
         });
-        if (res.ok) {
-          loadGuests();
-          loadGuestSessions();
-          loadDeploymentStatus(false);
-        } else {
-          alert('Failed to remove history entry: ' + await res.text());
+        html += '</ul>';
+      } else {
+        html += '<p><strong>Dashboard URLs:</strong> No rooms configured.</p>';
+      }
+      html += `<p><small>Generated ${escapeHtml(new Date(data.generatedAt).toLocaleString())}</small></p>`;
+      container.innerHTML = html;
+    }
+
+    async function loadDeploymentStatus(checkUrls = false) {
+      const container = document.getElementById('deploymentStatus');
+      container.innerHTML = '<p class="admin-muted">Checking deployment status...</p>';
+      try {
+        const res = await authFetch('/admin-api/deployment-status?checkUrls=' + (checkUrls ? 'true' : 'false'));
+        if (!res.ok) {
+          container.innerHTML = '<p class="admin-error-text">Failed to load deployment status: ' + escapeHtml(await res.text()) + '</p>';
+          return;
         }
-      };
-      div.appendChild(removeBtn);
-
-      container.appendChild(div);
-    });
-  } catch (err) {
-    console.error('Failed to load registration history:', err);
-  }
-}
-
-document.getElementById('purgeInactiveHistory')?.addEventListener('click', async () => {
-  if (!confirm('Remove registration history entries that no longer have an active session?')) return;
-  try {
-    const res = await fetch('/admin-api/guests/purge-history', {
-      method: 'POST',
-      headers: { 'Authorization': getAuthHeader(), 'Content-Type': 'application/json' },
-      body: JSON.stringify({ inactiveOnly: true })
-    });
-    if (res.ok) {
-      const data = await res.json();
-      alert('Removed ' + data.removed + ' history entr' + (data.removed === 1 ? 'y' : 'ies') + '.');
-      loadGuests();
-      loadDeploymentStatus(false);
-    } else {
-      alert('Failed: ' + await res.text());
-    }
-  } catch (err) {
-    alert('Failed: ' + err.message);
-  }
-});
-
-document.getElementById('purgeAllHistory')?.addEventListener('click', async () => {
-  if (!confirm('Clear ALL registration history? Active sessions will remain until checked out.')) return;
-  try {
-    const res = await fetch('/admin-api/guests/purge-history', {
-      method: 'POST',
-      headers: { 'Authorization': getAuthHeader(), 'Content-Type': 'application/json' },
-      body: JSON.stringify({ inactiveOnly: false })
-    });
-    if (res.ok) {
-      const data = await res.json();
-      alert('Removed ' + data.removed + ' history entr' + (data.removed === 1 ? 'y' : 'ies') + '.');
-      loadGuests();
-      loadDeploymentStatus(false);
-    } else {
-      alert('Failed: ' + await res.text());
-    }
-  } catch (err) {
-    alert('Failed: ' + err.message);
-  }
-});
-
-document.getElementById('adminRegisterForm')?.addEventListener('submit', async (e) => {
-  e.preventDefault();
-  const name = document.getElementById('adminGuestName').value.trim();
-  const room = document.getElementById('adminGuestRoom').value;
-  const stayDays = parseInt(document.getElementById('adminGuestStayDays').value, 10) || 7;
-  const resultBox = document.getElementById('adminRegisterResult');
-
-  try {
-    const res = await fetch('/admin-api/guests', {
-      method: 'POST',
-      headers: { 'Authorization': getAuthHeader(), 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, room, stayDays })
-    });
-    if (!res.ok) {
-      resultBox.innerHTML = '<p style="color:#b42318;">Registration failed: ' + escapeHtml(await res.text()) + '</p>';
-      return;
-    }
-    const data = await res.json();
-
-    resultBox.innerHTML = `
-      <p style="color:#1b7f37;"><strong>Guest registered.</strong> ${escapeHtml(data.guest.name)} in ${escapeHtml(data.guest.room)}.</p>
-      <p><small>Checkout: ${escapeHtml(new Date(data.guest.checkoutDate).toLocaleString())}</small></p>
-      <p style="font-family:monospace;font-size:0.85em;word-break:break-all;">Token (share securely): ${escapeHtml(data.token)}</p>
-    `;
-    document.getElementById('adminRegisterForm').reset();
-    document.getElementById('adminGuestStayDays').value = '7';
-    loadGuests();
-    loadGuestSessions();
-    loadDeploymentStatus(false);
-  } catch (err) {
-    resultBox.innerHTML = '<p style="color:#b42318;">Registration failed: ' + escapeHtml(err.message) + '</p>';
-  }
-});
-
-// Background image handling
-async function loadBackground() {
-  try {
-    const res = await fetch('/admin-api/background');
-    const data = await res.json();
-    const img = document.getElementById('bgImage');
-    const noText = document.getElementById('noBgText');
-    if (data.backgroundImage) {
-      img.src = data.backgroundImage;
-      img.style.display = 'block';
-      noText.style.display = 'none';
-    } else {
-      img.style.display = 'none';
-      noText.style.display = 'block';
-    }
-  } catch (err) {
-    console.error('Failed to load background:', err);
-  }
-}
-
-document.getElementById('bgForm')?.addEventListener('submit', async (e) => {
-  e.preventDefault();
-  const fileInput = document.getElementById('bgFile');
-  if (!fileInput.files[0]) {
-    alert('Please select an image');
-    return;
-  }
-  const formData = new FormData();
-  formData.append('background', fileInput.files[0]);
-
-  try {
-    const res = await fetch('/admin-api/background', {
-      method: 'POST',
-      headers: { 'Authorization': getAuthHeader() },
-      body: formData
-    });
-    if (res.ok) {
-      alert('Background image uploaded!');
-      fileInput.value = '';
-      loadBackground();
-    } else {
-      const error = await res.text();
-      alert('Upload failed: ' + error);
-    }
-  } catch (err) {
-    alert('Upload failed: ' + err.message);
-  }
-});
-
-document.getElementById('removeBg')?.addEventListener('click', async () => {
-  if (!confirm('Remove the background image?')) return;
-  try {
-    const res = await fetch('/admin-api/background', { method: 'DELETE', headers: { 'Authorization': getAuthHeader() } });
-    if (res.ok) {
-      alert('Background removed');
-      loadBackground();
-    }
-  } catch (err) {
-    alert('Failed to remove: ' + err.message);
-  }
-});
-
-// Upload path management
-async function loadUploadPath() {
-  try {
-    const res = await fetch('/admin-api/upload-path', { headers: { 'Authorization': getAuthHeader() } });
-    if (!res.ok) return;
-    const data = await res.json();
-    const status = document.getElementById('uploadPathStatus');
-    const writableIcon = data.writable ? '&#9989;' : '&#10060;';
-    const existsIcon = data.exists ? '&#9989;' : '&#10060;';
-    status.innerHTML = `<strong>Current:</strong> ${escapeHtml(data.path)}<br>`
-      + `<small>Exists: ${existsIcon} &nbsp; Writable: ${writableIcon}</small>`;
-    document.getElementById('uploadPathInput').placeholder = data.path;
-  } catch (err) {
-    console.error('Failed to load upload path:', err);
-  }
-}
-
-document.getElementById('uploadPathForm')?.addEventListener('submit', async (e) => {
-  e.preventDefault();
-  const newPath = document.getElementById('uploadPathInput').value.trim();
-  if (!newPath) return;
-
-  try {
-    const res = await fetch('/admin-api/upload-path', {
-      method: 'POST',
-      headers: { 'Authorization': getAuthHeader(), 'Content-Type': 'application/json' },
-      body: JSON.stringify({ path: newPath })
-    });
-    if (res.ok) {
-      alert('Upload path updated!');
-      document.getElementById('uploadPathInput').value = '';
-      loadUploadPath();
-    } else {
-      const error = await res.text();
-      alert('Failed: ' + error);
-    }
-  } catch (err) {
-    alert('Error: ' + err.message);
-  }
-});
-
-document.getElementById('resetUploadPath')?.addEventListener('click', async () => {
-  if (!confirm('Reset upload path to the default (./uploads)?')) return;
-  try {
-    const res = await fetch('/admin-api/upload-path', {
-      method: 'POST',
-      headers: { 'Authorization': getAuthHeader(), 'Content-Type': 'application/json' },
-      body: JSON.stringify({ path: '' })
-    });
-    if (res.ok) {
-      alert('Upload path reset to default.');
-      loadUploadPath();
-    } else {
-      const error = await res.text();
-      alert('Failed: ' + error);
-    }
-  } catch (err) {
-    alert('Error: ' + err.message);
-  }
-});
-
-// Guest photo management
-function formatBytes(bytes) {
-  if (bytes === 0) return '0 B';
-  const units = ['B', 'KB', 'MB', 'GB'];
-  const i = Math.floor(Math.log(bytes) / Math.log(1024));
-  return (bytes / Math.pow(1024, i)).toFixed(i > 0 ? 1 : 0) + ' ' + units[i];
-}
-
-async function loadPhotos() {
-  try {
-    const res = await fetch('/admin-api/uploads', { headers: { 'Authorization': getAuthHeader() } });
-    if (!res.ok) return;
-    const data = await res.json();
-    const container = document.getElementById('photoFolderList');
-    container.innerHTML = '';
-
-    if (!data.folders || data.folders.length === 0) {
-      container.innerHTML = '<p style="color:#666;font-style:italic;">No guest photos uploaded yet</p>';
-      return;
+        renderDeploymentStatus(await res.json());
+      } catch (err) {
+        container.innerHTML = '<p class="admin-error-text">Failed to load deployment status: ' + escapeHtml(err.message) + '</p>';
+      }
     }
 
-    data.folders.forEach(folder => {
-      const div = document.createElement('div');
-      div.style.cssText = 'border:1px solid #ddd;padding:10px;margin:8px 0;border-radius:5px;';
+    document.getElementById('refreshDeploymentStatus')?.addEventListener('click', () => loadDeploymentStatus(false));
+    document.getElementById('checkDashboardUrls')?.addEventListener('click', () => loadDeploymentStatus(true));
 
-      let html = `<strong>${escapeHtml(folder.name)}</strong>`;
-      html += `<span style="float:right;color:#666;font-size:0.9em;">${folder.fileCount} file${folder.fileCount !== 1 ? 's' : ''} &bull; ${formatBytes(folder.totalSize)}</span>`;
-
-      div.innerHTML = html;
-
-      const downloadBtn = document.createElement('button');
-      downloadBtn.textContent = 'Download';
-      downloadBtn.style.cssText = 'margin-top:8px;font-size:0.85em;';
-      downloadBtn.onclick = () => downloadZip('/admin-api/uploads/download/' + encodeURIComponent(folder.name), folder.name + '.zip');
-      div.appendChild(downloadBtn);
-
-      const deleteBtn = document.createElement('button');
-      deleteBtn.textContent = 'Delete';
-      deleteBtn.style.cssText = 'margin-top:8px;margin-left:5px;font-size:0.85em;background:#dc3545;';
-      deleteBtn.onclick = async () => {
-        if (!confirm('Delete "' + folder.name + '" and all its photos? This cannot be undone.')) return;
-        try {
-          const res = await fetch('/admin-api/uploads/' + encodeURIComponent(folder.name), {
-            method: 'DELETE', headers: { 'Authorization': getAuthHeader() }
-          });
-          if (res.ok) loadPhotos();
-          else alert('Delete failed: ' + await res.text());
-        } catch (err) { alert('Delete failed: ' + err.message); }
-      };
-      div.appendChild(deleteBtn);
-
-      container.appendChild(div);
-    });
-  } catch (err) {
-    console.error('Failed to load photos:', err);
-  }
-}
-
-async function downloadZip(url, filename) {
-  try {
-    const res = await fetch(url, { headers: { 'Authorization': getAuthHeader() } });
-    if (!res.ok) {
-      alert('Download failed: ' + await res.text());
-      return;
-    }
-    const blob = await res.blob();
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = filename;
-    a.click();
-    URL.revokeObjectURL(a.href);
-  } catch (err) {
-    alert('Download failed: ' + err.message);
-  }
-}
-
-document.getElementById('downloadAllPhotos')?.addEventListener('click', () => {
-  const date = new Date().toISOString().split('T')[0];
-  downloadZip('/admin-api/uploads/download-all', 'guest-photos-' + date + '.zip');
-});
-
-document.getElementById('deleteAllPhotos')?.addEventListener('click', async () => {
-  if (!confirm('Delete ALL guest photo folders? This cannot be undone. Make sure you have downloaded them first.')) return;
-  try {
-    const res = await fetch('/admin-api/uploads', {
-      method: 'DELETE', headers: { 'Authorization': getAuthHeader() }
-    });
-    if (res.ok) {
-      const data = await res.json();
-      alert('Deleted ' + data.deleted + ' folder(s).');
-      loadPhotos();
-    } else {
-      alert('Delete failed: ' + await res.text());
-    }
-  } catch (err) { alert('Delete failed: ' + err.message); }
-});
-
-document.getElementById('refreshPhotos')?.addEventListener('click', () => {
-  loadPhotos();
-});
-
-// Guest session management
-let cachedRooms = [];
-
-async function loadGuestSessions() {
-  try {
-    const roomsRes = await fetch('/admin-api/rooms');
-    cachedRooms = roomsRes.ok ? await roomsRes.json() : [];
-
-    const res = await fetch('/admin-api/guest-sessions', {
-      headers: { 'Authorization': getAuthHeader() }
-    });
-    if (!res.ok) return;
-    const sessions = await res.json();
-    const container = document.getElementById('guestSessionList');
-    container.innerHTML = '';
-
-    if (sessions.length === 0) {
-      container.innerHTML = '<p style="color:#666;font-style:italic;">No guest sessions</p>';
-      return;
-    }
-
-    sessions.forEach(guest => {
-      const div = document.createElement('div');
-      div.style.cssText = 'border:1px solid #ddd;padding:10px;margin:10px 0;border-radius:5px;';
-
-      const daysLeft = Math.ceil((new Date(guest.checkoutDate) - new Date()) / (1000*60*60*24));
-      const checkoutStr = new Date(guest.checkoutDate).toLocaleDateString();
-      const expiredLabel = guest.isExpired
-        ? ' <span style="color:#b42318;font-weight:bold;">(expired)</span>'
-        : '';
-
-      let html = `<strong>${escapeHtml(guest.name)}</strong> - Room: ${escapeHtml(guest.room)}${expiredLabel}<br>`;
-      html += `<small>Checkout: ${checkoutStr} (${daysLeft} days remaining)</small><br>`;
-      html += `<small>Devices (${guest.devices.length}):</small><ul style="margin:5px 0;padding-left:20px;">`;
-
-      guest.devices.forEach((device) => {
-        const addedDate = new Date(device.addedAt).toLocaleString();
-        const ua = device.userAgent || 'Unknown device';
-        const shortUa = ua.length > 50 ? ua.substring(0, 50) + '...' : ua;
-        html += `<li style="font-size:0.85em;">${escapeHtml(shortUa)} <small>(${addedDate})</small></li>`;
+    document.getElementById('expirationForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      await authFetch('/admin-api/session-expiration', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ minutes: parseInt(document.getElementById('expirationMinutes').value, 10) })
       });
-      html += '</ul>';
+      alert('Updated expiration time.');
+    });
 
-      div.innerHTML = html;
-
-      const roomSelect = document.createElement('select');
-      roomSelect.style.cssText = 'margin-right:10px;font-size:0.9em;';
-      cachedRooms.forEach(room => {
-        const option = document.createElement('option');
-        option.value = room.name;
-        option.textContent = room.name;
-        if (room.name === guest.room) option.selected = true;
-        roomSelect.appendChild(option);
+    async function loadSessions() {
+      const res = await authFetch('/admin-api/sessions');
+      const sessions = await res.json();
+      const ul = document.getElementById('sessionList');
+      ul.innerHTML = '';
+      sessions.forEach(sess => {
+        const li = document.createElement('li');
+        li.textContent = `${sess.code} → ${sess.guest.name} (${sess.guest.room}) [${Math.ceil(sess.minutesLeft)}m]`;
+        const btn = document.createElement('button');
+        btn.textContent = 'Revoke';
+        btn.className = 'btn-danger-inline';
+        btn.onclick = async () => {
+          await authFetch('/admin-api/sessions/' + sess.code, { method: 'DELETE' });
+          loadSessions();
+        };
+        li.appendChild(btn);
+        ul.appendChild(li);
       });
+    }
 
-      const changeRoomBtn = document.createElement('button');
-      changeRoomBtn.textContent = 'Change Room';
-      changeRoomBtn.style.marginRight = '10px';
-      changeRoomBtn.onclick = async () => {
-        const room = roomSelect.value;
-        if (!room || room === guest.room) return;
-        const res = await fetch(`/admin-api/guest-sessions/${guest.id}`, {
-          method: 'PATCH',
-          headers: { 'Authorization': getAuthHeader(), 'Content-Type': 'application/json' },
-          body: JSON.stringify({ room })
-        });
+    async function loadTimeout() {
+      try {
+        const res = await authFetch('/admin-api/admin-timeout');
         if (res.ok) {
-          alert('Room updated');
-          loadGuestSessions();
-          loadGuests();
-        } else {
-          alert('Failed to change room: ' + await res.text());
+          const data = await res.json();
+          document.getElementById('adminTimeoutMinutes').value = data.minutes || 15;
         }
-      };
-      div.appendChild(roomSelect);
-      div.appendChild(changeRoomBtn);
+      } catch {}
+    }
 
-      const clearDevicesBtn = document.createElement('button');
-      clearDevicesBtn.textContent = 'Clear Devices';
-      clearDevicesBtn.style.marginRight = '10px';
-      clearDevicesBtn.onclick = async () => {
-        if (!confirm(`Clear all linked devices for ${guest.name}? They can link devices again with a new link code.`)) return;
-        const res = await fetch(`/admin-api/guest-sessions/${guest.id}/devices`, {
-          method: 'DELETE',
-          headers: { 'Authorization': getAuthHeader() }
+    document.getElementById('timeoutForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      await authFetch('/admin-api/admin-timeout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ minutes: parseInt(document.getElementById('adminTimeoutMinutes').value, 10) })
+      });
+      alert('Admin timeout updated.');
+    });
+
+    async function loadGuests() {
+      try {
+        const res = await authFetch('/admin-api/guests');
+        if (!res.ok) return;
+        const guests = await res.json();
+        const container = document.getElementById('guestList');
+        container.innerHTML = '';
+        if (!guests || guests.length === 0) {
+          container.innerHTML = '<p class="admin-muted">No registration history</p>';
+          return;
+        }
+        guests.forEach(g => {
+          const div = document.createElement('div');
+          div.className = 'admin-item';
+          const status = g.hasActiveSession
+            ? '<span class="admin-ok">Active session</span>'
+            : '<span class="admin-muted">No active session</span>';
+          div.innerHTML = `<strong>${escapeHtml(g.name)}</strong> - Room: ${escapeHtml(g.room)}<br><small>Registered ${new Date(g.timestamp).toLocaleString()} | ${status}</small>`;
+          const removeBtn = document.createElement('button');
+          removeBtn.textContent = 'Remove';
+          removeBtn.className = 'btn-danger-inline';
+          removeBtn.onclick = async () => {
+            const endSession = g.hasActiveSession && confirm('Also end this guest\'s active session?');
+            const url = `/admin-api/guests/${encodeURIComponent(g.guestId)}?endSession=${endSession ? 'true' : 'false'}`;
+            const delRes = await authFetch(url, { method: 'DELETE' });
+            if (delRes.ok) {
+              loadGuests();
+              loadGuestSessions();
+              if (activeTab === 'overview') loadDeploymentStatus(false);
+            } else {
+              alert('Failed to remove history entry: ' + await delRes.text());
+            }
+          };
+          div.appendChild(removeBtn);
+          container.appendChild(div);
         });
-        if (res.ok) {
-          alert('Linked devices cleared');
-          loadGuestSessions();
-        } else {
-          alert('Failed to clear devices: ' + await res.text());
-        }
-      };
-      div.appendChild(clearDevicesBtn);
+      } catch (err) {
+        console.error('Failed to load registration history:', err);
+      }
+    }
 
-      const extendBtn = document.createElement('button');
-      extendBtn.textContent = 'Extend Stay';
-      extendBtn.style.marginRight = '10px';
-      extendBtn.onclick = async () => {
-        const days = prompt('Extend stay by how many days?', '7');
-        if (!days) return;
-        const res = await fetch(`/admin-api/guest-sessions/${guest.id}/extend`, {
+    document.getElementById('purgeInactiveHistory')?.addEventListener('click', async () => {
+      if (!confirm('Remove registration history entries that no longer have an active session?')) return;
+      const res = await authFetch('/admin-api/guests/purge-history', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ inactiveOnly: true })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        alert('Removed ' + data.removed + ' history entr' + (data.removed === 1 ? 'y' : 'ies') + '.');
+        loadGuests();
+        if (activeTab === 'overview') loadDeploymentStatus(false);
+      } else {
+        alert('Failed: ' + await res.text());
+      }
+    });
+
+    document.getElementById('purgeAllHistory')?.addEventListener('click', async () => {
+      if (!confirm('Clear ALL registration history? Active sessions will remain until checked out.')) return;
+      const res = await authFetch('/admin-api/guests/purge-history', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ inactiveOnly: false })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        alert('Removed ' + data.removed + ' history entr' + (data.removed === 1 ? 'y' : 'ies') + '.');
+        loadGuests();
+        if (activeTab === 'overview') loadDeploymentStatus(false);
+      } else {
+        alert('Failed: ' + await res.text());
+      }
+    });
+
+    document.getElementById('adminRegisterForm')?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const resultBox = document.getElementById('adminRegisterResult');
+      try {
+        const res = await authFetch('/admin-api/guests', {
           method: 'POST',
-          headers: { 'Authorization': getAuthHeader(), 'Content-Type': 'application/json' },
-          body: JSON.stringify({ days: parseInt(days) })
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: document.getElementById('adminGuestName').value.trim(),
+            room: document.getElementById('adminGuestRoom').value,
+            stayDays: parseInt(document.getElementById('adminGuestStayDays').value, 10) || 7
+          })
         });
-        if (res.ok) {
-          alert('Stay extended!');
-          loadGuestSessions();
-          loadDeploymentStatus(false);
-        } else {
-          alert('Failed to extend stay');
+        if (!res.ok) {
+          resultBox.innerHTML = '<p class="admin-error-text">Registration failed: ' + escapeHtml(await res.text()) + '</p>';
+          return;
         }
-      };
-      div.appendChild(extendBtn);
+        const data = await res.json();
+        resultBox.innerHTML = `
+          <div class="admin-card admin-ok-block">
+            <p><strong>Guest registered.</strong> ${escapeHtml(data.guest.name)} in ${escapeHtml(data.guest.room)}.</p>
+            <p><small>Checkout: ${escapeHtml(new Date(data.guest.checkoutDate).toLocaleString())}</small></p>
+            <p class="admin-mono">Token: ${escapeHtml(data.token)}</p>
+          </div>`;
+        document.getElementById('adminRegisterForm').reset();
+        document.getElementById('adminGuestStayDays').value = '7';
+        loadGuests();
+        loadGuestSessions();
+        if (activeTab === 'overview') loadDeploymentStatus(false);
+      } catch (err) {
+        resultBox.innerHTML = '<p class="admin-error-text">Registration failed: ' + escapeHtml(err.message) + '</p>';
+      }
+    });
 
-      const checkoutBtn = document.createElement('button');
-      checkoutBtn.textContent = 'Check Out';
-      checkoutBtn.style.background = '#dc3545';
-      checkoutBtn.onclick = async () => {
-        if (!confirm(`Check out ${guest.name}? This will end their session.`)) return;
-        const res = await fetch(`/admin-api/guest-sessions/${guest.id}`, {
-          method: 'DELETE',
-          headers: { 'Authorization': getAuthHeader() }
-        });
-        if (res.ok) {
-          alert('Guest checked out');
-          loadGuestSessions();
-          loadGuests();
-          loadDeploymentStatus(false);
+    async function loadBackground() {
+      try {
+        const res = await authFetch('/admin-api/background');
+        const data = await res.json();
+        const img = document.getElementById('bgImage');
+        const noText = document.getElementById('noBgText');
+        if (data.backgroundImage) {
+          img.src = data.backgroundImage;
+          img.style.display = 'block';
+          noText.style.display = 'none';
         } else {
-          alert('Failed to check out guest');
+          img.style.display = 'none';
+          noText.style.display = 'block';
         }
-      };
-      div.appendChild(checkoutBtn);
-
-      container.appendChild(div);
-    });
-  } catch (err) {
-    console.error('Failed to load guest sessions:', err);
-  }
-}
-
-document.getElementById('purgeExpiredSessions')?.addEventListener('click', async () => {
-  if (!confirm('Remove all expired guest sessions from storage?')) return;
-  try {
-    const res = await fetch('/admin-api/guest-sessions/purge-expired', {
-      method: 'POST',
-      headers: { 'Authorization': getAuthHeader() }
-    });
-    if (res.ok) {
-      const data = await res.json();
-      alert('Removed ' + data.removed + ' expired session(s).');
-      loadGuestSessions();
-      loadDeploymentStatus(false);
-    } else {
-      alert('Failed: ' + await res.text());
+      } catch (err) {
+        console.error('Failed to load background:', err);
+      }
     }
-  } catch (err) {
-    alert('Failed: ' + err.message);
-  }
-});
 
-document.getElementById('refreshGuestSessions')?.addEventListener('click', () => {
-  loadGuestSessions();
-});
+    document.getElementById('bgForm')?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const fileInput = document.getElementById('bgFile');
+      if (!fileInput.files[0]) {
+        alert('Please select an image');
+        return;
+      }
+      const formData = new FormData();
+      formData.append('background', fileInput.files[0]);
+      const res = await authFetch('/admin-api/background', { method: 'POST', body: formData });
+      if (res.ok) {
+        alert('Background image uploaded!');
+        fileInput.value = '';
+        loadBackground();
+      } else {
+        alert('Upload failed: ' + await res.text());
+      }
+    });
 
-function escapeHtml(text) {
-  const div = document.createElement('div');
-  div.textContent = text;
-  return div.innerHTML;
-}
+    document.getElementById('removeBg')?.addEventListener('click', async () => {
+      if (!confirm('Remove the background image?')) return;
+      const res = await authFetch('/admin-api/background', { method: 'DELETE' });
+      if (res.ok) {
+        alert('Background removed');
+        loadBackground();
+      }
+    });
 
-// Load background on admin init
-const origInitAdmin = initAdmin;
-initAdmin = async function() {
-  await origInitAdmin();
-  if (adminContent.style.display === 'block') {
-    loadDeploymentStatus(false);
-    loadBackground();
-    loadUploadPath();
-    loadPhotos();
-    loadGuestSessions();
-  }
-};
+    async function loadUploadPath() {
+      try {
+        const res = await authFetch('/admin-api/upload-path');
+        if (!res.ok) return;
+        const data = await res.json();
+        const status = document.getElementById('uploadPathStatus');
+        const writableIcon = data.writable ? 'yes' : 'no';
+        const existsIcon = data.exists ? 'yes' : 'no';
+        status.innerHTML = `<strong>Current:</strong> ${escapeHtml(data.path)}<br><small>Exists: ${existsIcon} &nbsp; Writable: ${writableIcon}</small>`;
+        document.getElementById('uploadPathInput').placeholder = data.path;
+      } catch (err) {
+        console.error('Failed to load upload path:', err);
+      }
+    }
 
-initAdmin();
-</script>
+    document.getElementById('uploadPathForm')?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const newPath = document.getElementById('uploadPathInput').value.trim();
+      if (!newPath) return;
+      const res = await authFetch('/admin-api/upload-path', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: newPath })
+      });
+      if (res.ok) {
+        alert('Upload path updated!');
+        document.getElementById('uploadPathInput').value = '';
+        loadUploadPath();
+      } else {
+        alert('Failed: ' + await res.text());
+      }
+    });
+
+    document.getElementById('resetUploadPath')?.addEventListener('click', async () => {
+      if (!confirm('Reset upload path to the default (./uploads)?')) return;
+      const res = await authFetch('/admin-api/upload-path', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: '' })
+      });
+      if (res.ok) {
+        alert('Upload path reset to default.');
+        loadUploadPath();
+      } else {
+        alert('Failed: ' + await res.text());
+      }
+    });
+
+    function formatBytes(bytes) {
+      if (bytes === 0) return '0 B';
+      const units = ['B', 'KB', 'MB', 'GB'];
+      const i = Math.floor(Math.log(bytes) / Math.log(1024));
+      return (bytes / Math.pow(1024, i)).toFixed(i > 0 ? 1 : 0) + ' ' + units[i];
+    }
+
+    async function loadPhotos() {
+      try {
+        const res = await authFetch('/admin-api/uploads');
+        if (!res.ok) return;
+        const data = await res.json();
+        const container = document.getElementById('photoFolderList');
+        container.innerHTML = '';
+        if (!data.folders || data.folders.length === 0) {
+          container.innerHTML = '<p class="admin-muted">No guest photos uploaded yet</p>';
+          return;
+        }
+        data.folders.forEach(folder => {
+          const div = document.createElement('div');
+          div.className = 'admin-item';
+          div.innerHTML = `<strong>${escapeHtml(folder.name)}</strong><span class="admin-item-meta">${folder.fileCount} file${folder.fileCount !== 1 ? 's' : ''} &bull; ${formatBytes(folder.totalSize)}</span>`;
+          const downloadBtn = document.createElement('button');
+          downloadBtn.textContent = 'Download';
+          downloadBtn.onclick = () => downloadZip('/admin-api/uploads/download/' + encodeURIComponent(folder.name), folder.name + '.zip');
+          div.appendChild(downloadBtn);
+          const deleteBtn = document.createElement('button');
+          deleteBtn.textContent = 'Delete';
+          deleteBtn.className = 'btn-danger-inline';
+          deleteBtn.onclick = async () => {
+            if (!confirm('Delete "' + folder.name + '" and all its photos?')) return;
+            const delRes = await authFetch('/admin-api/uploads/' + encodeURIComponent(folder.name), { method: 'DELETE' });
+            if (delRes.ok) loadPhotos();
+            else alert('Delete failed: ' + await delRes.text());
+          };
+          div.appendChild(deleteBtn);
+          container.appendChild(div);
+        });
+      } catch (err) {
+        console.error('Failed to load photos:', err);
+      }
+    }
+
+    async function downloadZip(url, filename) {
+      const res = await authFetch(url);
+      if (!res.ok) {
+        alert('Download failed: ' + await res.text());
+        return;
+      }
+      const blob = await res.blob();
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(a.href);
+    }
+
+    document.getElementById('downloadAllPhotos')?.addEventListener('click', () => {
+      downloadZip('/admin-api/uploads/download-all', 'guest-photos-' + new Date().toISOString().split('T')[0] + '.zip');
+    });
+
+    document.getElementById('deleteAllPhotos')?.addEventListener('click', async () => {
+      if (!confirm('Delete ALL guest photo folders?')) return;
+      const res = await authFetch('/admin-api/uploads', { method: 'DELETE' });
+      if (res.ok) {
+        alert('Deleted ' + (await res.json()).deleted + ' folder(s).');
+        loadPhotos();
+      } else {
+        alert('Delete failed: ' + await res.text());
+      }
+    });
+
+    document.getElementById('refreshPhotos')?.addEventListener('click', loadPhotos);
+
+    async function loadGuestSessions() {
+      try {
+        if (cachedRooms.length === 0) {
+          const roomsRes = await authFetch('/admin-api/rooms');
+          cachedRooms = roomsRes.ok ? await roomsRes.json() : [];
+        }
+        const res = await authFetch('/admin-api/guest-sessions');
+        if (!res.ok) return;
+        const sessions = await res.json();
+        const container = document.getElementById('guestSessionList');
+        container.innerHTML = '';
+        if (sessions.length === 0) {
+          container.innerHTML = '<p class="admin-muted">No guest sessions</p>';
+          return;
+        }
+        sessions.forEach(guest => {
+          const div = document.createElement('div');
+          div.className = 'admin-item';
+          const daysLeft = Math.ceil((new Date(guest.checkoutDate) - new Date()) / (1000 * 60 * 60 * 24));
+          const expiredLabel = guest.isExpired ? ' <span class="admin-error-text">(expired)</span>' : '';
+          let html = `<strong>${escapeHtml(guest.name)}</strong> - Room: ${escapeHtml(guest.room)}${expiredLabel}<br>`;
+          html += `<small>Checkout: ${new Date(guest.checkoutDate).toLocaleDateString()} (${daysLeft} days remaining)</small><br>`;
+          html += `<small>Devices (${guest.devices.length}):</small><ul class="admin-device-list">`;
+          guest.devices.forEach(device => {
+            const ua = device.userAgent || 'Unknown device';
+            html += `<li>${escapeHtml(ua.length > 50 ? ua.substring(0, 50) + '...' : ua)} <small>(${new Date(device.addedAt).toLocaleString()})</small></li>`;
+          });
+          html += '</ul>';
+          div.innerHTML = html;
+
+          const roomSelect = document.createElement('select');
+          cachedRooms.forEach(room => {
+            const option = document.createElement('option');
+            option.value = room.name;
+            option.textContent = room.name;
+            if (room.name === guest.room) option.selected = true;
+            roomSelect.appendChild(option);
+          });
+          const changeRoomBtn = document.createElement('button');
+          changeRoomBtn.textContent = 'Change Room';
+          changeRoomBtn.onclick = async () => {
+            const room = roomSelect.value;
+            if (!room || room === guest.room) return;
+            const patchRes = await authFetch(`/admin-api/guest-sessions/${guest.id}`, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ room })
+            });
+            if (patchRes.ok) { loadGuestSessions(); loadGuests(); }
+            else alert('Failed to change room: ' + await patchRes.text());
+          };
+          div.appendChild(roomSelect);
+          div.appendChild(changeRoomBtn);
+
+          const clearDevicesBtn = document.createElement('button');
+          clearDevicesBtn.textContent = 'Clear Devices';
+          clearDevicesBtn.onclick = async () => {
+            if (!confirm(`Clear all linked devices for ${guest.name}?`)) return;
+            const delRes = await authFetch(`/admin-api/guest-sessions/${guest.id}/devices`, { method: 'DELETE' });
+            if (delRes.ok) loadGuestSessions();
+            else alert('Failed to clear devices: ' + await delRes.text());
+          };
+          div.appendChild(clearDevicesBtn);
+
+          const extendBtn = document.createElement('button');
+          extendBtn.textContent = 'Extend Stay';
+          extendBtn.onclick = async () => {
+            const days = prompt('Extend stay by how many days?', '7');
+            if (!days) return;
+            const extRes = await authFetch(`/admin-api/guest-sessions/${guest.id}/extend`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ days: parseInt(days, 10) })
+            });
+            if (extRes.ok) {
+              loadGuestSessions();
+              if (activeTab === 'overview') loadDeploymentStatus(false);
+            } else {
+              alert('Failed to extend stay');
+            }
+          };
+          div.appendChild(extendBtn);
+
+          const checkoutBtn = document.createElement('button');
+          checkoutBtn.textContent = 'Check Out';
+          checkoutBtn.className = 'btn-danger-inline';
+          checkoutBtn.onclick = async () => {
+            if (!confirm(`Check out ${guest.name}?`)) return;
+            const delRes = await authFetch(`/admin-api/guest-sessions/${guest.id}`, { method: 'DELETE' });
+            if (delRes.ok) {
+              loadGuestSessions();
+              loadGuests();
+              if (activeTab === 'overview') loadDeploymentStatus(false);
+            } else {
+              alert('Failed to check out guest');
+            }
+          };
+          div.appendChild(checkoutBtn);
+          container.appendChild(div);
+        });
+      } catch (err) {
+        console.error('Failed to load guest sessions:', err);
+      }
+    }
+
+    document.getElementById('purgeExpiredSessions')?.addEventListener('click', async () => {
+      if (!confirm('Remove all expired guest sessions from storage?')) return;
+      const res = await authFetch('/admin-api/guest-sessions/purge-expired', { method: 'POST' });
+      if (res.ok) {
+        alert('Removed ' + (await res.json()).removed + ' expired session(s).');
+        loadGuestSessions();
+        if (activeTab === 'overview') loadDeploymentStatus(false);
+      } else {
+        alert('Failed: ' + await res.text());
+      }
+    });
+
+    document.getElementById('refreshGuestSessions')?.addEventListener('click', loadGuestSessions);
+    initAdmin();
+  </script>
 </body>
 </html>
