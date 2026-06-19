@@ -115,9 +115,9 @@ bash setup.sh
 
 ## 🔐 Security
 
-- All admin API endpoints protected with bcrypt-authenticated Basic Auth
+- All admin API endpoints protected with bcrypt-authenticated HTTP Basic Auth
 - Cryptographically secure token generation (`crypto.randomBytes`)
-- Admin credentials stored in `sessionStorage` (cleared on tab close)
+- `/admin.html` uses browser HTTP Basic Auth only (no duplicate login form)
 - Rate limiting on all routes (60 req/min)
 - Input validation prevents XSS and path traversal attacks
 - Guest uploads require an active guest token before files are accepted

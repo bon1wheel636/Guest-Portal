@@ -251,13 +251,14 @@ test_admin_setup_required() {
 }
 
 test_admin_login_invalid() {
+    require_admin_creds "Admin page rejects invalid Basic Auth" || return
     local http_code=$(curl -s -o /dev/null -w "%{http_code}" \
-        -X POST "$BASE_URL/admin-api/login" \
+        "$BASE_URL/admin.html" \
         -u "wronguser:wrongpass")
     if [[ "$http_code" == "401" ]]; then
-        pass "Invalid login rejected (401)"
+        pass "Admin page rejects invalid Basic Auth (401)"
     else
-        fail "Invalid login rejected" "401" "$http_code"
+        fail "Admin page rejects invalid Basic Auth" "401" "$http_code"
     fi
 }
 
@@ -481,11 +482,12 @@ test_index_html() {
 }
 
 test_admin_html() {
-    local response=$(curl -s "$BASE_URL/admin.html")
-    if [[ "$response" == *"Admin"* ]]; then
-        pass "Admin page loads"
+    require_admin_creds "Admin page loads with Basic Auth" || return
+    local response=$(admin_curl "$BASE_URL/admin.html")
+    if [[ "$response" == *"Admin Panel"* ]]; then
+        pass "Admin page loads with Basic Auth"
     else
-        fail "Admin page loads" "HTML content" "Empty or error"
+        fail "Admin page loads with Basic Auth" "Admin Panel HTML" "Empty or error"
     fi
 }
 

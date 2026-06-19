@@ -324,23 +324,36 @@ const limiter = rateLimit({
 });
 app.use(limiter);
 
-app.use(express.static('frontend'));
-
 // C1: Auth middleware for admin endpoints
 function authMiddleware(req, res, next) {
   const user = basicAuth(req);
   if (!user || user.name !== config.adminUser) {
-    res.set('WWW-Authenticate', 'Basic realm="Admin Area"');
+    res.set('WWW-Authenticate', 'Basic realm="Guest Portal Admin"');
     return res.status(401).send('Authentication required.');
   }
   bcrypt.compare(user.pass, config.adminHash, (err, result) => {
     if (result) next();
     else {
-      res.set('WWW-Authenticate', 'Basic realm="Admin Area"');
+      res.set('WWW-Authenticate', 'Basic realm="Guest Portal Admin"');
       return res.status(401).send('Access denied.');
     }
   });
 }
+
+function adminSetupRequired() {
+  return !config.adminHash || config.adminHash === '<bcrypt_hash_placeholder>';
+}
+
+function adminPageAuth(req, res, next) {
+  if (adminSetupRequired()) return next();
+  return authMiddleware(req, res, next);
+}
+
+app.get('/admin.html', adminPageAuth, (req, res) => {
+  res.sendFile(path.join(__dirname, 'frontend', 'admin.html'));
+});
+
+app.use(express.static('frontend'));
 
 // ─── Multer Storage Config ──────────────────────────────────────────────────
 
@@ -490,21 +503,6 @@ app.post('/admin-api/setup', async (req, res) => {
   } catch (err) {
     res.status(500).send('Failed to create admin account');
   }
-});
-
-app.post('/admin-api/login', (req, res) => {
-  const user = basicAuth(req);
-  if (!user || user.name !== config.adminUser) {
-    res.set('WWW-Authenticate', 'Basic realm="Admin Login"');
-    return res.status(401).send('Login required.');
-  }
-  bcrypt.compare(user.pass, config.adminHash, (err, result) => {
-    if (result) return res.sendStatus(200);
-    else {
-      res.set('WWW-Authenticate', 'Basic realm="Admin Login"');
-      return res.status(401).send('Invalid credentials.');
-    }
-  });
 });
 
 // Public: rooms list needed by guest registration page
