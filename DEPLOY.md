@@ -128,7 +128,61 @@ For UniFi guest WiFi deployments, use the UniFi hotspot or guest network as the 
 
 ---
 
-## 🔄 Updating the Application
+## Troubleshooting install
+
+### Installer stops at "Creating LXC container..." with no error
+
+Older installer versions hid `pct create` failures. Re-run with the latest `install.sh`, which now prints the Proxmox error.
+
+**Most common causes:**
+
+1. **No Debian 12 template downloaded**
+
+```bash
+pveam update
+pveam available | grep debian-12
+pveam download local debian-12-standard
+pveam list local
+```
+
+2. **Storage name differs** (not `local-lvm`)
+
+```bash
+pvesm status
+```
+
+The installer auto-selects `local-lvm` or `local-zfs`. If neither exists, create container storage in Proxmox or use Path B (manual LXC + `setup-container.sh`).
+
+3. **Wrong bridge** (default `vmbr0`)
+
+```bash
+ip -br link show type bridge
+```
+
+Re-run the installer and choose **Advanced Settings** to set the correct bridge.
+
+4. **Container ID already in use**
+
+```bash
+pct list
+```
+
+Pick an unused ID in Advanced Settings, or delete the partial container if one was half-created.
+
+**Manual test** (replace `100` and template/storage names with yours):
+
+```bash
+pct create 100 local:vztmpl/debian-12-standard_12.7-1_amd64.tar.zst \
+  --hostname guest-portal-test \
+  --cores 1 --memory 512 \
+  --net0 name=eth0,bridge=vmbr0,ip=dhcp \
+  --rootfs local-lvm:4 \
+  --unprivileged 1
+```
+
+If that command prints an error, fix that issue before rerunning the installer.
+
+---
 
 ### From the Proxmox host (full installer)
 

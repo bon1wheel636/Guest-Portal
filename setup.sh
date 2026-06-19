@@ -113,6 +113,7 @@ var_disk=4
 var_bridge="vmbr0"
 var_net="dhcp"
 var_os_template="local:vztmpl/debian-12-standard_12.0-1_amd64.tar.zst"
+var_rootfs_storage="local-lvm"
 var_repo="https://github.com/bon1wheel636/guest-portal.git"
 var_repo_raw="https://raw.githubusercontent.com/bon1wheel636/guest-portal/main"
 var_app_dir="/opt/guest-portal"
@@ -146,6 +147,102 @@ fetch_nginx_template() {
     return 0
   fi
   curl -fsSL "${var_repo_raw}/nginx/guestportal.conf" -o "$dest"
+}
+
+detect_os_template() {
+  local template=""
+  if command -v pveam >/dev/null 2>&1; then
+    template=$(pveam list local 2>/dev/null | awk '/debian-12-standard/ {print $1; exit}')
+  fi
+  if [[ -n "$template" ]]; then
+    var_os_template="$template"
+    return 0
+  fi
+
+  msg_error "No Debian 12 LXC template found on this Proxmox node."
+  echo "" >&2
+  echo -e "${INFO}${YW}Download a template, then rerun the installer:${CL}" >&2
+  echo -e "${TAB}  pveam update" >&2
+  echo -e "${TAB}  pveam available | grep debian-12" >&2
+  echo -e "${TAB}  pveam download local debian-12-standard" >&2
+  echo -e "${TAB}  pveam list local" >&2
+  exit 1
+}
+
+detect_rootfs_storage() {
+  local candidate=""
+  for candidate in local-lvm local-zfs; do
+    if pvesm status 2>/dev/null | awk 'NR>1 {print $1}' | grep -Fxq "$candidate"; then
+      var_rootfs_storage="$candidate"
+      return 0
+    fi
+  done
+
+  msg_error "Could not find container rootfs storage (expected local-lvm or local-zfs)."
+  echo "" >&2
+  echo -e "${INFO}${YW}Check available storage:${CL}" >&2
+  echo -e "${TAB}  pvesm status" >&2
+  exit 1
+}
+
+validate_bridge() {
+  local bridge="$1"
+  if ip link show "$bridge" &>/dev/null; then
+    return 0
+  fi
+
+  msg_error "Network bridge '${bridge}' was not found on this host."
+  echo "" >&2
+  echo -e "${INFO}${YW}Available bridges:${CL}" >&2
+  ip -br link show type bridge 2>/dev/null | awk '{print "    " $1}' >&2 || true
+  exit 1
+}
+
+ensure_ct_id_available() {
+  local ct_id="$1"
+  if pct status "$ct_id" &>/dev/null; then
+    msg_error "Container ID ${ct_id} is already in use."
+    echo -e "${TAB}  pct list" >&2
+    exit 1
+  fi
+}
+
+print_pct_create_help() {
+  echo "" >&2
+  echo -e "${INFO}${YW}Common fixes:${CL}" >&2
+  echo -e "${TAB}  pveam update && pveam download local debian-12-standard" >&2
+  echo -e "${TAB}  pveam list local" >&2
+  echo -e "${TAB}  pvesm status" >&2
+  echo -e "${TAB}  ip -br link show type bridge" >&2
+  echo -e "${TAB}  pct list" >&2
+}
+
+run_pct_create() {
+  local ct_id="$1"
+  shift
+  local output=""
+
+  if output=$(pct create "$ct_id" "$@" 2>&1); then
+    return 0
+  fi
+
+  msg_error "Failed to create LXC container ${ct_id}"
+  echo "$output" >&2
+  print_pct_create_help
+  exit 1
+}
+
+run_pct_start() {
+  local ct_id="$1"
+  local output=""
+
+  if output=$(pct start "$ct_id" 2>&1); then
+    return 0
+  fi
+
+  msg_error "Failed to start LXC container ${ct_id}"
+  echo "$output" >&2
+  exit 1
 }
 
 # Auto-detect next available CT ID
@@ -446,23 +543,31 @@ if [[ "$DRY_RUN" == "true" ]]; then
   exit 0
 fi
 
+detect_os_template
+detect_rootfs_storage
+validate_bridge "$CT_BRIDGE"
+ensure_ct_id_available "$CT_ID"
+
 # ─── Create Container ──────────────────────────────────────────────────────
 
 header_info
+echo -e "${INFO}${YW}Using template: ${var_os_template}${CL}"
+echo -e "${INFO}${YW}Using storage: ${var_rootfs_storage}:${CT_DISK}${CL}"
+echo ""
 msg_info "Creating LXC container ${CT_ID}"
-pct create "$CT_ID" "$var_os_template" \
+run_pct_create "$CT_ID" "$var_os_template" \
   --hostname "$CT_HOSTNAME" \
   --cores "$CT_CPU" \
   --memory "$CT_RAM" \
   --net0 "$CT_NET_STRING" \
-  --rootfs local-lvm:"$CT_DISK" \
+  --rootfs "${var_rootfs_storage}:${CT_DISK}" \
   --onboot 1 \
   --features nesting=1 \
-  --unprivileged "$CT_UNPRIVILEGED" >/dev/null 2>&1
+  --unprivileged "$CT_UNPRIVILEGED"
 msg_ok "Created LXC container ${CT_ID}"
 
 msg_info "Starting container"
-pct start "$CT_ID"
+run_pct_start "$CT_ID"
 # Wait for container to be fully running
 sleep 3
 msg_ok "Started container"
@@ -881,17 +986,17 @@ case "$proxy_choice" in
     fi
 
     msg_info "Creating NGINX container"
-    pct create "$nginx_id" "$var_os_template" \
+    run_pct_create "$nginx_id" "$var_os_template" \
       --hostname "$nginx_hostname" \
       --cores 1 --memory 256 \
       --net0 "$nginx_net" \
-      --rootfs local-lvm:2 \
+      --rootfs "${var_rootfs_storage}:2" \
       --onboot 1 \
-      --unprivileged 1 >/dev/null 2>&1
+      --unprivileged 1
     msg_ok "Created NGINX container ${nginx_id}"
 
     msg_info "Starting NGINX container and installing nginx"
-    pct start "$nginx_id"
+    run_pct_start "$nginx_id"
     sleep 3
     pct exec "$nginx_id" -- bash -c "apt-get update >/dev/null 2>&1 && apt-get install -y nginx >/dev/null 2>&1"
     msg_ok "NGINX installed"
