@@ -6,28 +6,84 @@ This document provides complete instructions for installing and deploying the Gu
 
 ## 📦 Setup Instructions
 
-1. **Clone or Extract the Project:**
+Choose one of the install paths below. **Git is not required on the Proxmox host** for either path.
+
+### Path A — Remote installer from Proxmox host (recommended)
+
+Run this directly in the **Proxmox host shell**. It downloads the installer with `curl` and creates the Guest Portal LXC for you:
+
 ```bash
-git clone https://github.com/bon1wheel636/guest-portal.git
-cd guest-portal
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/bon1wheel636/guest-portal/main/install.sh)"
 ```
 
-2. **Run the Setup Script on Proxmox Host:**
+Preview the plan without making changes:
+
 ```bash
-bash setup.sh
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/bon1wheel636/guest-portal/main/install.sh)" -- --dry-run
 ```
 
-To preview the install plan without changing anything:
+Update an existing container from the host:
+
 ```bash
-bash setup.sh --dry-run
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/bon1wheel636/guest-portal/main/install.sh)" -- --update <ctid>
 ```
 
-To update an existing container safely:
+Host requirements: `curl`, `bash`, and Proxmox `pct`. Git stays inside the container.
+
+### Path B — Manual LXC, then setup inside the container
+
+Use this if you prefer to create the LXC yourself (Proxmox UI, Terraform, another tool) and only run Guest Portal setup inside it.
+
+**Container minimums**
+
+| Setting | Recommended |
+|---------|-------------|
+| OS template | Debian 12 |
+| CPU | 1 core |
+| RAM | 512 MiB |
+| Disk | 4 GB |
+| Network | DHCP or static on your guest VLAN bridge |
+| Features | `nesting=1` if you plan container-managed tooling later |
+| Isolation | Unprivileged (recommended) |
+
+**Steps**
+
+1. Create and start the LXC from the Proxmox UI or your own automation.
+2. Enter the container console as root:
+
 ```bash
-bash setup.sh --update <ctid>
+pct enter <ctid>
 ```
 
-The interactive script will walk you through:
+3. Run the in-container installer (installs `git`, clones the app, configures systemd):
+
+```bash
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/bon1wheel636/guest-portal/main/scripts/setup-container.sh)"
+```
+
+Preview only:
+
+```bash
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/bon1wheel636/guest-portal/main/scripts/setup-container.sh)" -- --dry-run
+```
+
+Refresh an existing in-container install:
+
+```bash
+updateguest
+```
+
+or:
+
+```bash
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/bon1wheel636/guest-portal/main/scripts/setup-container.sh)" -- --update
+```
+
+Path B does **not** create a separate NGINX LXC. Point Nginx Proxy Manager or your own reverse proxy at the container IP on port `3000`. See [PROXY.md](PROXY.md).
+
+### What the installers configure
+
+Both paths walk you through (or the host installer delegates to the container for):
 - Node.js LXC container creation (name, ID, cores, memory, network)
 - Container isolation selection, defaulting to an unprivileged LXC
 - Guest room configuration with Home Assistant dashboard URLs
@@ -37,7 +93,7 @@ The interactive script will walk you through:
   2. **SMB/CIFS mount** — installs cifs-utils, stores credentials securely, mounts and adds fstab entry
   3. **Existing mounted directory** — best for host-mounted NAS shares bind-mounted into an unprivileged LXC
   4. **Skip** — use local storage or configure from admin panel later
-- Reverse proxy setup — choose one of:
+- Reverse proxy setup (Path A only) — choose one of:
   1. **Nginx Proxy Manager** — prints step-by-step NPM dashboard config
   2. **New NGINX container** — creates a dedicated LXC with TLS-ready config
   3. **Skip / Manual** — configure your own proxy later
@@ -50,7 +106,19 @@ The script automatically:
 
 Update mode prompts before changing application code, `/etc/guest-portal` ownership or state files, the systemd service, NAS upload path settings, or restarting the service.
 
-3. **Access the Portal:**
+### Optional — git checkout on the host
+
+If you are developing or want a local copy of the scripts on the Proxmox host:
+
+```bash
+git clone https://github.com/bon1wheel636/guest-portal.git
+cd guest-portal
+bash setup.sh
+```
+
+This is optional. Production installs do not need git on the host.
+
+### Access the portal
 - Guest Registration: `https://guestportal.<your-fqdn>/`
 - Photo Upload: `https://guestportal.<your-fqdn>/photo.html`
 - Admin Panel: `https://guestportal.<your-fqdn>/admin.html`
@@ -62,9 +130,15 @@ For UniFi guest WiFi deployments, use the UniFi hotspot or guest network as the 
 
 ## 🔄 Updating the Application
 
-### From the Proxmox host (recommended for full control)
+### From the Proxmox host (full installer)
 
-Use the interactive updater, which can refresh code, ownership, the systemd unit, NAS upload path, and service restart:
+Use the remote installer with `--update`:
+
+```bash
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/bon1wheel636/guest-portal/main/install.sh)" -- --update <ctid>
+```
+
+Or, if you have a git checkout on the host:
 
 ```bash
 bash setup.sh --update <ctid>
@@ -152,7 +226,7 @@ See [BACKUP.md](BACKUP.md) for config backup, restore, and NAS permission checks
 - [ ] Run `ADMIN_USER=admin ADMIN_PASS='<password>' bash test-suite.sh` to validate all endpoints
 - [ ] Verify `systemctl status guest-portal` shows active
 - [ ] Confirm service restarts after `systemctl restart guest-portal`
-- [ ] Run `bash setup.sh --dry-run` before future install changes
+- [ ] Run remote installer dry-run: `bash -c "$(curl -fsSL .../install.sh)" -- --dry-run`
 - [ ] Use `bash setup.sh --update <ctid>` for existing installs and confirm prompts before changes
 - [ ] Run `updateguest --dry-run` inside the LXC, then `updateguest` for routine code updates
 

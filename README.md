@@ -44,36 +44,54 @@ A self-hosted, mobile-friendly landing portal for guest Wi-Fi networks. Provides
 
 ## 🚀 Setup
 
-To deploy the Guest Portal, run the setup script directly from your **Proxmox host shell**. It will create the required containers and push the project files automatically.
+### Proxmox production (no git on host)
 
-### 1. Clone or unzip the project
+Run this in the **Proxmox host shell**. It downloads the installer with `curl`, creates the LXC, and configures Guest Portal inside the container:
+
+```bash
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/bon1wheel636/guest-portal/main/install.sh)"
+```
+
+Useful modes:
+
+```bash
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/bon1wheel636/guest-portal/main/install.sh)" -- --dry-run
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/bon1wheel636/guest-portal/main/install.sh)" -- --update <ctid>
+```
+
+See [DEPLOY.md](DEPLOY.md) for the manual LXC path (`setup-container.sh` inside the container) and container minimums.
+
+### Manual LXC + in-container setup
+
+Create a Debian 12 LXC (1 CPU, 512 MiB RAM, 4 GB disk), enter it as root, then:
+
+```bash
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/bon1wheel636/guest-portal/main/scripts/setup-container.sh)"
+```
+
+### Optional host git checkout
 
 ```bash
 git clone https://github.com/<your-user>/guest-portal.git
 cd guest-portal
-```
-
-### 2. Run the setup script from the host
-
-```bash
 bash setup.sh
 ```
 
-- This script creates and configures:
-  - A Node.js container for the backend server
-  - A systemd service for automatic restarts and boot persistence
-- It supports:
-  - DHCP or static IP network configuration
-  - Smart Home dashboard links per room
-  - Secure admin password hashing (bcrypt)
-  - NAS storage setup (optional):
-    1. **NFS mount** — auto-configures NFS mount point with fstab entry
-    2. **SMB/CIFS mount** — auto-configures SMB mount with stored credentials
-    3. **Skip** — use local storage or configure from admin panel later
-  - Three reverse proxy options:
-    1. **Nginx Proxy Manager** — step-by-step NPM dashboard instructions
-    2. **New NGINX container** — creates a dedicated LXC with auto-configured config
-    3. **Skip / Manual** — configure your own proxy later
+### What gets configured
+
+- A Node.js LXC for the backend server
+- A systemd service for automatic restarts and boot persistence
+- DHCP or static IP network configuration
+- Smart Home dashboard links per room
+- Secure admin password hashing (bcrypt)
+- NAS storage setup (optional):
+  1. **NFS mount** — auto-configures NFS mount point with fstab entry
+  2. **SMB/CIFS mount** — auto-configures SMB mount with stored credentials
+  3. **Skip** — use local storage or configure from admin panel later
+- Reverse proxy options (Path A / host installer):
+  1. **Nginx Proxy Manager** — step-by-step NPM dashboard instructions
+  2. **New NGINX container** — creates a dedicated LXC with auto-configured config
+  3. **Skip / Manual** — configure your own proxy later
 
 ## 📄 Documentation
 
