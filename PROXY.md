@@ -57,3 +57,5 @@ Recommended flow:
 - Keep Cloudflare or DNS provider API tokens in NPM secrets/config only.
 - Do not store real domains, tokens, or internal IPs in repository files.
 - Test `/health`, `/admin.html`, `/photo.html`, and a PDF upload after proxy changes.
+- In `/admin.html`, open **Deployment Status** and confirm HTTPS is detected from forwarded headers.
+- Use **Check Dashboard URLs** to confirm configured Home Assistant dashboard URLs are reachable from the Guest Portal container.

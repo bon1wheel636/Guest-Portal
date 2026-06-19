@@ -15,6 +15,9 @@ This roadmap tracks shareable project work only. Keep private domains, NAS hostn
 - [x] Least-privilege LXC defaults with a non-root `guestportal` service user
 - [x] Generic Nginx Proxy Manager, split DNS, and DNS challenge HTTPS guidance
 - [x] Backup/restore guidance for config, app state, uploads, and NAS permissions
+- [x] Authenticated deployment status checks for app health, proxy headers, upload storage, data counts, and dashboard URL reachability
+- [x] Setup dry-run and existing-install update mode with prompts before sensitive changes
+- [x] Guest upload UX with per-file validation, progress, and clearer PDF/photo guidance
 
 ## Completed sprint: deployment safety foundation
 
@@ -31,26 +34,21 @@ This roadmap tracks shareable project work only. Keep private domains, NAS hostn
   - Document how to restore config, rooms, guest sessions, and upload metadata.
   - Include NAS share permission and quota checks.
 
-## Suggested next sprint: deployment checks and update safety
+## Completed sprint: deployment checks and update safety
 
-### High priority
-
-- [ ] **Add deployment health checks**
+- [x] **Add deployment health checks**
   - Add a lightweight authenticated admin status view.
   - Document checks for service status, reverse proxy reachability, NAS writability, and Home Assistant URL reachability.
-- [ ] **Improve setup/update safety**
+- [x] **Improve setup/update safety**
   - Detect existing installs.
   - Prompt before changing config, storage, service files, or NAS mount settings.
   - Add a dry-run option for setup changes.
-
-### Medium priority
-
-- [ ] **Improve guest upload UX**
+- [x] **Improve guest upload UX**
   - Show per-file validation errors.
   - Show upload progress for large videos.
   - Add clearer guidance for PDF letters and phone photo uploads.
 
-### Lower priority
+## Suggested next sprint: guest convenience and integration
 
 - [ ] **UniFi external portal integration**
   - Add only after controller version, auth method, site ID, and authorization model are known.

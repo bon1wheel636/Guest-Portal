@@ -17,7 +17,10 @@
     <form id="uploadForm" enctype="multipart/form-data">
       <label for="photo">Upload your photos</label>
       <input type="file" name="photo" id="photo" accept="image/jpeg,image/png,image/gif,image/webp,image/heic,image/heif,video/mp4,video/quicktime,video/webm,application/pdf,.heic,.heif" multiple required />
-      <small>Allowed: photos, videos, and PDF letters. Code, scripts, archives, and documents with macros are blocked.</small>
+      <small>Allowed: phone photos, videos, HEIC/HEIF images, and PDF letters. For handwritten notes, upload a photo or a PDF. Code, scripts, archives, executables, and macro documents are blocked.</small>
+      <div id="fileValidation" style="margin-top:8px;font-size:0.9em;"></div>
+      <progress id="uploadProgress" value="0" max="100" style="width:100%;display:none;margin-top:10px;"></progress>
+      <div id="uploadStatus" style="margin-top:8px;font-size:0.9em;"></div>
       <button type="submit">Upload</button>
     </form>
 
@@ -58,11 +61,103 @@
     const smartHomeLink = document.getElementById('smartHomeLink');
     const guestNameSpan = document.getElementById('guestName');
     const checkoutInfo = document.getElementById('checkoutInfo');
+    const fileInput = document.getElementById('photo');
+    const fileValidation = document.getElementById('fileValidation');
+    const uploadProgress = document.getElementById('uploadProgress');
+    const uploadStatus = document.getElementById('uploadStatus');
+    const uploadButton = document.querySelector('#uploadForm button[type="submit"]');
+    const MAX_UPLOAD_BYTES = 50 * 1024 * 1024;
+    const MAX_UPLOAD_FILES = 10;
+    const ALLOWED_UPLOAD_TYPES = {
+      'image/jpeg': ['.jpg', '.jpeg'],
+      'image/png': ['.png'],
+      'image/gif': ['.gif'],
+      'image/webp': ['.webp'],
+      'image/heic': ['.heic'],
+      'image/heif': ['.heif'],
+      'video/mp4': ['.mp4'],
+      'video/quicktime': ['.mov', '.qt'],
+      'video/webm': ['.webm'],
+      'application/pdf': ['.pdf']
+    };
 
     function escapeHtml(text) {
       const div = document.createElement('div');
       div.textContent = text;
       return div.innerHTML;
+    }
+
+    function formatBytes(bytes) {
+      if (bytes === 0) return '0 B';
+      const units = ['B', 'KB', 'MB', 'GB'];
+      const i = Math.floor(Math.log(bytes) / Math.log(1024));
+      return (bytes / Math.pow(1024, i)).toFixed(i > 0 ? 1 : 0) + ' ' + units[i];
+    }
+
+    function fileExtension(name) {
+      const index = name.lastIndexOf('.');
+      return index >= 0 ? name.substring(index).toLowerCase() : '';
+    }
+
+    function validateSelectedFiles(files) {
+      const errors = [];
+      const details = [];
+
+      if (files.length > MAX_UPLOAD_FILES) {
+        errors.push(`Select up to ${MAX_UPLOAD_FILES} files at a time.`);
+      }
+
+      Array.from(files).forEach(file => {
+        const ext = fileExtension(file.name);
+        const allowedExts = ALLOWED_UPLOAD_TYPES[file.type];
+        const typeOk = Boolean(allowedExts && allowedExts.includes(ext));
+        const sizeOk = file.size <= MAX_UPLOAD_BYTES;
+
+        if (!typeOk) {
+          errors.push(`${file.name}: blocked file type. Use photos, videos, HEIC/HEIF images, or PDF letters.`);
+        }
+        if (!sizeOk) {
+          errors.push(`${file.name}: ${formatBytes(file.size)} exceeds the ${formatBytes(MAX_UPLOAD_BYTES)} per-file limit.`);
+        }
+
+        details.push({
+          name: file.name,
+          size: file.size,
+          ok: typeOk && sizeOk,
+          message: typeOk && sizeOk ? 'Ready' : 'Needs attention'
+        });
+      });
+
+      return { valid: errors.length === 0, errors, details };
+    }
+
+    function renderFileValidation(result) {
+      if (fileInput.files.length === 0) {
+        fileValidation.innerHTML = '<span style="color:#666;">Select files to see validation details.</span>';
+        return;
+      }
+
+      let html = '<ul style="padding-left:20px;margin:5px 0;">';
+      result.details.forEach(file => {
+        const color = file.ok ? '#1b7f37' : '#b42318';
+        html += `<li><strong>${escapeHtml(file.name)}</strong> (${formatBytes(file.size)}) - <span style="color:${color};">${escapeHtml(file.message)}</span></li>`;
+      });
+      html += '</ul>';
+
+      if (result.errors.length > 0) {
+        html += '<div style="color:#b42318;"><strong>Fix before uploading:</strong><ul style="padding-left:20px;margin:5px 0;">';
+        result.errors.forEach(error => {
+          html += `<li>${escapeHtml(error)}</li>`;
+        });
+        html += '</ul></div>';
+      }
+
+      fileValidation.innerHTML = html;
+    }
+
+    function setUploadStatus(message, isError = false) {
+      uploadStatus.style.color = isError ? '#b42318' : '#1b7f37';
+      uploadStatus.textContent = message;
     }
 
     if (guestData.name && guestData.room) {
@@ -80,23 +175,62 @@
       window.location.href = "index.html";
     }
 
+    fileInput.addEventListener('change', () => {
+      uploadProgress.style.display = 'none';
+      uploadProgress.value = 0;
+      uploadStatus.textContent = '';
+      renderFileValidation(validateSelectedFiles(fileInput.files));
+    });
+
     // Photo upload
     document.getElementById('uploadForm').addEventListener('submit', async (e) => {
       e.preventDefault();
       if (!guestToken) {
-        alert('Please register again before uploading. Uploads now require an active guest session.');
+        setUploadStatus('Please register again before uploading. Uploads require an active guest session.', true);
         window.location.href = 'index.html';
         return;
       }
+
+      const validation = validateSelectedFiles(fileInput.files);
+      renderFileValidation(validation);
+      if (!validation.valid) {
+        setUploadStatus('Upload blocked. Fix the listed file issues first.', true);
+        return;
+      }
+
       const formData = new FormData();
-      const files = document.getElementById('photo').files;
+      const files = fileInput.files;
       for (let i = 0; i < files.length; i++) formData.append('photos', files[i]);
-      const res = await fetch('/upload', {
-        method: 'POST',
-        headers: { 'X-Guest-Token': guestToken },
-        body: formData
+
+      uploadButton.disabled = true;
+      uploadProgress.style.display = 'block';
+      uploadProgress.value = 0;
+      setUploadStatus('Uploading...');
+
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', '/upload');
+      xhr.setRequestHeader('X-Guest-Token', guestToken);
+      xhr.upload.addEventListener('progress', event => {
+        if (event.lengthComputable) {
+          uploadProgress.value = Math.round((event.loaded / event.total) * 100);
+        }
       });
-      alert(res.ok ? 'Upload successful!' : 'Upload failed: ' + await res.text());
+      xhr.onload = () => {
+        uploadButton.disabled = false;
+        uploadProgress.value = 100;
+        if (xhr.status >= 200 && xhr.status < 300) {
+          setUploadStatus(`Upload successful. ${files.length} file${files.length === 1 ? '' : 's'} saved.`);
+          fileInput.value = '';
+          renderFileValidation(validateSelectedFiles(fileInput.files));
+        } else {
+          setUploadStatus('Upload failed: ' + (xhr.responseText || `HTTP ${xhr.status}`), true);
+        }
+      };
+      xhr.onerror = () => {
+        uploadButton.disabled = false;
+        setUploadStatus('Upload failed because the network connection was interrupted.', true);
+      };
+      xhr.send(formData);
     });
 
     // Reset/logout

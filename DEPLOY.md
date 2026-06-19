@@ -17,6 +17,16 @@ cd guest-portal
 bash setup.sh
 ```
 
+To preview the install plan without changing anything:
+```bash
+bash setup.sh --dry-run
+```
+
+To update an existing container safely:
+```bash
+bash setup.sh --update <ctid>
+```
+
 The interactive script will walk you through:
 - Node.js LXC container creation (name, ID, cores, memory, network)
 - Container isolation selection, defaulting to an unprivileged LXC
@@ -37,6 +47,8 @@ The script automatically:
 - Creates a dedicated `guestportal` service user
 - Deploys a non-root systemd service (`guest-portal.service`) for auto-restart and boot persistence
 - Detects the container IP and displays it in the setup summary
+
+Update mode prompts before changing application code, `/etc/guest-portal` ownership or state files, the systemd service, NAS upload path settings, or restarting the service.
 
 3. **Access the Portal:**
 - Guest Registration: `https://guestportal.<your-fqdn>/`
@@ -78,6 +90,9 @@ See [BACKUP.md](BACKUP.md) for config backup, restore, and NAS permission checks
 - [ ] Verify script/code uploads are rejected
 - [ ] Verify Smart Home links per room
 - [ ] Log into `/admin.html` and manage rooms
+- [ ] In `/admin.html`, verify Deployment Status shows app health and upload storage writable
+- [ ] Use **Check Dashboard URLs** in Deployment Status to verify Home Assistant dashboard reachability
+- [ ] Confirm reverse proxy headers show HTTPS after Nginx Proxy Manager is configured
 - [ ] Confirm password protection on `/admin/uploads`
 - [ ] Verify admin API endpoints return 401 without credentials
 - [ ] Test device linking between two devices
@@ -89,6 +104,8 @@ See [BACKUP.md](BACKUP.md) for config backup, restore, and NAS permission checks
 - [ ] Run `ADMIN_USER=admin ADMIN_PASS='<password>' bash test-suite.sh` to validate all endpoints
 - [ ] Verify `systemctl status guest-portal` shows active
 - [ ] Confirm service restarts after `systemctl restart guest-portal`
+- [ ] Run `bash setup.sh --dry-run` before future install changes
+- [ ] Use `bash setup.sh --update <ctid>` for existing installs and confirm prompts before changes
 
 ---
 
