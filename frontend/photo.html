@@ -16,7 +16,8 @@
 
     <form id="uploadForm" enctype="multipart/form-data">
       <label for="photo">Upload your photos</label>
-      <input type="file" name="photo" id="photo" multiple required />
+      <input type="file" name="photo" id="photo" accept="image/jpeg,image/png,image/gif,image/webp,image/heic,image/heif,video/mp4,video/quicktime,video/webm,application/pdf,.heic,.heif" multiple required />
+      <small>Allowed: photos, videos, and PDF letters. Code, scripts, archives, and documents with macros are blocked.</small>
       <button type="submit">Upload</button>
     </form>
 
@@ -82,13 +83,20 @@
     // Photo upload
     document.getElementById('uploadForm').addEventListener('submit', async (e) => {
       e.preventDefault();
+      if (!guestToken) {
+        alert('Please register again before uploading. Uploads now require an active guest session.');
+        window.location.href = 'index.html';
+        return;
+      }
       const formData = new FormData();
       const files = document.getElementById('photo').files;
       for (let i = 0; i < files.length; i++) formData.append('photos', files[i]);
-      if (guestData.name) formData.append('guestName', guestData.name);
-      if (guestData.id) formData.append('guestId', guestData.id);
-      const res = await fetch('/upload', { method: 'POST', body: formData });
-      alert(res.ok ? 'Photos uploaded successfully!' : 'Upload failed.');
+      const res = await fetch('/upload', {
+        method: 'POST',
+        headers: { 'X-Guest-Token': guestToken },
+        body: formData
+      });
+      alert(res.ok ? 'Upload successful!' : 'Upload failed: ' + await res.text());
     });
 
     // Reset/logout
