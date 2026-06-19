@@ -7,7 +7,7 @@ Type=simple
 User=guestportal
 Group=guestportal
 WorkingDirectory=/opt/guest-portal
-ExecStart=/usr/bin/node server.js
+ExecStart=/usr/bin/env node server.js
 Restart=always
 RestartSec=5
 Environment=NODE_ENV=production

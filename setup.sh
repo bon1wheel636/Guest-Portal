@@ -382,7 +382,7 @@ Type=simple
 User=${var_app_user}
 Group=${var_app_group}
 WorkingDirectory=${var_app_dir}
-ExecStart=/usr/bin/node server.js
+ExecStart=/usr/bin/env node server.js
 Restart=always
 RestartSec=5
 Environment=NODE_ENV=production
