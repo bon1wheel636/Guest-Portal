@@ -39,7 +39,11 @@ UPDATE_MODE=false
 UPDATE_CT_ID=""
 
 usage() {
-  echo "Usage: bash setup.sh [--dry-run] [--update [ctid]]"
+  echo "Usage: bash install.sh [--branch <name>] [--dry-run] [--update [ctid]]"
+  echo "       bash setup.sh [--dry-run] [--update [ctid]]"
+  echo ""
+  echo "  On Proxmox, prefer install.sh so git is not required on the host:"
+  echo "    bash -c \"\$(curl -fsSL https://raw.githubusercontent.com/bon1wheel636/guest-portal/main/install.sh)\""
   echo ""
   echo "  --dry-run       Show the selected plan and stop before making changes"
   echo "  --update [ctid] Update an existing Guest Portal LXC instead of creating a new one"
@@ -110,6 +114,7 @@ var_bridge="vmbr0"
 var_net="dhcp"
 var_os_template="local:vztmpl/debian-12-standard_12.0-1_amd64.tar.zst"
 var_repo="https://github.com/bon1wheel636/guest-portal.git"
+var_repo_raw="https://raw.githubusercontent.com/bon1wheel636/guest-portal/main"
 var_app_dir="/opt/guest-portal"
 var_app_user="guestportal"
 var_app_group="guestportal"
@@ -122,6 +127,25 @@ install_updateguest_command() {
       install -m 755 '${var_app_dir}/scripts/updateguest.sh' /usr/local/bin/updateguest
     fi
   " >/dev/null 2>&1
+}
+
+resolve_script_dir() {
+  local source="${BASH_SOURCE[0]}"
+  if [[ -n "$source" && -f "$source" ]]; then
+    cd "$(dirname "$source")" && pwd
+    return 0
+  fi
+  return 1
+}
+
+fetch_nginx_template() {
+  local dest="$1"
+  local script_dir=""
+  if script_dir="$(resolve_script_dir)" && [[ -f "${script_dir}/nginx/guestportal.conf" ]]; then
+    cp "${script_dir}/nginx/guestportal.conf" "$dest"
+    return 0
+  fi
+  curl -fsSL "${var_repo_raw}/nginx/guestportal.conf" -o "$dest"
 }
 
 # Auto-detect next available CT ID
@@ -874,12 +898,12 @@ case "$proxy_choice" in
     pct exec "$nginx_id" -- bash -c "apt-get update >/dev/null 2>&1 && apt-get install -y nginx >/dev/null 2>&1"
     msg_ok "NGINX installed"
 
-    # Check if nginx config template exists on the host
-    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-    if [[ -f "${SCRIPT_DIR}/nginx/guestportal.conf" ]]; then
+    # Check if nginx config template exists locally or on GitHub
+    NGINX_CONF_TMP=$(mktemp)
+    if fetch_nginx_template "$NGINX_CONF_TMP"; then
+      sed "s/NODEJS_CONTAINER_IP/${NODEJS_IP}/g" "$NGINX_CONF_TMP" > "${NGINX_CONF_TMP}.final"
+      mv "${NGINX_CONF_TMP}.final" "$NGINX_CONF_TMP"
       msg_info "Deploying nginx config"
-      NGINX_CONF_TMP=$(mktemp)
-      sed "s/NODEJS_CONTAINER_IP/${NODEJS_IP}/g" "${SCRIPT_DIR}/nginx/guestportal.conf" > "$NGINX_CONF_TMP"
       pct push "$nginx_id" "$NGINX_CONF_TMP" /etc/nginx/conf.d/guestportal.conf
       rm -f "$NGINX_CONF_TMP"
       pct exec "$nginx_id" -- systemctl restart nginx
@@ -950,6 +974,7 @@ echo -e "${TAB}${BOLD}Useful Commands:${CL}"
 echo -e "${TAB}  ${DGN}pct enter ${CT_ID}${CL}                    Enter the container"
 echo -e "${TAB}  ${DGN}pct exec ${CT_ID} -- systemctl status guest-portal${CL}"
 echo -e "${TAB}  ${DGN}pct exec ${CT_ID} -- journalctl -u guest-portal -f${CL}"
+echo -e "${TAB}  ${DGN}bash -c \"\$(curl -fsSL .../install.sh)\"${CL}  Install/update without git on host"
 echo -e "${TAB}  ${DGN}pct exec ${CT_ID} -- updateguest${CL}         Update app from inside container"
 echo -e "${TAB}  ${DGN}pct exec ${CT_ID} -- updateguest --dry-run${CL} Preview update steps"
 echo ""
