@@ -269,6 +269,100 @@ test_deployment_status() {
     else
         fail "Deployment status endpoint" "app/storage/reverseProxy JSON" "$response"
     fi
+    if [[ "$response" == *'"registrationHistory"'* ]] && [[ "$response" == *'"activeGuestSessions"'* ]] && [[ "$response" == *'"expiredGuestSessions"'* ]]; then
+        pass "Deployment status separates history and sessions"
+    else
+        fail "Deployment status separates history and sessions" "registrationHistory/activeGuestSessions/expiredGuestSessions" "$response"
+    fi
+}
+
+section "5b. GUEST ADMIN MANAGEMENT"
+
+test_list_guest_history() {
+    require_admin_creds "List registration history" || return
+    local response=$(admin_curl "$BASE_URL/admin-api/guests")
+    if [[ "$response" == "["* ]] && [[ "$response" == *"hasActiveSession"* ]]; then
+        pass "List registration history"
+    else
+        fail "List registration history" "[{...hasActiveSession...}]" "$response"
+    fi
+}
+
+test_admin_register_guest() {
+    require_admin_creds "Admin register guest" || return
+    admin_curl -X POST "$BASE_URL/admin-api/rooms" \
+        -H "Content-Type: application/json" \
+        -d '{"name":"Test Suite Room","dashboardUrl":"http://example.com/test"}' > /dev/null
+    local response=$(admin_curl -X POST "$BASE_URL/admin-api/guests" \
+        -H "Content-Type: application/json" \
+        -d '{"name":"Admin Registered Guest","room":"Test Suite Room","stayDays":3}')
+    if [[ "$response" == *'"success":true'* ]] && [[ "$response" == *'"token"'* ]]; then
+        ADMIN_GUEST_ID=$(echo "$response" | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4)
+        pass "Admin register guest"
+    else
+        fail "Admin register guest" '{"success":true,"token":"..."}' "$response"
+    fi
+}
+
+test_update_guest_room() {
+    require_admin_creds "Update guest room" || return
+    if [[ -z "$ADMIN_GUEST_ID" ]]; then
+        fail "Update guest room" "Needs admin guest id" "No guest id available"
+        return
+    fi
+    admin_curl -X POST "$BASE_URL/admin-api/rooms" \
+        -H "Content-Type: application/json" \
+        -d '{"name":"Admin Room Two","dashboardUrl":"http://example.com/admin-room-2"}' > /dev/null
+    local response=$(admin_curl -X PATCH "$BASE_URL/admin-api/guest-sessions/$ADMIN_GUEST_ID" \
+        -H "Content-Type: application/json" \
+        -d '{"room":"Admin Room Two"}')
+    if [[ "$response" == *'"success":true'* ]] && [[ "$response" == *"Admin Room Two"* ]]; then
+        pass "Update guest room"
+    else
+        fail "Update guest room" '{"success":true,"guest":{"room":"Admin Room Two"}}' "$response"
+    fi
+}
+
+test_clear_guest_devices() {
+    require_admin_creds "Clear guest devices" || return
+    if [[ -z "$ADMIN_GUEST_ID" ]]; then
+        fail "Clear guest devices" "Needs admin guest id" "No guest id available"
+        return
+    fi
+    local response=$(admin_curl -X DELETE "$BASE_URL/admin-api/guest-sessions/$ADMIN_GUEST_ID/devices")
+    if [[ "$response" == *'"devicesCleared":true'* ]]; then
+        pass "Clear guest devices"
+    else
+        fail "Clear guest devices" '{"devicesCleared":true}' "$response"
+    fi
+}
+
+test_checkout_admin_guest() {
+    require_admin_creds "Check out admin guest" || return
+    if [[ -z "$ADMIN_GUEST_ID" ]]; then
+        fail "Check out admin guest" "Needs admin guest id" "No guest id available"
+        return
+    fi
+    local response=$(admin_curl -X DELETE "$BASE_URL/admin-api/guest-sessions/$ADMIN_GUEST_ID")
+    if [[ "$response" == *'"success":true'* ]]; then
+        pass "Check out admin guest session"
+    else
+        fail "Check out admin guest session" '{"success":true}' "$response"
+    fi
+}
+
+test_remove_guest_history() {
+    require_admin_creds "Remove guest history entry" || return
+    if [[ -z "$ADMIN_GUEST_ID" ]]; then
+        fail "Remove guest history entry" "Needs admin guest id" "No guest id available"
+        return
+    fi
+    local response=$(admin_curl -X DELETE "$BASE_URL/admin-api/guests/$ADMIN_GUEST_ID")
+    if [[ "$response" == *'"success":true'* ]]; then
+        pass "Remove guest history entry"
+    else
+        fail "Remove guest history entry" '{"success":true}' "$response"
+    fi
 }
 
 section "6. FILE UPLOAD"
@@ -438,6 +532,12 @@ test_revoke_session
 test_admin_setup_required
 test_admin_login_invalid
 test_deployment_status
+test_list_guest_history
+test_admin_register_guest
+test_update_guest_room
+test_clear_guest_devices
+test_checkout_admin_guest
+test_remove_guest_history
 
 test_upload
 test_path_traversal
