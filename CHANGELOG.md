@@ -41,6 +41,7 @@ All notable changes to this project will be documented here.
 - Re-running `setup-container.sh` on an existing install now detects configured rooms and admin credentials, keeps them by default, and offers review/replace/reset options instead of requiring re-entry.
 - Existing installs now show a recovery menu with rebuild, targeted admin/room/guest resets, permission repair, and code-only update options.
 - `setup-container.sh` and `updateguest` now run git/npm as the `guestportal` user, bootstrap missing helper scripts from GitHub when needed, and refresh outdated `updateguest` commands before updating.
+- `updateguest` now discards local changes to installer scripts before `git pull`, avoiding failures after curl bootstrap downloads into the repo checkout.
 
 ---
 

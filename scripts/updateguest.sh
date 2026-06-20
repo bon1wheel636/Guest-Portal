@@ -47,6 +47,37 @@ ensure_git_safe_directory() {
   run_as_app_user "git config --global --add safe.directory '${app_path}'" 2>/dev/null || true
 }
 
+INSTALLER_SCRIPTS=(
+  "scripts/updateguest.sh"
+  "scripts/setup-prompts.sh"
+  "scripts/setup-container.sh"
+)
+
+discard_installer_script_changes() {
+  local script paths=""
+  for script in "${INSTALLER_SCRIPTS[@]}"; do
+    paths+=" '${script}'"
+  done
+  run_as_app_user "cd '${APP_PATH}' && git checkout --${paths} 2>/dev/null || true"
+}
+
+pull_latest_code() {
+  if [[ "$DRY_RUN" == "true" ]]; then
+    log "[dry-run] Pulling latest code..."
+    return 0
+  fi
+
+  log "Pulling latest code..."
+  discard_installer_script_changes
+  if run_as_app_user "cd '${APP_PATH}' && git pull --ff-only"; then
+    return 0
+  fi
+
+  log "Local installer script changes blocked git pull; discarding and retrying..."
+  discard_installer_script_changes
+  run_as_app_user "cd '${APP_PATH}' && git pull --ff-only"
+}
+
 run_step() {
   local description="$1"
   shift
@@ -133,7 +164,7 @@ log ""
 
 run_step "Fixing ownership..." chown -R "${APP_USER}:${APP_GROUP}" "${APP_PATH}" /etc/guest-portal
 ensure_git_safe_directory "${APP_PATH}"
-run_step "Pulling latest code..." run_as_app_user "cd '${APP_PATH}' && git pull --ff-only"
+pull_latest_code
 run_step "Installing npm dependencies..." run_as_app_user "cd '${APP_PATH}' && npm install"
 run_step "Ensuring upload directories exist..." bash -c "mkdir -p '${APP_PATH}/uploads/backgrounds'"
 run_step "Ensuring service user exists..." bash -c "
