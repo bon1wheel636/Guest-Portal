@@ -2,6 +2,8 @@
 
 Self-hosted guest Wi-Fi landing portal: a single Node.js/Express server (`server.js`) that serves a static frontend (`frontend/`) and a JSON-based admin/guest API. There is one service only; no database (state is stored in JSON files).
 
+See [README.md](README.md) for product features, deployment, and local development.
+
 ## Cursor Cloud specific instructions
 
 ### Service & how to run
@@ -19,7 +21,13 @@ Self-hosted guest Wi-Fi landing portal: a single Node.js/Express server (`server
   echo '{}' > /etc/guest-portal/guest-tokens.json
   ```
 - With the template `config.json` (placeholder `adminHash`), the app reports `setupRequired: true`. Create the admin account via the `/admin.html` first-run form, `POST /admin-api/setup`, or `bash setup-local.sh` (interactive).
+- After setup, `/admin.html` and admin API routes use browser HTTP Basic Auth. The configured username is stored in `config.json` as `adminUser` (default `admin`).
 
 ### Lint / test / build
 - No linter is configured. `npm test` is a no-op stub (`echo "No tests configured"`).
-- `bash test-suite.sh` is an HTTP integration suite that runs against an already-running server on port 3000. Known caveat: several admin tests (add/delete room, list/revoke sessions) are outdated — they do NOT send Basic Auth, but the current security-hardened `server.js` requires auth on those endpoints, so they return `401 Authentication required.` and the suite reports them as failures. This is a pre-existing test/code mismatch, not an environment problem. Admin endpoints work correctly when called with `-u <user>:<pass>`.
+- `bash test-suite.sh` is an HTTP integration suite that runs against an already-running server on port 3000.
+- Admin mutation tests require credentials:
+  ```bash
+  ADMIN_USER=admin ADMIN_PASS='<password>' bash test-suite.sh
+  ```
+- Without `ADMIN_PASS`, admin mutation tests are skipped (not failures). Unauthenticated admin rejection is still tested.
