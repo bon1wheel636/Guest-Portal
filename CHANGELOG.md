@@ -7,6 +7,7 @@ All notable changes to this project will be documented here.
 ## [Unreleased]
 
 ### Added
+- Admin Overview now includes Guest Entry Health for `/health`, `/`, `/guest/rooms`, `/welcome.html`, `/photo.html`, and guest room count.
 - Guest welcome hub at `/welcome.html` with Smart Home link, inline upload, device linking, and Welcome | My Photos navigation.
 - First-stay tutorial modal on the welcome hub after registration.
 - Returning-device recognition via `/guest/validate` and registration responses (`returningDevice` flag).

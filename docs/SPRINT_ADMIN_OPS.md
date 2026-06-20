@@ -1,6 +1,6 @@
 # Sprint: Admin operations and confidence
 
-**Status:** Planned.
+**Status:** In progress.
 
 Use this document to continue work in a **new agent session** without relying on prior chat history.
 
@@ -151,7 +151,7 @@ Then verify:
 
 ## Sprint checklist (mirror ROADMAP)
 
-- [ ] Guest entry health checks and production smoke checklist
+- [x] Guest entry health checks and production smoke checklist
 - [ ] Admin photo preview/gallery
 - [ ] CSV exports for active sessions and registration history
 - [ ] Device-link QR code

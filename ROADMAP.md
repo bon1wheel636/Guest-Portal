@@ -88,7 +88,7 @@ This roadmap tracks shareable project work only. Keep private domains, NAS hostn
 
 **Handoff:** [docs/SPRINT_ADMIN_OPS.md](docs/SPRINT_ADMIN_OPS.md) — read this at the start of a new agent session (avoids relying on full chat context).
 
-- [ ] **Guest entry health checks**
+- [x] **Guest entry health checks**
   - Add an admin Guest Entry Health card or panel covering `/health`, `/`, `/guest/rooms`, `/welcome.html`, `/photo.html`, and guest room count.
   - Extend automated smoke coverage for guest entry endpoints and frontend inline script syntax.
   - Document a post-`updateguest -y` verification checklist.

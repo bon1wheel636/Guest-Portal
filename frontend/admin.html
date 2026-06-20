@@ -333,6 +333,21 @@
       html += `<small>host: ${escapeHtml(data.reverseProxy.forwardedHost || data.reverseProxy.host || 'unknown')}, proto: ${escapeHtml(data.reverseProxy.forwardedProto || 'none')}</small></p>`;
       html += `<p><strong>Admin login:</strong> <code>${escapeHtml(data.admin?.username || 'admin')}</code> <small>(HTTP Basic Auth username for /admin.html)</small></p>`;
       html += `<p><strong>Data:</strong> ${data.data.rooms} room(s), ${data.data.registrationHistory} registration history entr${data.data.registrationHistory === 1 ? 'y' : 'ies'}, ${data.data.activeGuestSessions} active guest session(s), ${data.data.expiredGuestSessions} expired session(s), ${data.data.pendingSessionCodes} pending code(s)</p>`;
+      if (data.guestEntry) {
+        html += '<div class="admin-card">';
+        html += `<h3>Guest Entry Health</h3>`;
+        html += `<p><strong>Status:</strong> ${statusBadge(data.guestEntry.ok, data.guestEntry.ok ? 'Ready' : 'Needs attention')} `;
+        html += `<span>${escapeHtml(data.guestEntry.summary || '')}</span></p>`;
+        html += `<p><strong>Rooms visible to guests:</strong> ${escapeHtml(String(data.guestEntry.roomCount || 0))}</p>`;
+        html += '<ul class="admin-list">';
+        (data.guestEntry.checks || []).forEach(check => {
+          html += `<li>${statusBadge(Boolean(check.ok), check.ok ? 'OK' : 'Needs attention')} <code>${escapeHtml(check.path || '')}</code>`;
+          if (check.detail) html += `<br><small>${escapeHtml(check.detail)}</small>`;
+          html += '</li>';
+        });
+        html += '</ul>';
+        html += '</div>';
+      }
       if (data.dashboards.rooms.length > 0) {
         html += '<p><strong>Dashboard URLs:</strong></p><ul>';
         data.dashboards.rooms.forEach(room => {
