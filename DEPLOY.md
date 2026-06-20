@@ -125,6 +125,16 @@ This is optional. Production installs do not need git on the host.
 - Admin Panel: `https://guestportal.<your-fqdn>/admin.html`
 - Protected Uploads: `https://guestportal.<your-fqdn>/admin/uploads`
 
+### Post-update guest entry check
+After `updateguest -y`, verify the guest entry flow before guests arrive:
+
+```bash
+curl -i http://127.0.0.1:3000/health
+curl -i http://127.0.0.1:3000/guest/rooms
+```
+
+Then open `/admin.html` and confirm **Guest Entry Health** reports ready. If the local checks pass but the FQDN fails, troubleshoot DNS or reverse proxy routing before changing the app.
+
 For UniFi guest WiFi deployments, use the UniFi hotspot or guest network as the admission gate and set its post-authorization redirect to the Guest Portal registration URL. See [UNIFI.md](UNIFI.md) for the recommended configuration path and the future external portal integration option. See [PROXY.md](PROXY.md) for Nginx Proxy Manager and HTTPS guidance.
 
 ---

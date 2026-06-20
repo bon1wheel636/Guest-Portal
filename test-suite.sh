@@ -280,6 +280,11 @@ test_deployment_status() {
     else
         fail "Deployment status includes admin username" '"admin":{"username":...}' "$response"
     fi
+    if [[ "$response" == *'"guestEntry"'* ]] && [[ "$response" == *'"roomCount"'* ]] && [[ "$response" == *'"/guest/rooms"'* ]]; then
+        pass "Deployment status includes guest entry health"
+    else
+        fail "Deployment status includes guest entry health" '"guestEntry":{"roomCount":...}' "$response"
+    fi
 }
 
 section "5b. GUEST ADMIN MANAGEMENT"
@@ -584,6 +589,27 @@ test_photo_html() {
     fi
 }
 
+test_guest_entry_smoke_routes() {
+    local failed=""
+    local health_code=$(curl -s -o /dev/null -w "%{http_code}" "$BASE_URL/health")
+    local index_code=$(curl -s -o /dev/null -w "%{http_code}" "$BASE_URL/")
+    local rooms_code=$(curl -s -o /dev/null -w "%{http_code}" "$BASE_URL/guest/rooms")
+    local welcome_code=$(curl -s -o /dev/null -w "%{http_code}" "$BASE_URL/welcome.html")
+    local photo_code=$(curl -s -o /dev/null -w "%{http_code}" "$BASE_URL/photo.html")
+
+    [[ "$health_code" == "200" ]] || failed+="/health=$health_code "
+    [[ "$index_code" == "200" ]] || failed+="/=$index_code "
+    [[ "$rooms_code" == "200" ]] || failed+="/guest/rooms=$rooms_code "
+    [[ "$welcome_code" == "200" ]] || failed+="/welcome.html=$welcome_code "
+    [[ "$photo_code" == "200" ]] || failed+="/photo.html=$photo_code "
+
+    if [[ -z "$failed" ]]; then
+        pass "Guest entry smoke routes return 200"
+    else
+        fail "Guest entry smoke routes return 200" "all 200" "$failed"
+    fi
+}
+
 test_frontend_script_syntax() {
     local tmp_dir
     tmp_dir=$(mktemp -d)
@@ -694,6 +720,7 @@ test_index_html
 test_admin_html
 test_welcome_html
 test_photo_html
+test_guest_entry_smoke_routes
 test_frontend_script_syntax
 
 #######################

@@ -329,6 +329,30 @@ function getReverseProxyStatus(req) {
   };
 }
 
+function getGuestEntryHealth() {
+  const rooms = guestData.rooms || [];
+  const frontendDir = path.join(__dirname, 'frontend');
+  const checks = [
+    { path: '/health', ok: true, detail: 'Health endpoint is registered' },
+    { path: '/', ok: fs.existsSync(path.join(frontendDir, 'index.html')), detail: 'Guest registration page is present' },
+    { path: '/guest/rooms', ok: Array.isArray(rooms), detail: `${rooms.length} room${rooms.length === 1 ? '' : 's'} available` },
+    { path: '/welcome.html', ok: fs.existsSync(path.join(frontendDir, 'welcome.html')), detail: 'Guest welcome hub is present' },
+    { path: '/photo.html', ok: fs.existsSync(path.join(frontendDir, 'photo.html')), detail: 'Guest photo gallery is present' }
+  ];
+  const roomsConfigured = rooms.length > 0;
+  const endpointsOk = checks.every(check => check.ok);
+
+  return {
+    ok: endpointsOk && roomsConfigured,
+    roomsConfigured,
+    roomCount: rooms.length,
+    summary: endpointsOk && roomsConfigured
+      ? 'Guest registration should be usable.'
+      : 'Guest registration needs attention.',
+    checks
+  };
+}
+
 async function checkUrlReachability(rawUrl) {
   if (!rawUrl) return { checked: false, reachable: false, status: null, error: 'No URL configured' };
 
@@ -795,6 +819,7 @@ app.get('/admin-api/deployment-status', authMiddleware, async (req, res) => {
       expiredGuestSessions: sessionCounts.expired,
       pendingSessionCodes: Object.values(sessionCodes).filter(entry => entry.expires > Date.now()).length
     },
+    guestEntry: getGuestEntryHealth(),
     admin: {
       username: config.adminUser || 'admin'
     },
