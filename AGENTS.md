@@ -6,9 +6,9 @@ See [README.md](README.md) for product features, deployment, and local developme
 
 ## Active sprint
 
-**Guest UX sprint (in progress):** read [docs/SPRINT_GUEST_UX.md](docs/SPRINT_GUEST_UX.md) first in a new session. It contains current vs target guest flows, implementation order, key files, and checklist — so you do not need prior chat context.
+**Admin operations and confidence sprint (planned/in progress):** read [docs/SPRINT_ADMIN_OPS.md](docs/SPRINT_ADMIN_OPS.md) first in a new session. It contains current vs target admin/guest-health flows, implementation order, key files, and checklist — so you do not need prior chat context.
 
-Track high-level items in [ROADMAP.md](ROADMAP.md) under **In progress sprint: guest convenience and integration**.
+Track high-level items in [ROADMAP.md](ROADMAP.md) under **In progress sprint: admin operations and confidence**.
 
 ## Cursor Cloud specific instructions
 
