@@ -496,12 +496,21 @@ test_admin_html() {
     fi
 }
 
+test_welcome_html() {
+    local response=$(curl -s "$BASE_URL/welcome.html")
+    if [[ "$response" == *"Upload"* && "$response" == *"My Photos"* ]]; then
+        pass "Welcome hub page loads"
+    else
+        fail "Welcome hub page loads" "HTML with upload and nav" "Empty or error"
+    fi
+}
+
 test_photo_html() {
     local response=$(curl -s "$BASE_URL/photo.html")
-    if [[ "$response" == *"Upload"* ]]; then
-        pass "Photo page loads"
+    if [[ "$response" == *"My Photos"* && "$response" == *"Welcome"* ]]; then
+        pass "Photo gallery page loads"
     else
-        fail "Photo page loads" "HTML content" "Empty or error"
+        fail "Photo gallery page loads" "HTML with gallery nav" "Empty or error"
     fi
 }
 
@@ -554,6 +563,7 @@ test_upload_rejects_code
 
 test_index_html
 test_admin_html
+test_welcome_html
 test_photo_html
 
 #######################

@@ -69,7 +69,7 @@
             if (data.valid) {
               // Update local data and redirect
               localStorage.setItem('guestData', JSON.stringify(data.guest));
-              window.location.href = 'photo.html';
+              window.location.href = 'welcome.html';
               return;
             }
           }
@@ -85,7 +85,7 @@
       const guestData = JSON.parse(localStorage.getItem('guestData'));
       if (guestData?.name && guestData?.room && !guestToken) {
         // Legacy session without token - let them continue but they won't have persistence
-        window.location.href = 'photo.html';
+        window.location.href = 'welcome.html';
       }
     }
     checkExistingSession();
@@ -109,7 +109,7 @@
           // Store token for persistent sessions
           localStorage.setItem('guestToken', data.token);
           localStorage.setItem('guestData', JSON.stringify(data.guest));
-          window.location.href = 'photo.html';
+          window.location.href = 'welcome.html';
         } else {
           alert('Registration failed. Please try again.');
         }
@@ -135,7 +135,7 @@
           const data = await res.json();
           localStorage.setItem('guestToken', data.token);
           localStorage.setItem('guestData', JSON.stringify(data.guest));
-          window.location.href = 'photo.html';
+          window.location.href = 'welcome.html';
           return;
         }
       } catch (e) {}
@@ -146,7 +146,7 @@
         if (res.ok) {
           const guest = await res.json();
           localStorage.setItem('guestData', JSON.stringify(guest));
-          window.location.href = 'photo.html';
+          window.location.href = 'welcome.html';
           return;
         }
       } catch (e) {}

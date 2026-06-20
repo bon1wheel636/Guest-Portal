@@ -236,3 +236,99 @@ a:hover {
   padding: 0.45rem 0.75rem;
   font-size: 0.9rem;
 }
+
+/* Guest pages */
+.guest-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 1.5rem;
+  border-bottom: 1px solid #ddd;
+  padding-bottom: 0.75rem;
+}
+
+.guest-nav-link {
+  padding: 0.55rem 1rem;
+  background: #eef2f7;
+  color: #333;
+  border: 1px solid #d7dee8;
+  border-radius: 999px;
+  font-size: 0.95rem;
+  text-decoration: none;
+}
+
+.guest-nav-link:hover {
+  text-decoration: none;
+  background: #e2e8f0;
+}
+
+.guest-nav-link.active {
+  background: #0078d4;
+  color: #fff;
+  border-color: #0078d4;
+}
+
+.guest-section {
+  margin-top: 1.75rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid #eee;
+}
+
+.guest-section h2 {
+  margin-top: 0;
+  font-size: 1.15rem;
+  color: #444;
+}
+
+.guest-muted {
+  font-size: 0.9em;
+  color: #666;
+}
+
+.guest-validation {
+  margin-top: 8px;
+  font-size: 0.9em;
+}
+
+.guest-progress {
+  width: 100%;
+  display: none;
+  margin-top: 10px;
+}
+
+.guest-status {
+  margin-top: 8px;
+  font-size: 0.9em;
+}
+
+.guest-link-code {
+  margin-top: 10px;
+  padding: 10px;
+  background: #f0f0f0;
+  display: none;
+}
+
+.guest-code {
+  font-size: 1.5em;
+  font-family: monospace;
+}
+
+.guest-file-list {
+  padding-left: 20px;
+  margin: 5px 0;
+}
+
+.guest-error {
+  color: #b42318;
+}
+
+.guest-photo-list {
+  padding-left: 1.25rem;
+  margin: 1rem 0;
+}
+
+.guest-footer {
+  margin-top: 2rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid #eee;
+}
