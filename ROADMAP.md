@@ -72,11 +72,19 @@ This roadmap tracks shareable project work only. Keep private domains, NAS hostn
 - [ ] **First-stay guest tutorial**
   - After first registration, show a short onboarding tutorial explaining what guests can do from the portal (room dashboard, photo upload, device linking, etc.).
   - Include a practical tip to bookmark the portal or save it to the home screen so it is easy to find again during the stay.
+- [ ] **Guest welcome hub (`welcome.html`) and photo gallery split**
+  - Replace today's post-registration landing at `photo.html` with a guest-facing **`welcome.html`** hub (name should reflect welcome/orientation, not photo upload).
+  - Make **`welcome.html` the first page guests see after registration** and on return visits during their stay.
+  - Keep core stay actions on one page: greeting, Smart Home link, device linking, and a **photo upload section** (not a separate first landing focused on uploads).
+  - Use simple navigation (tabs or prominent links) so guests can move between **Welcome** and **My Photos** without feeling like upload is the whole app.
+  - Repurpose **`photo.html` as a guest photo gallery** showing what they have already uploaded during this stay.
+  - Allow guests to **delete individual uploads one at a time** from the gallery in case they uploaded something by mistake (guest-scoped delete only; admin retains full folder management).
+  - Prioritize layout and copy that make upload feel easy, optional, and safe so guests are more likely to use it.
 - [ ] **UniFi external portal integration**
   - Add only after controller version, auth method, site ID, and authorization model are known.
   - Keep initial deployment on UniFi's built-in guest/hotspot authorization plus post-auth redirect.
 - [ ] **Admin quality-of-life improvements**
   - QR code for device linking.
   - Dark mode toggle.
-  - Guest photo preview/gallery.
+  - Admin-side guest photo preview/gallery (separate from guest-facing `photo.html` gallery).
   - CSV export for guest/session records.
