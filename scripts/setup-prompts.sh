@@ -228,8 +228,7 @@ gp_reset_application_code() {
   fi
 
   msg_info "Installing Node.js dependencies"
-  cd "${gp_app_dir}"
-  npm install >/dev/null 2>&1
+  su -s /bin/bash -c "cd '${gp_app_dir}' && npm install" "${gp_app_user}" >/dev/null 2>&1
   mkdir -p "${gp_app_dir}/uploads/backgrounds"
   msg_ok "Node.js dependencies installed"
 }
