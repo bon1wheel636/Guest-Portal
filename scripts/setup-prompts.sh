@@ -9,6 +9,14 @@ gp_app_group="${gp_app_group:-guestportal}"
 gp_repo="${gp_repo:-https://github.com/bon1wheel636/guest-portal.git}"
 GP_SETUP_MODE="${GP_SETUP_MODE:-fresh}"
 
+run_as_app_user() {
+  su -s /bin/bash -c "$1" "${gp_app_user}"
+}
+
+gp_ensure_git_safe_directory() {
+  run_as_app_user "git config --global --add safe.directory '${gp_app_dir}'" 2>/dev/null || true
+}
+
 gp_read_existing_room_count() {
   node -e "
     var fs = require('fs');
@@ -213,23 +221,48 @@ gp_wipe_install_state() {
 
 gp_reset_application_code() {
   local force_reclone="${1:-false}"
+  local keep_uploads="${2:-false}"
+  local uploads_backup=""
+
+  if [[ "$force_reclone" == "true" && "$keep_uploads" == "true" && -d "${gp_app_dir}/uploads" ]]; then
+    uploads_backup="$(mktemp -d)"
+    cp -a "${gp_app_dir}/uploads/." "${uploads_backup}/"
+  fi
 
   if [[ "$force_reclone" == "true" || ! -d "${gp_app_dir}/.git" ]]; then
     msg_info "Replacing application directory"
     rm -rf "${gp_app_dir}"
-    git clone "${gp_repo}" "${gp_app_dir}" >/dev/null 2>&1
+    if ! git clone "${gp_repo}" "${gp_app_dir}" >/dev/null 2>&1; then
+      [[ -n "$uploads_backup" ]] && rm -rf "$uploads_backup"
+      msg_error "Failed to clone Guest Portal repository into ${gp_app_dir}"
+      return 1
+    fi
+    if [[ -n "$uploads_backup" ]]; then
+      mkdir -p "${gp_app_dir}/uploads"
+      cp -a "${uploads_backup}/." "${gp_app_dir}/uploads/"
+      rm -rf "$uploads_backup"
+    fi
+    chown -R "${gp_app_user}:${gp_app_group}" "${gp_app_dir}"
     msg_ok "Application re-cloned"
   else
     msg_info "Resetting application checkout"
-    git -C "${gp_app_dir}" fetch origin >/dev/null 2>&1 || true
-    git -C "${gp_app_dir}" reset --hard origin/main >/dev/null 2>&1 || git -C "${gp_app_dir}" reset --hard HEAD >/dev/null 2>&1 || true
-    git -C "${gp_app_dir}" clean -fd -e uploads >/dev/null 2>&1 || true
+    chown -R "${gp_app_user}:${gp_app_group}" "${gp_app_dir}"
+    gp_ensure_git_safe_directory
+    run_as_app_user "cd '${gp_app_dir}' && git fetch origin" >/dev/null 2>&1 || true
+    run_as_app_user "cd '${gp_app_dir}' && git reset --hard origin/main" >/dev/null 2>&1 \
+      || run_as_app_user "cd '${gp_app_dir}' && git reset --hard HEAD" >/dev/null 2>&1 \
+      || true
+    run_as_app_user "cd '${gp_app_dir}' && git clean -fd -e uploads" >/dev/null 2>&1 || true
     msg_ok "Application checkout reset"
   fi
 
   msg_info "Installing Node.js dependencies"
-  su -s /bin/bash -c "cd '${gp_app_dir}' && npm install" "${gp_app_user}" >/dev/null 2>&1
+  if ! su -s /bin/bash -c "cd '${gp_app_dir}' && npm install" "${gp_app_user}" >/dev/null 2>&1; then
+    msg_error "npm install failed in ${gp_app_dir}"
+    return 1
+  fi
   mkdir -p "${gp_app_dir}/uploads/backgrounds"
+  chown -R "${gp_app_user}:${gp_app_group}" "${gp_app_dir}/uploads" "${gp_config_dir}" 2>/dev/null || true
   msg_ok "Node.js dependencies installed"
 }
 

@@ -43,6 +43,7 @@ All notable changes to this project will be documented here.
 - `setup-container.sh` and `updateguest` now run git/npm as the `guestportal` user, bootstrap missing helper scripts from GitHub when needed, and refresh outdated `updateguest` commands before updating.
 - `updateguest` now discards local changes to installer scripts before `git pull`, avoiding failures after curl bootstrap downloads into the repo checkout.
 - Installer script cleanup before `git pull` now skips files not yet tracked in the current checkout and removes untracked bootstrap copies that would block the update.
+- Rebuild install now preserves uploaded photos when requested, fixes app checkout ownership before `npm install`, and reports clone/install failures clearly.
 
 ---
 
