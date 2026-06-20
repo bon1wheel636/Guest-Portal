@@ -54,11 +54,10 @@ INSTALLER_SCRIPTS=(
 )
 
 discard_installer_script_changes() {
-  local script paths=""
+  local script
   for script in "${INSTALLER_SCRIPTS[@]}"; do
-    paths+=" '${script}'"
+    run_as_app_user "cd '${APP_PATH}' && if git ls-files --error-unmatch '${script}' >/dev/null 2>&1; then git checkout -- '${script}'; elif [[ -f '${script}' ]]; then rm -f '${script}'; fi" || true
   done
-  run_as_app_user "cd '${APP_PATH}' && git checkout --${paths} 2>/dev/null || true"
 }
 
 pull_latest_code() {
