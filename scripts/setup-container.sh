@@ -79,6 +79,16 @@ install_updateguest_command() {
   fi
 }
 
+load_setup_prompts() {
+  local prompts_file="${var_app_dir}/scripts/setup-prompts.sh"
+  if [[ ! -f "$prompts_file" ]]; then
+    msg_error "Missing setup prompts helper: ${prompts_file}"
+    exit 1
+  fi
+  # shellcheck source=/dev/null
+  source "$prompts_file"
+}
+
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --dry-run) DRY_RUN=true; shift ;;
@@ -170,114 +180,12 @@ chown -R "${var_app_user}:${var_app_group}" "${var_app_dir}" /etc/guest-portal
 install_updateguest_command
 msg_ok "Installed Node.js dependencies"
 
-header_info
-echo -e "${TAB}${BOLD}Guest Room Configuration${CL}"
-echo ""
-echo -e "${INFO}${YW}Configure rooms with Home Assistant dashboard URLs.${CL}"
-echo -e "${TAB}  You can also add/remove rooms later from the Admin panel."
-echo ""
-
-read -p "  Number of guest rooms to configure now (default: 2): " ROOM_COUNT
-ROOM_COUNT=${ROOM_COUNT:-2}
-
-declare -a ROOMS
-for (( i=1; i<=ROOM_COUNT; i++ )); do
-  echo ""
-  read -p "  Room ${i} name: " ROOM_NAME
-  read -p "  Room ${i} dashboard URL: " ROOM_URL
-  ROOM_JSON=$(ROOM_NAME="$ROOM_NAME" ROOM_URL="$ROOM_URL" node -e "console.log(JSON.stringify({name:process.env.ROOM_NAME,dashboardUrl:process.env.ROOM_URL}))")
-  ROOMS+=("$ROOM_JSON")
-done
-
-header_info
-echo -e "${TAB}${BOLD}Admin Account Setup${CL}"
-echo ""
-echo -e "${INFO}${YW}Set the admin username and password for the admin panel.${CL}"
-echo -e "${TAB}  You can also skip this and set up via the web UI on first visit."
-echo ""
-echo -e "${TAB}  1)  Set credentials now"
-echo -e "${TAB}  2)  Skip — configure via web UI later"
-echo ""
-read -p "  Select [1/2] (default: 1): " admin_choice
-admin_choice=${admin_choice:-1}
-
-ADMIN_USER=""
-ADMIN_HASH=""
-
-if [[ "$admin_choice" == "1" ]]; then
-  read -p "  Admin username (default: admin): " ADMIN_USER
-  ADMIN_USER=${ADMIN_USER:-admin}
-  ADMIN_USER="${ADMIN_USER// /}"
-
-  if ! [[ "$ADMIN_USER" =~ ^[a-zA-Z0-9_-]{3,50}$ ]]; then
-    echo -e "${TAB}${RD}Username must be 3-50 characters: letters, numbers, underscore, hyphen only.${CL}"
-    exit 1
-  fi
-
-  while true; do
-    read -sp "  Admin password: " ADMIN_PASS
-    echo
-    read -sp "  Confirm password: " ADMIN_PASS_CONFIRM
-    echo
-    if [[ "$ADMIN_PASS" == "$ADMIN_PASS_CONFIRM" ]]; then
-      break
-    fi
-    echo -e "${TAB}${RD}Passwords do not match. Try again.${CL}"
-  done
-
-  msg_info "Hashing admin password"
-  ADMIN_HASH=$(ADMIN_PASS="$ADMIN_PASS" node -e 'require("bcrypt").hash(process.env.ADMIN_PASS,10).then(console.log)')
-  msg_ok "Admin credentials configured (${ADMIN_USER})"
-fi
+load_setup_prompts
+gp_prompt_room_configuration || exit 1
+gp_prompt_admin_configuration || exit 1
 
 msg_info "Writing configuration files"
-mkdir -p /etc/guest-portal
-
-ROOMS_JSON=$(ROOM_DATA="$(printf '%s\n' "${ROOMS[@]}")" node -e "
-  var rooms = process.env.ROOM_DATA.trim().split('\n').filter(Boolean);
-  console.log(JSON.stringify(rooms.map(function(r) { return JSON.parse(r); })));
-")
-
-if [[ -n "$ADMIN_HASH" ]]; then
-  ADMIN_USER="$ADMIN_USER" ADMIN_HASH="$ADMIN_HASH" node -e "
-    var fs = require('fs');
-    var path = '/etc/guest-portal/config.json';
-    var c = fs.existsSync(path) ? JSON.parse(fs.readFileSync(path, 'utf8')) : {};
-    c.adminUser = process.env.ADMIN_USER;
-    c.adminHash = process.env.ADMIN_HASH;
-    if (c.uploadDir === undefined) c.uploadDir = '';
-    if (!c.sessionExpirationMinutes) c.sessionExpirationMinutes = 10;
-    if (!c.adminSessionTimeoutMinutes) c.adminSessionTimeoutMinutes = 15;
-    fs.writeFileSync(path, JSON.stringify(c, null, 2));
-  "
-else
-  node -e "
-    var fs = require('fs');
-    if (!fs.existsSync('/etc/guest-portal/config.json')) {
-      fs.writeFileSync('/etc/guest-portal/config.json', JSON.stringify({
-        adminUser: 'admin',
-        adminHash: '<bcrypt_hash_placeholder>',
-        uploadDir: '',
-        sessionExpirationMinutes: 10,
-        adminSessionTimeoutMinutes: 15
-      }, null, 2));
-    }
-  "
-fi
-
-ROOMS_JSON="$ROOMS_JSON" node -e "
-  var fs = require('fs');
-  if (!fs.existsSync('/etc/guest-portal/storage.json')) {
-    fs.writeFileSync('/etc/guest-portal/storage.json', JSON.stringify({
-      rooms: JSON.parse(process.env.ROOMS_JSON),
-      guests: []
-    }, null, 2));
-  }
-"
-
-[[ -f /etc/guest-portal/sessions.json ]] || echo '{}' > /etc/guest-portal/sessions.json
-[[ -f /etc/guest-portal/guest-tokens.json ]] || echo '{}' > /etc/guest-portal/guest-tokens.json
-chown -R "${var_app_user}:${var_app_group}" /etc/guest-portal "${var_app_dir}/uploads"
+gp_write_setup_config_files "${var_app_user}" "${var_app_group}" "${var_app_dir}/uploads"
 msg_ok "Configuration files written"
 
 msg_info "Setting up systemd service"
@@ -420,9 +328,7 @@ echo -e "${CREATING}${GN}${BOLD}Guest Portal container setup complete.${CL}"
 echo ""
 echo -e "${GATEWAY}${BOLD}${DGN}Backend: ${BGN}http://${NODEJS_IP}:3000${CL}"
 echo -e "${GATEWAY}${BOLD}${DGN}Admin Panel: ${BGN}http://${NODEJS_IP}:3000/admin.html${CL}"
-if [[ -n "$ADMIN_HASH" ]]; then
-  echo -e "${CM}${GN}Admin login username: ${BOLD}${ADMIN_USER}${CL}"
-fi
+gp_admin_login_message
 echo ""
 echo -e "${TAB}${BOLD}Next steps:${CL}"
 echo -e "${TAB}  - Point Nginx Proxy Manager or another reverse proxy to http://${NODEJS_IP}:3000"
