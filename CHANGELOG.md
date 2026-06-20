@@ -35,6 +35,10 @@ All notable changes to this project will be documented here.
 - Guest uploads are restricted by MIME type, file extension, file count, file size, and file signature checks.
 - Rejected upload files are removed after validation failure.
 
+### Fixed
+- Setup scripts now update `adminUser` and `adminHash` on reinstall when credentials are entered during setup, instead of preserving a stale default `admin` username from an existing `config.json`.
+- Admin panel Overview and Settings tabs now show the configured HTTP Basic Auth username.
+
 ---
 
 ## [v1.3.0] - Persistent Guest Sessions & Device Linking

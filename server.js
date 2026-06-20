@@ -327,11 +327,19 @@ app.use(limiter);
 // C1: Auth middleware for admin endpoints
 function authMiddleware(req, res, next) {
   const user = basicAuth(req);
-  if (!user || user.name !== config.adminUser) {
+  const expectedUser = (config.adminUser || '').trim();
+  if (!user || user.name.trim() !== expectedUser) {
     res.set('WWW-Authenticate', 'Basic realm="Guest Portal Admin"');
     return res.status(401).send('Authentication required.');
   }
+  if (!config.adminHash || config.adminHash === '<bcrypt_hash_placeholder>') {
+    res.set('WWW-Authenticate', 'Basic realm="Guest Portal Admin"');
+    return res.status(401).send('Admin account not configured.');
+  }
   bcrypt.compare(user.pass, config.adminHash, (err, result) => {
+    if (err) {
+      return res.status(500).send('Authentication error.');
+    }
     if (result) next();
     else {
       res.set('WWW-Authenticate', 'Basic realm="Guest Portal Admin"');
@@ -482,9 +490,10 @@ app.post('/admin-api/setup', async (req, res) => {
     return res.status(403).send('Admin already configured. Use setup-local.sh to reset.');
   }
 
-  const { username, password } = req.body;
+  const username = typeof req.body.username === 'string' ? req.body.username.trim() : '';
+  const { password } = req.body;
 
-  if (!username || typeof username !== 'string' || username.length < 3 || username.length > 50) {
+  if (!username || username.length < 3 || username.length > 50) {
     return res.status(400).send('Username must be 3-50 characters');
   }
   if (!password || typeof password !== 'string' || password.length < 8) {
@@ -499,7 +508,7 @@ app.post('/admin-api/setup', async (req, res) => {
     config.adminUser = username;
     config.adminHash = hash;
     saveConfig();
-    res.json({ success: true, message: 'Admin account created successfully' });
+    res.json({ success: true, username, message: 'Admin account created successfully' });
   } catch (err) {
     res.status(500).send('Failed to create admin account');
   }
@@ -689,6 +698,9 @@ app.get('/admin-api/deployment-status', authMiddleware, async (req, res) => {
       activeGuestSessions: sessionCounts.active,
       expiredGuestSessions: sessionCounts.expired,
       pendingSessionCodes: Object.values(sessionCodes).filter(entry => entry.expires > Date.now()).length
+    },
+    admin: {
+      username: config.adminUser || 'admin'
     },
     dashboards: {
       checked: checkUrls,

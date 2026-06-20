@@ -135,6 +135,10 @@
       </section>
 
       <section class="admin-panel" data-panel="settings" role="tabpanel">
+        <h2>Admin Account</h2>
+        <div id="adminAccountInfo" class="admin-card">
+          <p class="admin-muted">Loading account details...</p>
+        </div>
         <h2>Session Settings</h2>
         <form id="timeoutForm" class="admin-card">
           <label>Admin Auto-Logout Timeout (minutes):</label>
@@ -178,7 +182,7 @@
       rooms: () => { loadRooms(); loadBackground(); },
       guests: () => { loadGuestSessions(); loadGuests(); loadSessions(); },
       storage: () => { loadUploadPath(); loadPhotos(); },
-      settings: () => loadTimeout()
+      settings: () => { loadAdminAccountInfo(); loadTimeout(); }
     };
 
     function switchTab(tabId) {
@@ -236,7 +240,9 @@
           body: JSON.stringify({ username, password })
         });
         if (res.ok) {
-          alert('Admin account created. The page will reload and your browser will ask you to sign in.');
+          const data = await res.json().catch(() => ({}));
+          const savedUsername = data.username || username;
+          alert(`Admin account created for "${savedUsername}". The page will reload and your browser will ask you to sign in with that username.`);
           location.reload();
         } else {
           alert('Setup failed: ' + await res.text());
@@ -325,6 +331,7 @@
       }
       html += `<p><strong>Reverse proxy:</strong> ${escapeHtml(proxyText)} `;
       html += `<small>host: ${escapeHtml(data.reverseProxy.forwardedHost || data.reverseProxy.host || 'unknown')}, proto: ${escapeHtml(data.reverseProxy.forwardedProto || 'none')}</small></p>`;
+      html += `<p><strong>Admin login:</strong> <code>${escapeHtml(data.admin?.username || 'admin')}</code> <small>(HTTP Basic Auth username for /admin.html)</small></p>`;
       html += `<p><strong>Data:</strong> ${data.data.rooms} room(s), ${data.data.registrationHistory} registration history entr${data.data.registrationHistory === 1 ? 'y' : 'ies'}, ${data.data.activeGuestSessions} active guest session(s), ${data.data.expiredGuestSessions} expired session(s), ${data.data.pendingSessionCodes} pending code(s)</p>`;
       if (data.dashboards.rooms.length > 0) {
         html += '<p><strong>Dashboard URLs:</strong></p><ul>';
@@ -389,6 +396,24 @@
         li.appendChild(btn);
         ul.appendChild(li);
       });
+    }
+
+    async function loadAdminAccountInfo() {
+      const container = document.getElementById('adminAccountInfo');
+      if (!container) return;
+      container.innerHTML = '<p class="admin-muted">Loading account details...</p>';
+      try {
+        const res = await authFetch('/admin-api/deployment-status');
+        if (!res.ok) {
+          container.innerHTML = '<p class="admin-error-text">Failed to load admin account details.</p>';
+          return;
+        }
+        const data = await res.json();
+        const username = data.admin?.username || 'admin';
+        container.innerHTML = `<p><strong>Username:</strong> <code>${escapeHtml(username)}</code></p><p class="admin-help">Use this username with your password when the browser prompts for HTTP Basic Auth. To change it, edit <code>/etc/guest-portal/config.json</code> and restart the service.</p>`;
+      } catch (err) {
+        container.innerHTML = '<p class="admin-error-text">Failed to load admin account details: ' + escapeHtml(err.message) + '</p>';
+      }
     }
 
     async function loadTimeout() {

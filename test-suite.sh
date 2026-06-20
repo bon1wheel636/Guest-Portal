@@ -275,6 +275,11 @@ test_deployment_status() {
     else
         fail "Deployment status separates history and sessions" "registrationHistory/activeGuestSessions/expiredGuestSessions" "$response"
     fi
+    if [[ "$response" == *'"admin"'* ]] && [[ "$response" == *'"username"'* ]]; then
+        pass "Deployment status includes admin username"
+    else
+        fail "Deployment status includes admin username" '"admin":{"username":...}' "$response"
+    fi
 }
 
 section "5b. GUEST ADMIN MANAGEMENT"

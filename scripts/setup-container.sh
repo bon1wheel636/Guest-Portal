@@ -207,6 +207,12 @@ ADMIN_HASH=""
 if [[ "$admin_choice" == "1" ]]; then
   read -p "  Admin username (default: admin): " ADMIN_USER
   ADMIN_USER=${ADMIN_USER:-admin}
+  ADMIN_USER="${ADMIN_USER// /}"
+
+  if ! [[ "$ADMIN_USER" =~ ^[a-zA-Z0-9_-]{3,50}$ ]]; then
+    echo -e "${TAB}${RD}Username must be 3-50 characters: letters, numbers, underscore, hyphen only.${CL}"
+    exit 1
+  fi
 
   while true; do
     read -sp "  Admin password: " ADMIN_PASS
@@ -221,7 +227,7 @@ if [[ "$admin_choice" == "1" ]]; then
 
   msg_info "Hashing admin password"
   ADMIN_HASH=$(ADMIN_PASS="$ADMIN_PASS" node -e 'require("bcrypt").hash(process.env.ADMIN_PASS,10).then(console.log)')
-  msg_ok "Admin credentials configured"
+  msg_ok "Admin credentials configured (${ADMIN_USER})"
 fi
 
 msg_info "Writing configuration files"
@@ -235,15 +241,14 @@ ROOMS_JSON=$(ROOM_DATA="$(printf '%s\n' "${ROOMS[@]}")" node -e "
 if [[ -n "$ADMIN_HASH" ]]; then
   ADMIN_USER="$ADMIN_USER" ADMIN_HASH="$ADMIN_HASH" node -e "
     var fs = require('fs');
-    if (!fs.existsSync('/etc/guest-portal/config.json')) {
-      fs.writeFileSync('/etc/guest-portal/config.json', JSON.stringify({
-        adminUser: process.env.ADMIN_USER,
-        adminHash: process.env.ADMIN_HASH,
-        uploadDir: '',
-        sessionExpirationMinutes: 10,
-        adminSessionTimeoutMinutes: 15
-      }, null, 2));
-    }
+    var path = '/etc/guest-portal/config.json';
+    var c = fs.existsSync(path) ? JSON.parse(fs.readFileSync(path, 'utf8')) : {};
+    c.adminUser = process.env.ADMIN_USER;
+    c.adminHash = process.env.ADMIN_HASH;
+    if (c.uploadDir === undefined) c.uploadDir = '';
+    if (!c.sessionExpirationMinutes) c.sessionExpirationMinutes = 10;
+    if (!c.adminSessionTimeoutMinutes) c.adminSessionTimeoutMinutes = 15;
+    fs.writeFileSync(path, JSON.stringify(c, null, 2));
   "
 else
   node -e "
@@ -415,6 +420,9 @@ echo -e "${CREATING}${GN}${BOLD}Guest Portal container setup complete.${CL}"
 echo ""
 echo -e "${GATEWAY}${BOLD}${DGN}Backend: ${BGN}http://${NODEJS_IP}:3000${CL}"
 echo -e "${GATEWAY}${BOLD}${DGN}Admin Panel: ${BGN}http://${NODEJS_IP}:3000/admin.html${CL}"
+if [[ -n "$ADMIN_HASH" ]]; then
+  echo -e "${CM}${GN}Admin login username: ${BOLD}${ADMIN_USER}${CL}"
+fi
 echo ""
 echo -e "${TAB}${BOLD}Next steps:${CL}"
 echo -e "${TAB}  - Point Nginx Proxy Manager or another reverse proxy to http://${NODEJS_IP}:3000"
