@@ -18,9 +18,8 @@
     <p id="checkoutInfo" class="guest-muted"></p>
 
     <section class="guest-section">
-      <p class="guest-muted">Photos and files you upload during your stay will appear here.</p>
       <div id="galleryStatus" class="guest-muted">Loading your uploads...</div>
-      <ul id="photoList" class="guest-photo-list"></ul>
+      <ul id="photoList" class="guest-gallery"></ul>
       <p><a href="welcome.html">Upload photos &amp; files on the Welcome page</a></p>
     </section>
 
@@ -39,15 +38,165 @@
     }).catch(() => {});
 
     const guestData = JSON.parse(localStorage.getItem('guestData')) || {};
+    const guestToken = localStorage.getItem('guestToken');
     const guestNameSpan = document.getElementById('guestName');
     const greeting = document.getElementById('guestGreeting');
     const checkoutInfo = document.getElementById('checkoutInfo');
     const galleryStatus = document.getElementById('galleryStatus');
+    const photoList = document.getElementById('photoList');
+    const previewUrls = [];
 
     function escapeHtml(text) {
       const div = document.createElement('div');
       div.textContent = text;
       return div.innerHTML;
+    }
+
+    function formatBytes(bytes) {
+      if (bytes === 0) return '0 B';
+      const units = ['B', 'KB', 'MB', 'GB'];
+      const i = Math.floor(Math.log(bytes) / Math.log(1024));
+      return (bytes / Math.pow(1024, i)).toFixed(i > 0 ? 1 : 0) + ' ' + units[i];
+    }
+
+    function fileExtension(name) {
+      const index = name.lastIndexOf('.');
+      return index >= 0 ? name.substring(index).toLowerCase() : '';
+    }
+
+    function isImageFile(name) {
+      return ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.heic', '.heif'].includes(fileExtension(name));
+    }
+
+    function revokePreviewUrls() {
+      previewUrls.forEach(url => URL.revokeObjectURL(url));
+      previewUrls.length = 0;
+    }
+
+    async function fetchGuestFile(filename) {
+      const res = await fetch(`/guest/uploads/${encodeURIComponent(filename)}`, {
+        headers: { 'X-Guest-Token': guestToken }
+      });
+      if (!res.ok) {
+        throw new Error(`Unable to load ${filename}`);
+      }
+      return res.blob();
+    }
+
+    async function renderGallery(files) {
+      revokePreviewUrls();
+      photoList.innerHTML = '';
+
+      if (files.length === 0) {
+        galleryStatus.textContent = 'No uploads yet. Add photos or files from the Welcome page.';
+        return;
+      }
+
+      galleryStatus.textContent = `${files.length} file${files.length === 1 ? '' : 's'} uploaded during your stay.`;
+
+      for (const file of files) {
+        const item = document.createElement('li');
+        item.className = 'guest-gallery-item';
+        item.dataset.filename = file.name;
+
+        const preview = document.createElement('div');
+        preview.className = 'guest-gallery-preview';
+
+        if (isImageFile(file.name)) {
+          try {
+            const blob = await fetchGuestFile(file.name);
+            const url = URL.createObjectURL(blob);
+            previewUrls.push(url);
+            const img = document.createElement('img');
+            img.src = url;
+            img.alt = file.name;
+            preview.appendChild(img);
+          } catch (err) {
+            preview.textContent = 'Preview unavailable';
+          }
+        } else {
+          preview.textContent = fileExtension(file.name).toUpperCase().replace('.', '') || 'FILE';
+        }
+
+        const meta = document.createElement('div');
+        meta.className = 'guest-gallery-meta';
+        meta.innerHTML = `<strong>${escapeHtml(file.name)}</strong><br><span class="guest-muted">${formatBytes(file.size)}</span>`;
+
+        const actions = document.createElement('div');
+        actions.className = 'guest-gallery-actions';
+
+        const downloadBtn = document.createElement('button');
+        downloadBtn.type = 'button';
+        downloadBtn.className = 'btn-secondary';
+        downloadBtn.textContent = 'Download';
+        downloadBtn.addEventListener('click', async () => {
+          try {
+            const blob = await fetchGuestFile(file.name);
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = file.name;
+            link.click();
+            URL.revokeObjectURL(url);
+          } catch (err) {
+            alert(err.message);
+          }
+        });
+
+        const deleteBtn = document.createElement('button');
+        deleteBtn.type = 'button';
+        deleteBtn.className = 'btn-danger-inline';
+        deleteBtn.textContent = 'Delete';
+        deleteBtn.addEventListener('click', async () => {
+          if (!confirm(`Delete ${file.name}? This cannot be undone.`)) {
+            return;
+          }
+
+          deleteBtn.disabled = true;
+          try {
+            const res = await fetch(`/guest/uploads/${encodeURIComponent(file.name)}`, {
+              method: 'DELETE',
+              headers: { 'X-Guest-Token': guestToken }
+            });
+            if (!res.ok) {
+              throw new Error(await res.text() || `HTTP ${res.status}`);
+            }
+            await loadGallery();
+          } catch (err) {
+            alert('Delete failed: ' + err.message);
+            deleteBtn.disabled = false;
+          }
+        });
+
+        actions.appendChild(downloadBtn);
+        actions.appendChild(deleteBtn);
+
+        item.appendChild(preview);
+        item.appendChild(meta);
+        item.appendChild(actions);
+        photoList.appendChild(item);
+      }
+    }
+
+    async function loadGallery() {
+      if (!guestToken) {
+        galleryStatus.textContent = 'Please register again to view your uploads.';
+        return;
+      }
+
+      galleryStatus.textContent = 'Loading your uploads...';
+      try {
+        const res = await fetch('/guest/uploads', {
+          headers: { 'X-Guest-Token': guestToken }
+        });
+        if (!res.ok) {
+          throw new Error(await res.text() || `HTTP ${res.status}`);
+        }
+        const data = await res.json();
+        await renderGallery(data.files || []);
+      } catch (err) {
+        galleryStatus.textContent = 'Unable to load uploads: ' + err.message;
+      }
     }
 
     if (guestData.name && guestData.room) {
@@ -59,18 +208,25 @@
         const daysLeft = Math.ceil((checkout - new Date()) / (1000 * 60 * 60 * 24));
         checkoutInfo.innerHTML = `Your session is active until <strong>${checkout.toLocaleDateString()}</strong> (${daysLeft} days remaining)`;
       }
+
+      loadGallery();
     } else {
       window.location.href = 'index.html';
     }
 
-    galleryStatus.textContent = 'Your photo gallery will be available in an upcoming update. Upload files from the Welcome page for now.';
-
     document.getElementById('reset').addEventListener('click', function (e) {
       e.preventDefault();
+      revokePreviewUrls();
       localStorage.removeItem('guestData');
       localStorage.removeItem('guestToken');
+      sessionStorage.removeItem('welcomeSeen');
+      sessionStorage.removeItem('tutorialSeen');
+      sessionStorage.removeItem('showTutorial');
+      sessionStorage.removeItem('guestArrival');
       window.location.href = 'index.html';
     });
+
+    window.addEventListener('pagehide', revokePreviewUrls);
   </script>
 </body>
 </html>

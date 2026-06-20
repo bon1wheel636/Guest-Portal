@@ -127,6 +127,64 @@ function findGuestTokenEntryByGuestId(guestId) {
   return Object.entries(guestTokens).find(([_, guest]) => guest.id === guestId) || null;
 }
 
+function isReturningDevice(guest, userAgent) {
+  const ua = userAgent || 'Unknown';
+  return (guest.devices || []).some(device => device.userAgent === ua);
+}
+
+function getGuestUploadFolders(guestId) {
+  const uploadsDir = getUploadsDir();
+  if (!fs.existsSync(uploadsDir)) {
+    return [];
+  }
+
+  const guestMarker = `-${guestId}-`;
+  return fs.readdirSync(uploadsDir, { withFileTypes: true })
+    .filter(entry => entry.isDirectory() && entry.name !== 'backgrounds' && entry.name.includes(guestMarker))
+    .map(entry => path.join(uploadsDir, entry.name));
+}
+
+function listGuestUploadFiles(guestId) {
+  const files = [];
+
+  getGuestUploadFolders(guestId).forEach(folderPath => {
+    fs.readdirSync(folderPath).forEach(name => {
+      const filePath = path.join(folderPath, name);
+      const stat = fs.statSync(filePath);
+      if (!stat.isFile()) {
+        return;
+      }
+
+      files.push({
+        name,
+        size: stat.size,
+        uploadedAt: stat.mtime.toISOString()
+      });
+    });
+  });
+
+  return files.sort((a, b) => b.uploadedAt.localeCompare(a.uploadedAt));
+}
+
+function findGuestUploadFile(guestId, filename) {
+  const safeName = path.basename(filename);
+  if (safeName !== filename || safeName.includes('..')) {
+    return null;
+  }
+
+  for (const folderPath of getGuestUploadFolders(guestId)) {
+    const filePath = path.resolve(path.join(folderPath, safeName));
+    if (!filePath.startsWith(path.resolve(folderPath))) {
+      continue;
+    }
+    if (fs.existsSync(filePath) && fs.statSync(filePath).isFile()) {
+      return filePath;
+    }
+  }
+
+  return null;
+}
+
 function countGuestSessionsByExpiry() {
   const now = new Date();
   let active = 0;
@@ -537,7 +595,8 @@ app.post('/register', (req, res) => {
   const registration = createGuestRegistration(name, room, stayDays, req.get('User-Agent') || 'Unknown');
   res.json({
     token: registration.token,
-    guest: registration.guest
+    guest: registration.guest,
+    returningDevice: false
   });
 });
 
@@ -554,6 +613,7 @@ app.post('/guest/validate', (req, res) => {
   const guest = session.guest;
   res.json({
     valid: true,
+    returningDevice: isReturningDevice(guest, req.get('User-Agent')),
     guest: {
       id: guest.id,
       name: guest.name,
@@ -609,6 +669,7 @@ app.post('/guest/link-device', (req, res) => {
 
   res.json({
     token: entry.guestToken,
+    returningDevice: false,
     guest: {
       id: guest.id,
       name: guest.name,
@@ -630,6 +691,34 @@ app.post('/upload', validateGuestUploadToken, handleGuestUpload, (req, res) => {
     return res.status(400).send('Uploaded file content does not match an allowed file type');
   }
   res.sendStatus(200);
+});
+
+app.get('/guest/uploads', validateGuestUploadToken, (req, res) => {
+  const files = listGuestUploadFiles(req.guestSession.guest.id);
+  res.json({ files });
+});
+
+app.get('/guest/uploads/:filename', validateGuestUploadToken, (req, res) => {
+  const filePath = findGuestUploadFile(req.guestSession.guest.id, req.params.filename);
+  if (!filePath) {
+    return res.status(404).send('File not found');
+  }
+  res.sendFile(filePath);
+});
+
+app.delete('/guest/uploads/:filename', validateGuestUploadToken, (req, res) => {
+  const filePath = findGuestUploadFile(req.guestSession.guest.id, req.params.filename);
+  if (!filePath) {
+    return res.status(404).send('File not found');
+  }
+
+  try {
+    fs.unlinkSync(filePath);
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Failed to delete guest upload:', err);
+    res.status(500).send('Failed to delete file');
+  }
 });
 
 // Legacy session routes (public)

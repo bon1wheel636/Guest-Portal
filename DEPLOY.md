@@ -120,7 +120,8 @@ This is optional. Production installs do not need git on the host.
 
 ### Access the portal
 - Guest Registration: `https://guestportal.<your-fqdn>/`
-- Photo Upload: `https://guestportal.<your-fqdn>/photo.html`
+- Guest Welcome Hub: `https://guestportal.<your-fqdn>/welcome.html`
+- My Photos: `https://guestportal.<your-fqdn>/photo.html`
 - Admin Panel: `https://guestportal.<your-fqdn>/admin.html`
 - Protected Uploads: `https://guestportal.<your-fqdn>/admin/uploads`
 

@@ -66,15 +66,15 @@ This roadmap tracks shareable project work only. Keep private domains, NAS hostn
 
 **Handoff:** [docs/SPRINT_GUEST_UX.md](docs/SPRINT_GUEST_UX.md) — read this at the start of a new agent session (avoids relying on full chat context).
 
-- [ ] **Returning guest recognition and welcome messaging**
+- [x] **Returning guest recognition and welcome messaging**
   - Do not show "Welcome back" immediately after first registration.
   - Show "Welcome back" only when the device is recognized and the guest name matches an active session, so the portal knows they are a returning guest on the same stay.
   - For new guests, unrecognized devices, or uncertain matches, use a first-visit greeting such as "We're glad you're here" (or similar).
   - After a guest returns on a linked/recognized device during their stay, use "Welcome back" for the remainder of that stay.
-- [ ] **First-stay guest tutorial**
+- [x] **First-stay guest tutorial**
   - After first registration, show a short onboarding tutorial explaining what guests can do from the portal (room dashboard, photo upload, device linking, etc.).
   - Include a practical tip to bookmark the portal or save it to the home screen so it is easy to find again during the stay.
-- [ ] **Guest welcome hub (`welcome.html`) and photo gallery split**
+- [x] **Guest welcome hub (`welcome.html`) and photo gallery split**
   - Replace today's post-registration landing at `photo.html` with a guest-facing **`welcome.html`** hub (name should reflect welcome/orientation, not photo upload).
   - Make **`welcome.html` the first page guests see after registration** and on return visits during their stay.
   - Keep core stay actions on one page: greeting, Smart Home link, device linking, and a **photo upload section** (not a separate first landing focused on uploads).
@@ -82,7 +82,7 @@ This roadmap tracks shareable project work only. Keep private domains, NAS hostn
   - Repurpose **`photo.html` as a guest photo gallery** showing what they have already uploaded during this stay.
   - Allow guests to **delete individual uploads one at a time** from the gallery in case they uploaded something by mistake (guest-scoped delete only; admin retains full folder management).
   - Prioritize layout and copy that make upload feel easy, optional, and safe so guests are more likely to use it.
-- [ ] **Guest-scoped upload list/delete APIs** (supports gallery; see sprint doc)
+- [x] **Guest-scoped upload list/delete APIs** (supports gallery; see sprint doc)
 
 ## Backlog (after guest UX sprint)
 

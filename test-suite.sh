@@ -92,7 +92,7 @@ test_register_valid() {
     local response=$(curl -s -X POST "$BASE_URL/register" \
         -H "Content-Type: application/json" \
         -d '{"name":"Test User","room":"Room 1","stayDays":7}')
-    if [[ "$response" == *"token"* ]] && [[ "$response" == *"guest"* ]]; then
+    if [[ "$response" == *"token"* ]] && [[ "$response" == *"guest"* ]] && [[ "$response" == *'"returningDevice":false'* ]]; then
         GUEST_TOKEN=$(echo "$response" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
         pass "Valid guest registration (returns token + guest)"
     else
@@ -457,6 +457,76 @@ test_upload_rejects_code() {
     rm -f /tmp/payload.js
 }
 
+test_validate_returning_device() {
+    local ua="GuestPortalTestSuite/1.0"
+    local response=$(curl -s -X POST "$BASE_URL/register" \
+        -H "Content-Type: application/json" \
+        -H "User-Agent: $ua" \
+        -d '{"name":"Return Device User","room":"Room 1","stayDays":3}')
+    local token=$(echo "$response" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
+    if [[ -z "$token" ]]; then
+        fail "Validate returning device" "Registration token" "Missing token"
+        return
+    fi
+
+    local validate=$(curl -s -X POST "$BASE_URL/guest/validate" \
+        -H "Content-Type: application/json" \
+        -H "User-Agent: $ua" \
+        -d "{\"token\":\"$token\"}")
+    if [[ "$validate" == *'"returningDevice":true'* ]]; then
+        pass "Validate recognizes returning device"
+    else
+        fail "Validate recognizes returning device" '"returningDevice":true' "$validate"
+    fi
+}
+
+test_guest_uploads_list() {
+    if [[ -z "$GUEST_TOKEN" ]]; then
+        fail "Guest uploads list" "Needs guest token" "No token available"
+        return
+    fi
+    local response=$(curl -s "$BASE_URL/guest/uploads" -H "X-Guest-Token: $GUEST_TOKEN")
+    if [[ "$response" == *'"files"'* ]]; then
+        GUEST_UPLOAD_FILENAME=$(echo "$response" | grep -o '"name":"[^"]*"' | head -1 | cut -d'"' -f4)
+        pass "Guest uploads list"
+    else
+        fail "Guest uploads list" '{"files":[...]}' "$response"
+    fi
+}
+
+test_guest_uploads_requires_token() {
+    local http_code=$(curl -s -o /dev/null -w "%{http_code}" "$BASE_URL/guest/uploads")
+    if [[ "$http_code" == "401" ]]; then
+        pass "Guest uploads list requires token (401)"
+    else
+        fail "Guest uploads list requires token" "401" "$http_code"
+    fi
+}
+
+test_guest_upload_delete() {
+    if [[ -z "$GUEST_TOKEN" || -z "$GUEST_UPLOAD_FILENAME" ]]; then
+        fail "Guest upload delete" "Needs uploaded file" "Missing token or filename"
+        return
+    fi
+    local encoded_name=$(python3 -c "import urllib.parse; print(urllib.parse.quote('$GUEST_UPLOAD_FILENAME'))")
+    local response=$(curl -s -X DELETE "$BASE_URL/guest/uploads/$encoded_name" \
+        -H "X-Guest-Token: $GUEST_TOKEN")
+    if [[ "$response" == *'"success":true'* ]]; then
+        pass "Guest upload delete"
+    else
+        fail "Guest upload delete" '{"success":true}' "$response"
+    fi
+}
+
+test_guest_upload_delete_requires_token() {
+    local http_code=$(curl -s -o /dev/null -w "%{http_code}" -X DELETE "$BASE_URL/guest/uploads/example.pdf")
+    if [[ "$http_code" == "401" ]]; then
+        pass "Guest upload delete requires token (401)"
+    else
+        fail "Guest upload delete requires token" "401" "$http_code"
+    fi
+}
+
 test_rate_limiting() {
     # Make 65 rapid requests (limit is 60/min)
     local blocked=false
@@ -560,6 +630,11 @@ test_path_traversal
 test_admin_requires_auth
 test_upload_requires_token
 test_upload_rejects_code
+test_validate_returning_device
+test_guest_uploads_list
+test_guest_uploads_requires_token
+test_guest_upload_delete
+test_guest_upload_delete_requires_token
 
 test_index_html
 test_admin_html

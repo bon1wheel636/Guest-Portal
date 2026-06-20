@@ -7,7 +7,11 @@ All notable changes to this project will be documented here.
 ## [Unreleased]
 
 ### Added
-- UniFi guest WiFi deployment guide with guest VLAN, Home Assistant isolation, NAS upload, and future external portal guidance.
+- Guest welcome hub at `/welcome.html` with Smart Home link, inline upload, device linking, and Welcome | My Photos navigation.
+- First-stay tutorial modal on the welcome hub after registration.
+- Returning-device recognition via `/guest/validate` and registration responses (`returningDevice` flag).
+- Guest-scoped upload APIs: `GET /guest/uploads`, `GET /guest/uploads/:filename`, and `DELETE /guest/uploads/:filename`.
+- Guest photo gallery on `/photo.html` with per-file delete for mistaken uploads.
 - Reverse proxy/HTTPS guide for Nginx Proxy Manager, split DNS, DNS challenge certificates, and generic security headers.
 - Backup and restore guide for `/etc/guest-portal`, local uploads, NAS-backed uploads, and permission checks.
 - Authenticated deployment status endpoint and admin panel view for app health, upload storage, reverse proxy headers, app data counts, and optional dashboard URL reachability checks.
@@ -19,6 +23,8 @@ All notable changes to this project will be documented here.
 - Installer auto-detects Proxmox templates, prefers Debian 13, and falls back to Debian 12 (replacing hardcoded `12.0-1`).
 
 ### Changed
+- Post-registration and return visits now land on `/welcome.html` instead of `/photo.html`.
+- Guest greeting copy distinguishes first visits ("We're glad you're here") from recognized return devices ("Welcome back").
 - Admin panel now uses browser HTTP Basic Auth only; removed duplicate HTML login form and sessionStorage credentials.
 - Admin panel reorganized into tabs: Overview, Rooms & Portal, Guests, Photos & Storage, and Settings.
 - `updateguest` now runs git and npm as the `guestportal` service user to avoid dubious ownership errors when invoked as root.

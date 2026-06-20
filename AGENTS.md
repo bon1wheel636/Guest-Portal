@@ -14,7 +14,7 @@ Track high-level items in [ROADMAP.md](ROADMAP.md) under **In progress sprint: g
 
 ### Service & how to run
 - Single service: `npm start` (runs `node server.js`) listening on `http://localhost:3000`. There is no separate dev/watch mode and no build step. After editing `server.js` you must restart the process for changes to take effect (no hot reload).
-- Frontend pages: `/` (guest registration), `/welcome.html` (guest hub — **in progress**, replaces post-registration `photo.html` landing), `/photo.html` (becoming guest photo gallery), `/admin.html` (admin panel). Static files are edited live and just need a browser refresh.
+- Frontend pages: `/` (guest registration), `/welcome.html` (guest hub), `/photo.html` (guest photo gallery), `/admin.html` (admin panel). Static files are edited live and just need a browser refresh.
 
 ### Config lives outside the repo (non-obvious)
 - `server.js` reads/writes config from hardcoded paths under `/etc/guest-portal/`: `config.json`, `storage.json`, `sessions.json`, `guest-tokens.json`. These are NOT in the repo and are gitignored.
