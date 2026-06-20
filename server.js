@@ -572,7 +572,14 @@ app.post('/admin-api/setup', async (req, res) => {
   }
 });
 
-// Public: rooms list needed by guest registration page
+// Public guest endpoints (do not place under /admin-api — proxies may require auth there)
+app.get('/guest/rooms', (req, res) => res.json(guestData.rooms || []));
+
+app.get('/guest/background', (req, res) => {
+  res.json({ backgroundImage: config.backgroundImage || null });
+});
+
+// Backward-compatible aliases
 app.get('/admin-api/rooms', (req, res) => res.json(guestData.rooms || []));
 
 // Public: background image info needed by guest pages

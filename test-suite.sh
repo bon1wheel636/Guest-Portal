@@ -125,11 +125,11 @@ test_register_empty() {
 section "3. ROOM MANAGEMENT"
 
 test_get_rooms() {
-    local response=$(curl -s "$BASE_URL/admin-api/rooms")
+    local response=$(curl -s "$BASE_URL/guest/rooms")
     if [[ "$response" == "["* ]]; then
-        pass "Get rooms returns array"
+        pass "Get guest rooms returns array"
     else
-        fail "Get rooms returns array" "[...]" "$response"
+        fail "Get guest rooms returns array" "[...]" "$response"
     fi
 }
 

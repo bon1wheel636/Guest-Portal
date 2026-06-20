@@ -56,6 +56,7 @@ Recommended flow:
 - Use HTTPS even for internal guest networks.
 - Keep Cloudflare or DNS provider API tokens in NPM secrets/config only.
 - Do not store real domains, tokens, or internal IPs in repository files.
-- Test `/health`, `/admin.html`, `/photo.html`, and a PDF upload after proxy changes.
+- Guest-facing public endpoints live under `/guest/*` (for example `/guest/rooms`, `/guest/background`). Do not require guests to call `/admin-api/*` — some reverse-proxy setups protect that prefix with HTTP Basic Auth.
+- Test `/health`, `/`, `/guest/rooms`, `/welcome.html`, `/photo.html`, and a PDF upload after proxy changes.
 - In `/admin.html`, open **Deployment Status** and confirm HTTPS is detected from forwarded headers.
 - Use **Check Dashboard URLs** to confirm configured Home Assistant dashboard URLs are reachable from the Guest Portal container.

@@ -16,6 +16,7 @@
       <select id="room" name="room" required>
         <option value="" disabled selected>Select a room</option>
       </select>
+      <small id="roomLoadError" class="guest-error" hidden>Unable to load rooms. Please refresh the page or ask your host for help.</small>
       <label for="stayDays">Length of Stay (days)</label>
       <input type="number" id="stayDays" name="stayDays" min="1" max="30" value="7" required />
       <small>How many days will you be staying? (1-30 days)</small>
@@ -33,7 +34,7 @@
 
   <script>
     // Load background image if set
-    fetch('/admin-api/background').then(res => res.json()).then(data => {
+    fetch('/guest/background').then(res => res.json()).then(data => {
       if (data.backgroundImage) {
         document.body.style.backgroundImage = `url('${data.backgroundImage}')`;
         document.body.style.backgroundSize = 'cover';
@@ -43,16 +44,40 @@
       }
     }).catch(() => {});
 
-    // Load rooms
-    fetch('/admin-api/rooms').then(res => res.json()).then(rooms => {
+    async function loadRooms() {
       const roomSelect = document.getElementById('room');
-      rooms.forEach(r => {
-        const opt = document.createElement('option');
-        opt.value = r.name;
-        opt.textContent = r.name;
-        roomSelect.appendChild(opt);
-      });
-    });
+      const roomLoadError = document.getElementById('roomLoadError');
+
+      try {
+        const res = await fetch('/guest/rooms');
+        if (!res.ok) {
+          throw new Error(`HTTP ${res.status}`);
+        }
+
+        const rooms = await res.json();
+        if (!Array.isArray(rooms)) {
+          throw new Error('Invalid room list');
+        }
+
+        rooms.forEach(r => {
+          const opt = document.createElement('option');
+          opt.value = r.name;
+          opt.textContent = r.name;
+          roomSelect.appendChild(opt);
+        });
+
+        if (rooms.length === 0) {
+          roomLoadError.hidden = false;
+          roomLoadError.textContent = 'No rooms are configured yet. Please ask your host to add rooms in the admin panel.';
+          roomSelect.disabled = true;
+        }
+      } catch (err) {
+        console.error('Failed to load rooms:', err);
+        roomLoadError.hidden = false;
+        roomSelect.disabled = true;
+      }
+    }
+    loadRooms();
 
     // Check for existing guest token and validate
     async function checkExistingSession() {
