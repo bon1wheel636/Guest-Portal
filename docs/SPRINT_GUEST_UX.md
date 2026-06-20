@@ -1,6 +1,6 @@
 # Sprint: Guest convenience and integration (UX)
 
-**Status:** Complete (PR in progress on `cursor/welcome-hub-0c5d`).
+**Status:** Complete.
 
 Use this document to continue work in a **new agent session** without relying on prior chat history.
 
