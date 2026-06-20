@@ -80,6 +80,10 @@ install_updateguest_command() {
 }
 
 load_setup_prompts() {
+  gp_app_dir="$var_app_dir"
+  gp_app_user="$var_app_user"
+  gp_app_group="$var_app_group"
+  gp_repo="$var_repo"
   local prompts_file="${var_app_dir}/scripts/setup-prompts.sh"
   if [[ ! -f "$prompts_file" ]]; then
     msg_error "Missing setup prompts helper: ${prompts_file}"
@@ -87,6 +91,20 @@ load_setup_prompts() {
   fi
   # shellcheck source=/dev/null
   source "$prompts_file"
+}
+
+run_standard_setup_wizard() {
+  gp_prompt_room_configuration || return 1
+  gp_prompt_admin_configuration || return 1
+
+  msg_info "Writing configuration files"
+  gp_write_setup_config_files
+  msg_ok "Configuration files written"
+
+  msg_info "Setting up systemd service"
+  gp_install_systemd_service
+  gp_restart_service
+  msg_ok "Systemd service enabled and started"
 }
 
 while [[ $# -gt 0 ]]; do
@@ -144,7 +162,8 @@ fi
 if [[ "$DRY_RUN" == "true" ]]; then
   echo -e "${TAB}${BOLD}Dry run only. Planned container setup:${CL}"
   echo -e "${TAB}  - Install git, curl, nodejs, npm"
-  echo -e "${TAB}  - Clone ${var_repo} into ${var_app_dir}"
+  echo -e "${TAB}  - Clone or refresh ${var_repo} in ${var_app_dir}"
+  echo -e "${TAB}  - Detect existing install and offer recovery options if present"
   echo -e "${TAB}  - Configure rooms, admin account, and systemd service"
   echo -e "${TAB}  - Optional NAS upload path"
   exit 0
@@ -181,41 +200,58 @@ install_updateguest_command
 msg_ok "Installed Node.js dependencies"
 
 load_setup_prompts
-gp_prompt_room_configuration || exit 1
-gp_prompt_admin_configuration || exit 1
 
-msg_info "Writing configuration files"
-gp_write_setup_config_files "${var_app_user}" "${var_app_group}" "${var_app_dir}/uploads"
-msg_ok "Configuration files written"
+GP_SETUP_MODE="fresh"
+GP_REBUILD_KEEP_UPLOADS=true
+if gp_existing_install_detected; then
+  gp_prompt_install_recovery_menu
+fi
 
-msg_info "Setting up systemd service"
-cat > /etc/systemd/system/guest-portal.service << UNIT
-[Unit]
-Description=Guest Portal Node.js Server
-After=network.target
-
-[Service]
-Type=simple
-User=${var_app_user}
-Group=${var_app_group}
-WorkingDirectory=${var_app_dir}
-ExecStart=/usr/bin/env node server.js
-Restart=always
-RestartSec=5
-Environment=NODE_ENV=production
-NoNewPrivileges=true
-PrivateTmp=true
-ProtectHome=true
-ProtectSystem=full
-ReadWritePaths=/etc/guest-portal ${var_app_dir}/uploads /mnt
-
-[Install]
-WantedBy=multi-user.target
-UNIT
-systemctl daemon-reload >/dev/null 2>&1
-systemctl enable guest-portal >/dev/null 2>&1
-systemctl restart guest-portal >/dev/null 2>&1
-msg_ok "Systemd service enabled and started"
+case "$GP_SETUP_MODE" in
+  cancel)
+    echo -e "${TAB}${YW}Setup cancelled.${CL}"
+    exit 0
+    ;;
+  update_only)
+    gp_handle_update_only_mode
+    exit 0
+    ;;
+  repair)
+    gp_handle_repair_mode
+    exit 0
+    ;;
+  reset_admin)
+    gp_handle_reset_admin_mode || exit 1
+    exit 0
+    ;;
+  reset_rooms)
+    gp_handle_reset_rooms_mode || exit 1
+    exit 0
+    ;;
+  reset_guests)
+    gp_handle_reset_guests_mode
+    exit 0
+    ;;
+  rebuild)
+    gp_confirm_rebuild_install || exit 0
+    msg_info "Removing existing install state"
+    gp_wipe_install_state "$GP_REBUILD_KEEP_UPLOADS"
+    gp_reset_application_code true
+    chown -R "${var_app_user}:${var_app_group}" "${var_app_dir}" /etc/guest-portal
+    install_updateguest_command
+    msg_ok "Existing install removed"
+    GP_SETUP_MODE="fresh"
+    load_setup_prompts
+    run_standard_setup_wizard || exit 1
+    ;;
+  fresh|continue)
+    run_standard_setup_wizard || exit 1
+    ;;
+  *)
+    msg_error "Unknown setup mode: ${GP_SETUP_MODE}"
+    exit 1
+    ;;
+esac
 
 header_info
 echo -e "${TAB}${BOLD}Photo Upload Storage${CL}"
