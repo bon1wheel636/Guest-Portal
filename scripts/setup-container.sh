@@ -120,10 +120,14 @@ refresh_updateguest_command() {
 }
 
 discard_installer_script_changes() {
+  local script
+  local installer_scripts=(scripts/updateguest.sh scripts/setup-prompts.sh scripts/setup-container.sh)
   if [[ ! -d "${var_app_dir}/.git" ]]; then
     return 0
   fi
-  run_as_app_user "cd '${var_app_dir}' && git checkout -- scripts/updateguest.sh scripts/setup-prompts.sh scripts/setup-container.sh 2>/dev/null || true"
+  for script in "${installer_scripts[@]}"; do
+    run_as_app_user "cd '${var_app_dir}' && if git ls-files --error-unmatch '${script}' >/dev/null 2>&1; then git checkout -- '${script}'; elif [[ -f '${script}' ]]; then rm -f '${script}'; fi" || true
+  done
 }
 
 refresh_repository_checkout() {

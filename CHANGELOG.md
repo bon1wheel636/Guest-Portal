@@ -42,6 +42,7 @@ All notable changes to this project will be documented here.
 - Existing installs now show a recovery menu with rebuild, targeted admin/room/guest resets, permission repair, and code-only update options.
 - `setup-container.sh` and `updateguest` now run git/npm as the `guestportal` user, bootstrap missing helper scripts from GitHub when needed, and refresh outdated `updateguest` commands before updating.
 - `updateguest` now discards local changes to installer scripts before `git pull`, avoiding failures after curl bootstrap downloads into the repo checkout.
+- Installer script cleanup before `git pull` now skips files not yet tracked in the current checkout and removes untracked bootstrap copies that would block the update.
 
 ---
 
