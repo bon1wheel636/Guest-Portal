@@ -545,6 +545,12 @@ ADMIN_HASH=""
 if [[ "$admin_choice" == "1" ]]; then
   read -p "  Admin username (default: admin): " ADMIN_USER
   ADMIN_USER=${ADMIN_USER:-admin}
+  ADMIN_USER="${ADMIN_USER// /}"
+
+  if ! [[ "$ADMIN_USER" =~ ^[a-zA-Z0-9_-]{3,50}$ ]]; then
+    msg_error "Username must be 3-50 characters: letters, numbers, underscore, hyphen only."
+    exit 1
+  fi
 
   while true; do
     read -sp "  Admin password: " ADMIN_PASS
@@ -563,7 +569,7 @@ if [[ "$admin_choice" == "1" ]]; then
     export PASS_B64=$ADMIN_PASS_B64
     node -e 'require(\"bcrypt\").hash(Buffer.from(process.env.PASS_B64,\"base64\").toString(),10).then(console.log)'
   ")
-  msg_ok "Admin credentials configured"
+  msg_ok "Admin credentials configured (${ADMIN_USER})"
 fi
 
 # ─── Write Config Files ────────────────────────────────────────────────────
@@ -583,12 +589,8 @@ if [[ -n "$ADMIN_HASH" ]]; then
   ADMIN_HASH_B64=$(printf '%s' "$ADMIN_HASH" | base64 -w0)
 
   pct exec "$CT_ID" -- bash -c "
-    if [ ! -f /etc/guest-portal/config.json ]; then
-      export USER_B64=$ADMIN_USER_B64 HASH_B64=$ADMIN_HASH_B64
-      node -e 'var fs=require(\"fs\");var c={adminUser:Buffer.from(process.env.USER_B64,\"base64\").toString(),adminHash:Buffer.from(process.env.HASH_B64,\"base64\").toString(),uploadDir:\"\",sessionExpirationMinutes:10,adminSessionTimeoutMinutes:15};fs.writeFileSync(\"/etc/guest-portal/config.json\",JSON.stringify(c,null,2))'
-    else
-      echo 'Existing config.json found — skipping overwrite'
-    fi
+    export USER_B64=$ADMIN_USER_B64 HASH_B64=$ADMIN_HASH_B64
+    node -e 'var fs=require(\"fs\");var path=\"/etc/guest-portal/config.json\";var c=fs.existsSync(path)?JSON.parse(fs.readFileSync(path,\"utf8\")):{};c.adminUser=Buffer.from(process.env.USER_B64,\"base64\").toString();c.adminHash=Buffer.from(process.env.HASH_B64,\"base64\").toString();if(c.uploadDir===undefined)c.uploadDir=\"\";if(!c.sessionExpirationMinutes)c.sessionExpirationMinutes=10;if(!c.adminSessionTimeoutMinutes)c.adminSessionTimeoutMinutes=15;fs.writeFileSync(path,JSON.stringify(c,null,2))'
   "
 else
   pct exec "$CT_ID" -- bash -c "
@@ -979,6 +981,6 @@ echo ""
 if [[ -z "$ADMIN_HASH" || "$ADMIN_HASH" == *"placeholder"* ]]; then
   echo -e "${INFO}${YW}Visit /admin.html to create your admin account on first login.${CL}"
 else
-  echo -e "${CM}${GN}Admin credentials are configured. Log in at /admin.html${CL}"
+  echo -e "${CM}${GN}Admin credentials are configured. Log in at /admin.html as ${BOLD}${ADMIN_USER}${CL}"
 fi
 echo ""
