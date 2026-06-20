@@ -3,48 +3,31 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Upload Your Photos</title>
+  <title>My Photos</title>
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
   <div class="container">
-    <h1>Welcome back!</h1>
+    <nav class="guest-nav" aria-label="Guest pages">
+      <a href="welcome.html" class="guest-nav-link">Welcome</a>
+      <a href="photo.html" class="guest-nav-link active" aria-current="page">My Photos</a>
+    </nav>
+
+    <h1>My Photos</h1>
     <p id="guestGreeting"></p>
-    <p id="checkoutInfo" style="font-size: 0.9em; color: #666;"></p>
+    <p id="checkoutInfo" class="guest-muted"></p>
 
-    <hr />
+    <section class="guest-section">
+      <p class="guest-muted">Photos and files you upload during your stay will appear here.</p>
+      <div id="galleryStatus" class="guest-muted">Loading your uploads...</div>
+      <ul id="photoList" class="guest-photo-list"></ul>
+      <p><a href="welcome.html">Upload photos &amp; files on the Welcome page</a></p>
+    </section>
 
-    <form id="uploadForm" enctype="multipart/form-data">
-      <label for="photo">Upload your photos</label>
-      <input type="file" name="photo" id="photo" accept="image/jpeg,image/png,image/gif,image/webp,image/heic,image/heif,video/mp4,video/quicktime,video/webm,application/pdf,.heic,.heif" multiple required />
-      <small>Allowed: phone photos, videos, HEIC/HEIF images, and PDF letters. For handwritten notes, upload a photo or a PDF. Code, scripts, archives, executables, and macro documents are blocked.</small>
-      <div id="fileValidation" style="margin-top:8px;font-size:0.9em;"></div>
-      <progress id="uploadProgress" value="0" max="100" style="width:100%;display:none;margin-top:10px;"></progress>
-      <div id="uploadStatus" style="margin-top:8px;font-size:0.9em;"></div>
-      <button type="submit">Upload</button>
-    </form>
-
-    <hr />
-
-    <p><a id="smartHomeLink" href="#">Go to your Smart Home Controls</a></p>
-
-    <hr />
-
-    <h3>Link Another Device</h3>
-    <p style="font-size: 0.9em;">Want to access this session from another phone, tablet, or computer?</p>
-    <button id="generateLinkCode">Generate Device Link Code</button>
-    <div id="linkCodeDisplay" style="margin-top: 10px; padding: 10px; background: #f0f0f0; display: none;">
-      <strong>Share this code:</strong> <span id="linkCode" style="font-size: 1.5em; font-family: monospace;"></span>
-      <p style="font-size: 0.8em; margin-top: 5px;">Enter this code on your other device to link it. Code expires in 30 minutes.</p>
-    </div>
-
-    <hr />
-
-    <p><a href="#" id="reset">If you're not <span id="guestName"></span>, click here to register</a></p>
+    <p class="guest-footer"><a href="#" id="reset">If you're not <span id="guestName"></span>, click here to register</a></p>
   </div>
 
   <script>
-    // Load background image if set
     fetch('/admin-api/background').then(res => res.json()).then(data => {
       if (data.backgroundImage) {
         document.body.style.backgroundImage = `url('${data.backgroundImage}')`;
@@ -56,30 +39,10 @@
     }).catch(() => {});
 
     const guestData = JSON.parse(localStorage.getItem('guestData')) || {};
-    const guestToken = localStorage.getItem('guestToken');
-    const greeting = document.getElementById('guestGreeting');
-    const smartHomeLink = document.getElementById('smartHomeLink');
     const guestNameSpan = document.getElementById('guestName');
+    const greeting = document.getElementById('guestGreeting');
     const checkoutInfo = document.getElementById('checkoutInfo');
-    const fileInput = document.getElementById('photo');
-    const fileValidation = document.getElementById('fileValidation');
-    const uploadProgress = document.getElementById('uploadProgress');
-    const uploadStatus = document.getElementById('uploadStatus');
-    const uploadButton = document.querySelector('#uploadForm button[type="submit"]');
-    const MAX_UPLOAD_BYTES = 50 * 1024 * 1024;
-    const MAX_UPLOAD_FILES = 10;
-    const ALLOWED_UPLOAD_TYPES = {
-      'image/jpeg': ['.jpg', '.jpeg'],
-      'image/png': ['.png'],
-      'image/gif': ['.gif'],
-      'image/webp': ['.webp'],
-      'image/heic': ['.heic'],
-      'image/heif': ['.heif'],
-      'video/mp4': ['.mp4'],
-      'video/quicktime': ['.mov', '.qt'],
-      'video/webm': ['.webm'],
-      'application/pdf': ['.pdf']
-    };
+    const galleryStatus = document.getElementById('galleryStatus');
 
     function escapeHtml(text) {
       const div = document.createElement('div');
@@ -87,184 +50,26 @@
       return div.innerHTML;
     }
 
-    function formatBytes(bytes) {
-      if (bytes === 0) return '0 B';
-      const units = ['B', 'KB', 'MB', 'GB'];
-      const i = Math.floor(Math.log(bytes) / Math.log(1024));
-      return (bytes / Math.pow(1024, i)).toFixed(i > 0 ? 1 : 0) + ' ' + units[i];
-    }
-
-    function fileExtension(name) {
-      const index = name.lastIndexOf('.');
-      return index >= 0 ? name.substring(index).toLowerCase() : '';
-    }
-
-    function validateSelectedFiles(files) {
-      const errors = [];
-      const details = [];
-
-      if (files.length > MAX_UPLOAD_FILES) {
-        errors.push(`Select up to ${MAX_UPLOAD_FILES} files at a time.`);
-      }
-
-      Array.from(files).forEach(file => {
-        const ext = fileExtension(file.name);
-        const allowedExts = ALLOWED_UPLOAD_TYPES[file.type];
-        const typeOk = Boolean(allowedExts && allowedExts.includes(ext));
-        const sizeOk = file.size <= MAX_UPLOAD_BYTES;
-
-        if (!typeOk) {
-          errors.push(`${file.name}: blocked file type. Use photos, videos, HEIC/HEIF images, or PDF letters.`);
-        }
-        if (!sizeOk) {
-          errors.push(`${file.name}: ${formatBytes(file.size)} exceeds the ${formatBytes(MAX_UPLOAD_BYTES)} per-file limit.`);
-        }
-
-        details.push({
-          name: file.name,
-          size: file.size,
-          ok: typeOk && sizeOk,
-          message: typeOk && sizeOk ? 'Ready' : 'Needs attention'
-        });
-      });
-
-      return { valid: errors.length === 0, errors, details };
-    }
-
-    function renderFileValidation(result) {
-      if (fileInput.files.length === 0) {
-        fileValidation.innerHTML = '<span style="color:#666;">Select files to see validation details.</span>';
-        return;
-      }
-
-      let html = '<ul style="padding-left:20px;margin:5px 0;">';
-      result.details.forEach(file => {
-        const color = file.ok ? '#1b7f37' : '#b42318';
-        html += `<li><strong>${escapeHtml(file.name)}</strong> (${formatBytes(file.size)}) - <span style="color:${color};">${escapeHtml(file.message)}</span></li>`;
-      });
-      html += '</ul>';
-
-      if (result.errors.length > 0) {
-        html += '<div style="color:#b42318;"><strong>Fix before uploading:</strong><ul style="padding-left:20px;margin:5px 0;">';
-        result.errors.forEach(error => {
-          html += `<li>${escapeHtml(error)}</li>`;
-        });
-        html += '</ul></div>';
-      }
-
-      fileValidation.innerHTML = html;
-    }
-
-    function setUploadStatus(message, isError = false) {
-      uploadStatus.style.color = isError ? '#b42318' : '#1b7f37';
-      uploadStatus.textContent = message;
-    }
-
     if (guestData.name && guestData.room) {
-      greeting.innerHTML = `Welcome back ${escapeHtml(guestData.name)}! You're staying in <strong>${escapeHtml(guestData.room)}</strong>.`;
-      smartHomeLink.href = guestData.dashboardUrl || "/";
+      greeting.innerHTML = `Photos for <strong>${escapeHtml(guestData.name)}</strong> — room <strong>${escapeHtml(guestData.room)}</strong>.`;
       guestNameSpan.textContent = guestData.name;
 
-      // Show checkout date if available
       if (guestData.checkoutDate) {
         const checkout = new Date(guestData.checkoutDate);
         const daysLeft = Math.ceil((checkout - new Date()) / (1000 * 60 * 60 * 24));
         checkoutInfo.innerHTML = `Your session is active until <strong>${checkout.toLocaleDateString()}</strong> (${daysLeft} days remaining)`;
       }
     } else {
-      window.location.href = "index.html";
+      window.location.href = 'index.html';
     }
 
-    fileInput.addEventListener('change', () => {
-      uploadProgress.style.display = 'none';
-      uploadProgress.value = 0;
-      uploadStatus.textContent = '';
-      renderFileValidation(validateSelectedFiles(fileInput.files));
-    });
+    galleryStatus.textContent = 'Your photo gallery will be available in an upcoming update. Upload files from the Welcome page for now.';
 
-    // Photo upload
-    document.getElementById('uploadForm').addEventListener('submit', async (e) => {
-      e.preventDefault();
-      if (!guestToken) {
-        setUploadStatus('Please register again before uploading. Uploads require an active guest session.', true);
-        window.location.href = 'index.html';
-        return;
-      }
-
-      const validation = validateSelectedFiles(fileInput.files);
-      renderFileValidation(validation);
-      if (!validation.valid) {
-        setUploadStatus('Upload blocked. Fix the listed file issues first.', true);
-        return;
-      }
-
-      const formData = new FormData();
-      const files = fileInput.files;
-      for (let i = 0; i < files.length; i++) formData.append('photos', files[i]);
-
-      uploadButton.disabled = true;
-      uploadProgress.style.display = 'block';
-      uploadProgress.value = 0;
-      setUploadStatus('Uploading...');
-
-      const xhr = new XMLHttpRequest();
-      xhr.open('POST', '/upload');
-      xhr.setRequestHeader('X-Guest-Token', guestToken);
-      xhr.upload.addEventListener('progress', event => {
-        if (event.lengthComputable) {
-          uploadProgress.value = Math.round((event.loaded / event.total) * 100);
-        }
-      });
-      xhr.onload = () => {
-        uploadButton.disabled = false;
-        uploadProgress.value = 100;
-        if (xhr.status >= 200 && xhr.status < 300) {
-          setUploadStatus(`Upload successful. ${files.length} file${files.length === 1 ? '' : 's'} saved.`);
-          fileInput.value = '';
-          renderFileValidation(validateSelectedFiles(fileInput.files));
-        } else {
-          setUploadStatus('Upload failed: ' + (xhr.responseText || `HTTP ${xhr.status}`), true);
-        }
-      };
-      xhr.onerror = () => {
-        uploadButton.disabled = false;
-        setUploadStatus('Upload failed because the network connection was interrupted.', true);
-      };
-      xhr.send(formData);
-    });
-
-    // Reset/logout
     document.getElementById('reset').addEventListener('click', function (e) {
       e.preventDefault();
       localStorage.removeItem('guestData');
       localStorage.removeItem('guestToken');
       window.location.href = 'index.html';
-    });
-
-    // Generate device link code
-    document.getElementById('generateLinkCode').addEventListener('click', async () => {
-      if (!guestToken) {
-        alert("Your session doesn't support device linking. Please register again.");
-        return;
-      }
-
-      try {
-        const res = await fetch('/guest/link-code', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ token: guestToken })
-        });
-
-        if (res.ok) {
-          const result = await res.json();
-          document.getElementById('linkCode').textContent = result.code;
-          document.getElementById('linkCodeDisplay').style.display = 'block';
-        } else {
-          alert("Unable to generate link code. Please try again.");
-        }
-      } catch (err) {
-        alert("Error: " + err.message);
-      }
     });
   </script>
 </body>
