@@ -100,19 +100,30 @@ bootstrap_required_scripts() {
   done
   chmod 755 "${var_app_dir}/scripts/"*.sh 2>/dev/null || true
   chown -R "${var_app_user}:${var_app_group}" "${var_app_dir}/scripts"
-  install_updateguest_command
+}
+
+install_updateguest_from_path() {
+  local source_path="$1"
+  install -m 755 "${source_path}" /usr/local/bin/updateguest
 }
 
 refresh_updateguest_command() {
-  mkdir -p "${var_app_dir}/scripts"
-  if [[ ! -f "${var_app_dir}/scripts/updateguest.sh" ]] || ! grep -q 'run_as_app_user' "${var_app_dir}/scripts/updateguest.sh" 2>/dev/null; then
-    msg_info "Refreshing updateguest command"
-    curl -fsSL "${var_repo_raw}/scripts/updateguest.sh" -o "${var_app_dir}/scripts/updateguest.sh"
-    chmod 755 "${var_app_dir}/scripts/updateguest.sh"
-    chown "${var_app_user}:${var_app_group}" "${var_app_dir}/scripts/updateguest.sh"
-    install_updateguest_command
-    msg_ok "updateguest command refreshed"
+  if [[ -f "${var_app_dir}/scripts/updateguest.sh" ]] && grep -q 'run_as_app_user' "${var_app_dir}/scripts/updateguest.sh" 2>/dev/null; then
+    install_updateguest_from_path "${var_app_dir}/scripts/updateguest.sh"
+    return 0
   fi
+
+  msg_info "Refreshing updateguest command"
+  curl -fsSL "${var_repo_raw}/scripts/updateguest.sh" -o /tmp/guest-portal-updateguest.sh
+  install_updateguest_from_path /tmp/guest-portal-updateguest.sh
+  msg_ok "updateguest command refreshed"
+}
+
+discard_installer_script_changes() {
+  if [[ ! -d "${var_app_dir}/.git" ]]; then
+    return 0
+  fi
+  run_as_app_user "cd '${var_app_dir}' && git checkout -- scripts/updateguest.sh scripts/setup-prompts.sh scripts/setup-container.sh 2>/dev/null || true"
 }
 
 refresh_repository_checkout() {
@@ -124,10 +135,15 @@ refresh_repository_checkout() {
     msg_info "Updating existing repository checkout"
     chown -R "${var_app_user}:${var_app_group}" "${var_app_dir}"
     ensure_git_safe_directory "${var_app_dir}"
+    discard_installer_script_changes
     if ! run_as_app_user "cd '${var_app_dir}' && git pull --ff-only"; then
-      msg_error "Could not git pull in ${var_app_dir}; downloading required helper scripts instead."
-      bootstrap_required_scripts
-      return 0
+      discard_installer_script_changes
+      if ! run_as_app_user "cd '${var_app_dir}' && git pull --ff-only"; then
+        msg_error "Could not git pull in ${var_app_dir}; downloading required helper scripts instead."
+        bootstrap_required_scripts
+        refresh_updateguest_command
+        return 0
+      fi
     fi
     msg_ok "Repository updated"
   fi
