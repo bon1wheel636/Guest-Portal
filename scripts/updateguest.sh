@@ -42,6 +42,11 @@ run_as_app_user() {
   su -s /bin/bash -c "$1" "${APP_USER}"
 }
 
+ensure_git_safe_directory() {
+  local app_path="$1"
+  run_as_app_user "git config --global --add safe.directory '${app_path}'" 2>/dev/null || true
+}
+
 run_step() {
   local description="$1"
   shift
@@ -126,6 +131,8 @@ fi
 log "Application path: ${APP_PATH}"
 log ""
 
+run_step "Fixing ownership..." chown -R "${APP_USER}:${APP_GROUP}" "${APP_PATH}" /etc/guest-portal
+ensure_git_safe_directory "${APP_PATH}"
 run_step "Pulling latest code..." run_as_app_user "cd '${APP_PATH}' && git pull --ff-only"
 run_step "Installing npm dependencies..." run_as_app_user "cd '${APP_PATH}' && npm install"
 run_step "Ensuring upload directories exist..." bash -c "mkdir -p '${APP_PATH}/uploads/backgrounds'"
@@ -133,7 +140,7 @@ run_step "Ensuring service user exists..." bash -c "
   groupadd --system '${APP_GROUP}' 2>/dev/null || true
   id -u '${APP_USER}' >/dev/null 2>&1 || useradd --system --gid '${APP_GROUP}' --home-dir '${APP_DIR}' --shell /usr/sbin/nologin '${APP_USER}'
 "
-run_step "Fixing ownership..." chown -R "${APP_USER}:${APP_GROUP}" "${APP_PATH}" /etc/guest-portal
+run_step "Finalizing ownership..." chown -R "${APP_USER}:${APP_GROUP}" "${APP_PATH}" /etc/guest-portal
 
 if [[ -f "${APP_PATH}/scripts/updateguest.sh" ]]; then
   run_step "Refreshing updateguest command..." install -m 755 "${APP_PATH}/scripts/updateguest.sh" /usr/local/bin/updateguest

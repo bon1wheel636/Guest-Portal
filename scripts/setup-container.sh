@@ -79,11 +79,78 @@ install_updateguest_command() {
   fi
 }
 
+run_as_app_user() {
+  su -s /bin/bash -c "$1" "${var_app_user}"
+}
+
+ensure_git_safe_directory() {
+  local app_path="$1"
+  run_as_app_user "git config --global --add safe.directory '${app_path}'" 2>/dev/null || true
+}
+
+bootstrap_required_scripts() {
+  local script
+  mkdir -p "${var_app_dir}/scripts"
+  for script in setup-prompts.sh updateguest.sh; do
+    if [[ ! -f "${var_app_dir}/scripts/${script}" ]]; then
+      msg_info "Downloading ${script}"
+      curl -fsSL "${var_repo_raw}/scripts/${script}" -o "${var_app_dir}/scripts/${script}"
+      msg_ok "Downloaded ${script}"
+    fi
+  done
+  chmod 755 "${var_app_dir}/scripts/"*.sh 2>/dev/null || true
+  chown -R "${var_app_user}:${var_app_group}" "${var_app_dir}/scripts"
+  install_updateguest_command
+}
+
+refresh_updateguest_command() {
+  mkdir -p "${var_app_dir}/scripts"
+  if [[ ! -f "${var_app_dir}/scripts/updateguest.sh" ]] || ! grep -q 'run_as_app_user' "${var_app_dir}/scripts/updateguest.sh" 2>/dev/null; then
+    msg_info "Refreshing updateguest command"
+    curl -fsSL "${var_repo_raw}/scripts/updateguest.sh" -o "${var_app_dir}/scripts/updateguest.sh"
+    chmod 755 "${var_app_dir}/scripts/updateguest.sh"
+    chown "${var_app_user}:${var_app_group}" "${var_app_dir}/scripts/updateguest.sh"
+    install_updateguest_command
+    msg_ok "updateguest command refreshed"
+  fi
+}
+
+refresh_repository_checkout() {
+  if [[ ! -d "${var_app_dir}/.git" ]]; then
+    msg_info "Cloning Guest Portal repository"
+    git clone "${var_repo}" "${var_app_dir}" >/dev/null 2>&1
+    msg_ok "Cloned repository into container"
+  else
+    msg_info "Updating existing repository checkout"
+    chown -R "${var_app_user}:${var_app_group}" "${var_app_dir}"
+    ensure_git_safe_directory "${var_app_dir}"
+    if ! run_as_app_user "cd '${var_app_dir}' && git pull --ff-only"; then
+      msg_error "Could not git pull in ${var_app_dir}; downloading required helper scripts instead."
+      bootstrap_required_scripts
+      return 0
+    fi
+    msg_ok "Repository updated"
+  fi
+  chown -R "${var_app_user}:${var_app_group}" "${var_app_dir}" /etc/guest-portal
+}
+
+install_node_dependencies() {
+  msg_info "Installing Node.js dependencies"
+  ensure_git_safe_directory "${var_app_dir}"
+  run_as_app_user "cd '${var_app_dir}' && npm install"
+  mkdir -p "${var_app_dir}/uploads/backgrounds"
+  chown -R "${var_app_user}:${var_app_group}" "${var_app_dir}" /etc/guest-portal
+  bootstrap_required_scripts
+  refresh_updateguest_command
+  msg_ok "Installed Node.js dependencies"
+}
+
 load_setup_prompts() {
   gp_app_dir="$var_app_dir"
   gp_app_user="$var_app_user"
   gp_app_group="$var_app_group"
   gp_repo="$var_repo"
+  bootstrap_required_scripts
   local prompts_file="${var_app_dir}/scripts/setup-prompts.sh"
   if [[ ! -f "$prompts_file" ]]; then
     msg_error "Missing setup prompts helper: ${prompts_file}"
@@ -138,17 +205,16 @@ if [[ "$UPDATE_MODE" == "true" ]]; then
     exit 0
   fi
 
+  refresh_updateguest_command
   if command -v updateguest >/dev/null 2>&1; then
     updateguest -y
   else
     msg_info "Updating application code"
-    bash -c "
-      set -e
-      chown -R '${var_app_user}:${var_app_group}' '${var_app_dir}' /etc/guest-portal
-      su -s /bin/bash -c \"cd '${var_app_dir}' && git pull --ff-only && npm install\" '${var_app_user}'
-      mkdir -p '${var_app_dir}/uploads/backgrounds'
-      chown -R '${var_app_user}:${var_app_group}' '${var_app_dir}' /etc/guest-portal
-    "
+    chown -R "${var_app_user}:${var_app_group}" "${var_app_dir}" /etc/guest-portal
+    ensure_git_safe_directory "${var_app_dir}"
+    run_as_app_user "cd '${var_app_dir}' && git pull --ff-only && npm install"
+    mkdir -p "${var_app_dir}/uploads/backgrounds"
+    chown -R "${var_app_user}:${var_app_group}" "${var_app_dir}" /etc/guest-portal
     install_updateguest_command
     msg_ok "Application code updated"
     systemctl restart guest-portal
@@ -181,23 +247,8 @@ mkdir -p "${var_app_dir}" /etc/guest-portal
 chown "${var_app_user}:${var_app_group}" "${var_app_dir}" /etc/guest-portal
 msg_ok "Application service user ready"
 
-if [[ -d "${var_app_dir}/.git" ]]; then
-  msg_info "Using existing repository checkout"
-  git -C "${var_app_dir}" pull --ff-only >/dev/null 2>&1 || true
-  msg_ok "Repository already present"
-else
-  msg_info "Cloning Guest Portal repository"
-  git clone "${var_repo}" "${var_app_dir}" >/dev/null 2>&1
-  msg_ok "Cloned repository into container"
-fi
-
-msg_info "Installing Node.js dependencies"
-cd "${var_app_dir}"
-npm install >/dev/null 2>&1
-mkdir -p "${var_app_dir}/uploads/backgrounds"
-chown -R "${var_app_user}:${var_app_group}" "${var_app_dir}" /etc/guest-portal
-install_updateguest_command
-msg_ok "Installed Node.js dependencies"
+refresh_repository_checkout
+install_node_dependencies
 
 load_setup_prompts
 
