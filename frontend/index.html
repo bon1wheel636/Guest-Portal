@@ -164,6 +164,11 @@
           localStorage.setItem('guestData', JSON.stringify(data.guest));
           sessionStorage.setItem('guestArrival', 'linked');
           window.location.href = 'welcome.html';
+          return;
+        }
+      } catch (e) {}
+
+      // Fall back to legacy session code
       try {
         const res = await fetch(`/session/${code}`);
         if (res.ok) {

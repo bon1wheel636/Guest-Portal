@@ -584,6 +584,60 @@ test_photo_html() {
     fi
 }
 
+test_frontend_script_syntax() {
+    local tmp_dir
+    tmp_dir=$(mktemp -d)
+    python3 - "$tmp_dir" frontend/index.html frontend/welcome.html frontend/photo.html frontend/admin.html <<'PY'
+import pathlib
+import sys
+from html.parser import HTMLParser
+
+out_dir = pathlib.Path(sys.argv[1])
+
+class ScriptExtractor(HTMLParser):
+    def __init__(self):
+        super().__init__()
+        self.in_script = False
+        self.scripts = []
+        self.current = []
+
+    def handle_starttag(self, tag, attrs):
+        attrs = dict(attrs)
+        if tag.lower() == "script" and "src" not in attrs:
+            self.in_script = True
+            self.current = []
+
+    def handle_endtag(self, tag):
+        if tag.lower() == "script" and self.in_script:
+            self.in_script = False
+            self.scripts.append("".join(self.current))
+
+    def handle_data(self, data):
+        if self.in_script:
+            self.current.append(data)
+
+for html_path in sys.argv[2:]:
+    parser = ScriptExtractor()
+    parser.feed(pathlib.Path(html_path).read_text())
+    for index, script in enumerate(parser.scripts, 1):
+        (out_dir / f"{pathlib.Path(html_path).stem}-{index}.js").write_text(script)
+PY
+
+    local failed=0
+    for script in "$tmp_dir"/*.js; do
+        if ! node --check "$script" >/dev/null 2>&1; then
+            failed=1
+            fail "Frontend inline script syntax" "Valid JavaScript" "$script failed node --check"
+            break
+        fi
+    done
+    rm -rf "$tmp_dir"
+
+    if [[ "$failed" == "0" ]]; then
+        pass "Frontend inline script syntax"
+    fi
+}
+
 #######################
 # RUN ALL TESTS
 #######################
@@ -640,6 +694,7 @@ test_index_html
 test_admin_html
 test_welcome_html
 test_photo_html
+test_frontend_script_syntax
 
 #######################
 # SUMMARY
