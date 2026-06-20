@@ -38,6 +38,10 @@ log() {
   printf '%s\n' "$*"
 }
 
+run_as_app_user() {
+  su -s /bin/bash -c "$1" "${APP_USER}"
+}
+
 run_step() {
   local description="$1"
   shift
@@ -122,8 +126,8 @@ fi
 log "Application path: ${APP_PATH}"
 log ""
 
-run_step "Pulling latest code..." bash -c "cd '${APP_PATH}' && git pull --ff-only"
-run_step "Installing npm dependencies..." bash -c "cd '${APP_PATH}' && npm install"
+run_step "Pulling latest code..." run_as_app_user "cd '${APP_PATH}' && git pull --ff-only"
+run_step "Installing npm dependencies..." run_as_app_user "cd '${APP_PATH}' && npm install"
 run_step "Ensuring upload directories exist..." bash -c "mkdir -p '${APP_PATH}/uploads/backgrounds'"
 run_step "Ensuring service user exists..." bash -c "
   groupadd --system '${APP_GROUP}' 2>/dev/null || true

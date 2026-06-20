@@ -172,11 +172,18 @@ pct exec <ctid> -- updateguest
 
 `updateguest` will:
 
-1. `git pull --ff-only` in `/opt/guest-portal`
-2. Run `npm install`
+1. `git pull --ff-only` in `/opt/guest-portal` as the `guestportal` service user
+2. Run `npm install` as `guestportal`
 3. Ensure upload directories and ownership are correct
 4. Refresh the `updateguest` command itself
 5. Restart the `guest-portal` service
+
+If you see `detected dubious ownership` when running `updateguest` as root on an older script, upgrade `updateguest` from the latest repo or run:
+
+```bash
+su -s /bin/bash -c 'cd /opt/guest-portal && git pull --ff-only && npm install' guestportal
+systemctl restart guest-portal
+```
 
 Use `setup.sh --update` when you also need to rewrite the systemd service, fix `/etc/guest-portal` ownership, or change the NAS upload path with prompts. Use `updateguest` for routine code updates from the LXC console.
 

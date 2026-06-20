@@ -214,16 +214,14 @@ update_existing_install() {
       id -u '${var_app_user}' >/dev/null 2>&1 || useradd --system --gid '${var_app_group}' --home-dir '${var_app_dir}' --shell /usr/sbin/nologin '${var_app_user}'
       mkdir -p '${var_app_dir}' /etc/guest-portal
       if [ -d '${var_app_dir}/.git' ]; then
-        cd '${var_app_dir}'
+        true
       elif [ -d '/root/guest-portal/.git' ]; then
         cp -a /root/guest-portal/. '${var_app_dir}/'
-        cd '${var_app_dir}'
       else
         git clone '${var_repo}' '${var_app_dir}'
-        cd '${var_app_dir}'
       fi
-      git pull --ff-only
-      npm install
+      chown -R '${var_app_user}:${var_app_group}' '${var_app_dir}' /etc/guest-portal
+      su -s /bin/bash -c \"cd '${var_app_dir}' && git pull --ff-only && npm install\" '${var_app_user}'
       mkdir -p '${var_app_dir}/uploads/backgrounds'
       chown -R '${var_app_user}:${var_app_group}' '${var_app_dir}' /etc/guest-portal
     " >/dev/null 2>&1
