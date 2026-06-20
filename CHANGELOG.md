@@ -20,6 +20,7 @@ All notable changes to this project will be documented here.
 ### Changed
 - Admin panel now uses browser HTTP Basic Auth only; removed duplicate HTML login form and sessionStorage credentials.
 - Admin panel reorganized into tabs: Overview, Rooms & Portal, Guests, Photos & Storage, and Settings.
+- `updateguest` now runs git and npm as the `guestportal` service user to avoid dubious ownership errors when invoked as root.
 - Guest upload UI now documents that phone photos, videos, HEIC/HEIF images, and PDF letters are allowed while code, scripts, archives, and macro documents are blocked.
 - Guest upload UI now shows per-file validation, upload progress, and inline success/error messages.
 - Proxmox setup now defaults to an unprivileged app LXC, installs the app under `/opt/guest-portal`, and runs `guest-portal.service` as a dedicated `guestportal` user.

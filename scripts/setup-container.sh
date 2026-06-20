@@ -116,9 +116,8 @@ if [[ "$UPDATE_MODE" == "true" ]]; then
     msg_info "Updating application code"
     bash -c "
       set -e
-      cd '${var_app_dir}'
-      git pull --ff-only
-      npm install
+      chown -R '${var_app_user}:${var_app_group}' '${var_app_dir}' /etc/guest-portal
+      su -s /bin/bash -c \"cd '${var_app_dir}' && git pull --ff-only && npm install\" '${var_app_user}'
       mkdir -p '${var_app_dir}/uploads/backgrounds'
       chown -R '${var_app_user}:${var_app_group}' '${var_app_dir}' /etc/guest-portal
     "
