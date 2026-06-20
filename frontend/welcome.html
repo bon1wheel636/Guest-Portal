@@ -13,7 +13,7 @@
       <a href="photo.html" class="guest-nav-link">My Photos</a>
     </nav>
 
-    <h1>Welcome back!</h1>
+    <h1 id="pageTitle">We're glad you're here</h1>
     <p id="guestGreeting"></p>
     <p id="checkoutInfo" class="guest-muted"></p>
 
@@ -49,6 +49,21 @@
     <p class="guest-footer"><a href="#" id="reset">If you're not <span id="guestName"></span>, click here to register</a></p>
   </div>
 
+  <div id="tutorialModal" class="guest-modal" hidden>
+    <div class="guest-modal-content" role="dialog" aria-labelledby="tutorialTitle" aria-modal="true">
+      <h2 id="tutorialTitle">Quick tour of your guest portal</h2>
+      <p>Here is what you can do during your stay:</p>
+      <ul class="guest-tutorial-list">
+        <li><strong>Smart Home</strong> — open your room dashboard for lights, climate, and other controls.</li>
+        <li><strong>Upload photos &amp; files</strong> — share vacation photos, videos, or PDF notes with your hosts.</li>
+        <li><strong>My Photos</strong> — review what you have uploaded and remove any mistakes.</li>
+        <li><strong>Link another device</strong> — generate a code so a second phone or tablet can join this stay.</li>
+        <li><strong>Bookmark this page</strong> — save the portal to your home screen or bookmarks so it is easy to find again.</li>
+      </ul>
+      <button type="button" id="dismissTutorial">Got it</button>
+    </div>
+  </div>
+
   <script>
     fetch('/admin-api/background').then(res => res.json()).then(data => {
       if (data.backgroundImage) {
@@ -62,6 +77,7 @@
 
     const guestData = JSON.parse(localStorage.getItem('guestData')) || {};
     const guestToken = localStorage.getItem('guestToken');
+    const pageTitle = document.getElementById('pageTitle');
     const greeting = document.getElementById('guestGreeting');
     const smartHomeLink = document.getElementById('smartHomeLink');
     const guestNameSpan = document.getElementById('guestName');
@@ -71,6 +87,7 @@
     const uploadProgress = document.getElementById('uploadProgress');
     const uploadStatus = document.getElementById('uploadStatus');
     const uploadButton = document.querySelector('#uploadForm button[type="submit"]');
+    const tutorialModal = document.getElementById('tutorialModal');
     const MAX_UPLOAD_BYTES = 50 * 1024 * 1024;
     const MAX_UPLOAD_FILES = 10;
     const ALLOWED_UPLOAD_TYPES = {
@@ -165,8 +182,41 @@
       uploadStatus.textContent = message;
     }
 
-    if (guestData.name && guestData.room) {
-      greeting.innerHTML = `Welcome back ${escapeHtml(guestData.name)}! You're staying in <strong>${escapeHtml(guestData.room)}</strong>.`;
+    function applyGreeting(returningDevice, arrival) {
+      const isReturnVisit = returningDevice && arrival !== 'new';
+
+      if (isReturnVisit) {
+        pageTitle.textContent = 'Welcome back!';
+        greeting.innerHTML = `Welcome back, ${escapeHtml(guestData.name)}! You're staying in <strong>${escapeHtml(guestData.room)}</strong>.`;
+      } else {
+        pageTitle.textContent = "We're glad you're here";
+        greeting.innerHTML = `Hi ${escapeHtml(guestData.name)}! You're staying in <strong>${escapeHtml(guestData.room)}</strong>.`;
+      }
+
+      sessionStorage.setItem('welcomeSeen', '1');
+    }
+
+    function maybeShowTutorial(returningDevice, arrival) {
+      const shouldShow = sessionStorage.getItem('showTutorial') === '1'
+        || (!sessionStorage.getItem('tutorialSeen') && !returningDevice && arrival !== 'linked');
+
+      sessionStorage.removeItem('showTutorial');
+      sessionStorage.removeItem('guestArrival');
+
+      if (!shouldShow) {
+        return;
+      }
+
+      tutorialModal.hidden = false;
+      sessionStorage.setItem('tutorialSeen', '1');
+    }
+
+    async function initWelcomePage() {
+      if (!(guestData.name && guestData.room)) {
+        window.location.href = 'index.html';
+        return;
+      }
+
       smartHomeLink.href = guestData.dashboardUrl || '/';
       guestNameSpan.textContent = guestData.name;
 
@@ -175,9 +225,35 @@
         const daysLeft = Math.ceil((checkout - new Date()) / (1000 * 60 * 60 * 24));
         checkoutInfo.innerHTML = `Your session is active until <strong>${checkout.toLocaleDateString()}</strong> (${daysLeft} days remaining)`;
       }
-    } else {
-      window.location.href = 'index.html';
+
+      let returningDevice = false;
+      if (guestToken) {
+        try {
+          const res = await fetch('/guest/validate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ token: guestToken })
+          });
+          if (res.ok) {
+            const data = await res.json();
+            if (data.valid) {
+              returningDevice = Boolean(data.returningDevice);
+              localStorage.setItem('guestData', JSON.stringify(data.guest));
+            }
+          }
+        } catch (err) {
+          console.error('Token validation failed:', err);
+        }
+      }
+
+      const arrival = sessionStorage.getItem('guestArrival');
+      applyGreeting(returningDevice, arrival);
+      maybeShowTutorial(returningDevice, arrival);
     }
+
+    document.getElementById('dismissTutorial').addEventListener('click', () => {
+      tutorialModal.hidden = true;
+    });
 
     fileInput.addEventListener('change', () => {
       uploadProgress.style.display = 'none';
@@ -240,6 +316,10 @@
       e.preventDefault();
       localStorage.removeItem('guestData');
       localStorage.removeItem('guestToken');
+      sessionStorage.removeItem('welcomeSeen');
+      sessionStorage.removeItem('tutorialSeen');
+      sessionStorage.removeItem('showTutorial');
+      sessionStorage.removeItem('guestArrival');
       window.location.href = 'index.html';
     });
 
@@ -267,6 +347,8 @@
         alert('Error: ' + err.message);
       }
     });
+
+    initWelcomePage();
   </script>
 </body>
 </html>

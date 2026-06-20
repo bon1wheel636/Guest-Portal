@@ -109,6 +109,8 @@
           // Store token for persistent sessions
           localStorage.setItem('guestToken', data.token);
           localStorage.setItem('guestData', JSON.stringify(data.guest));
+          sessionStorage.setItem('guestArrival', 'new');
+          sessionStorage.setItem('showTutorial', '1');
           window.location.href = 'welcome.html';
         } else {
           alert('Registration failed. Please try again.');
@@ -135,12 +137,8 @@
           const data = await res.json();
           localStorage.setItem('guestToken', data.token);
           localStorage.setItem('guestData', JSON.stringify(data.guest));
+          sessionStorage.setItem('guestArrival', 'linked');
           window.location.href = 'welcome.html';
-          return;
-        }
-      } catch (e) {}
-
-      // Fall back to legacy session code
       try {
         const res = await fetch(`/session/${code}`);
         if (res.ok) {

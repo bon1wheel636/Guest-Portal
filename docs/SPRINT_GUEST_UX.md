@@ -1,6 +1,6 @@
 # Sprint: Guest convenience and integration (UX)
 
-**Status:** In progress (started after PR #29 merged to `main`).
+**Status:** Complete (PR in progress on `cursor/welcome-hub-0c5d`).
 
 Use this document to continue work in a **new agent session** without relying on prior chat history.
 
@@ -114,8 +114,8 @@ No special migration; static frontend + server restart.
 
 ## Sprint checklist (mirror ROADMAP)
 
-- [ ] Returning guest recognition and welcome messaging
-- [ ] First-stay guest tutorial
-- [ ] Guest welcome hub (`welcome.html`) and photo gallery split
-- [ ] Guest-scoped list/delete upload APIs
-- [ ] Tests and documentation updates
+- [x] Returning guest recognition and welcome messaging
+- [x] First-stay guest tutorial
+- [x] Guest welcome hub (`welcome.html`) and photo gallery split
+- [x] Guest-scoped list/delete upload APIs
+- [x] Tests and documentation updates

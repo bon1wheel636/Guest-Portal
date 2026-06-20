@@ -108,7 +108,8 @@ bash setup.sh
 | Page | Path | Description |
 |------|------|-------------|
 | Guest Registration | `/` | Room selection, stay length, device linking |
-| Photo Upload | `/photo.html` | Upload photos/videos/PDF letters, Smart Home link, device code |
+| Guest Welcome Hub | `/welcome.html` | Stay hub: greeting, Smart Home, upload, device linking |
+| My Photos | `/photo.html` | Guest gallery for uploads during the current stay |
 | Admin Panel | `/admin.html` | Deployment status, room/session/guest management, settings |
 
 ---
