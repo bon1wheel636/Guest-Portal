@@ -62,7 +62,9 @@ This roadmap tracks shareable project work only. Keep private domains, NAS hostn
 - [x] **In-container update command**
   - `updateguest` runs git pull, npm install, ownership fixes, and service restart from the LXC console.
 
-## Suggested next sprint: guest convenience and integration
+## In progress sprint: guest convenience and integration
+
+**Handoff:** [docs/SPRINT_GUEST_UX.md](docs/SPRINT_GUEST_UX.md) — read this at the start of a new agent session (avoids relying on full chat context).
 
 - [ ] **Returning guest recognition and welcome messaging**
   - Do not show "Welcome back" immediately after first registration.
@@ -80,6 +82,10 @@ This roadmap tracks shareable project work only. Keep private domains, NAS hostn
   - Repurpose **`photo.html` as a guest photo gallery** showing what they have already uploaded during this stay.
   - Allow guests to **delete individual uploads one at a time** from the gallery in case they uploaded something by mistake (guest-scoped delete only; admin retains full folder management).
   - Prioritize layout and copy that make upload feel easy, optional, and safe so guests are more likely to use it.
+- [ ] **Guest-scoped upload list/delete APIs** (supports gallery; see sprint doc)
+
+## Backlog (after guest UX sprint)
+
 - [ ] **UniFi external portal integration**
   - Add only after controller version, auth method, site ID, and authorization model are known.
   - Keep initial deployment on UniFi's built-in guest/hotspot authorization plus post-auth redirect.
