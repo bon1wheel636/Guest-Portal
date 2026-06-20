@@ -42,6 +42,7 @@ All notable changes to this project will be documented here.
 - Rejected upload files are removed after validation failure.
 
 ### Fixed
+- Guest registration now loads rooms from public `/guest/rooms` instead of `/admin-api/rooms`, so room lists work when reverse proxies protect admin API paths.
 - Setup scripts now update `adminUser` and `adminHash` on reinstall when credentials are entered during setup, instead of preserving a stale default `admin` username from an existing `config.json`.
 - Admin panel Overview and Settings tabs now show the configured HTTP Basic Auth username.
 - Re-running `setup-container.sh` on an existing install now detects configured rooms and admin credentials, keeps them by default, and offers review/replace/reset options instead of requiring re-entry.
