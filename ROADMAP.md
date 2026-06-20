@@ -64,6 +64,14 @@ This roadmap tracks shareable project work only. Keep private domains, NAS hostn
 
 ## Suggested next sprint: guest convenience and integration
 
+- [ ] **Returning guest recognition and welcome messaging**
+  - Do not show "Welcome back" immediately after first registration.
+  - Show "Welcome back" only when the device is recognized and the guest name matches an active session, so the portal knows they are a returning guest on the same stay.
+  - For new guests, unrecognized devices, or uncertain matches, use a first-visit greeting such as "We're glad you're here" (or similar).
+  - After a guest returns on a linked/recognized device during their stay, use "Welcome back" for the remainder of that stay.
+- [ ] **First-stay guest tutorial**
+  - After first registration, show a short onboarding tutorial explaining what guests can do from the portal (room dashboard, photo upload, device linking, etc.).
+  - Include a practical tip to bookmark the portal or save it to the home screen so it is easy to find again during the stay.
 - [ ] **UniFi external portal integration**
   - Add only after controller version, auth method, site ID, and authorization model are known.
   - Keep initial deployment on UniFi's built-in guest/hotspot authorization plus post-auth redirect.
