@@ -62,9 +62,9 @@ This roadmap tracks shareable project work only. Keep private domains, NAS hostn
 - [x] **In-container update command**
   - `updateguest` runs git pull, npm install, ownership fixes, and service restart from the LXC console.
 
-## In progress sprint: guest convenience and integration
+## Completed sprint: guest convenience and integration
 
-**Handoff:** [docs/SPRINT_GUEST_UX.md](docs/SPRINT_GUEST_UX.md) — read this at the start of a new agent session (avoids relying on full chat context).
+**Handoff:** [docs/SPRINT_GUEST_UX.md](docs/SPRINT_GUEST_UX.md).
 
 - [x] **Returning guest recognition and welcome messaging**
   - Do not show "Welcome back" immediately after first registration.
@@ -84,13 +84,32 @@ This roadmap tracks shareable project work only. Keep private domains, NAS hostn
   - Prioritize layout and copy that make upload feel easy, optional, and safe so guests are more likely to use it.
 - [x] **Guest-scoped upload list/delete APIs** (supports gallery; see sprint doc)
 
-## Backlog (after guest UX sprint)
+## In progress sprint: admin operations and confidence
+
+**Handoff:** [docs/SPRINT_ADMIN_OPS.md](docs/SPRINT_ADMIN_OPS.md) — read this at the start of a new agent session (avoids relying on full chat context).
+
+- [ ] **Guest entry health checks**
+  - Add an admin Guest Entry Health card or panel covering `/health`, `/`, `/guest/rooms`, `/welcome.html`, `/photo.html`, and guest room count.
+  - Extend automated smoke coverage for guest entry endpoints and frontend inline script syntax.
+  - Document a post-`updateguest -y` verification checklist.
+- [ ] **Admin photo preview/gallery**
+  - Add visual previews to the admin Guest Photos section without removing existing folder-level zip download/delete behavior.
+  - Show useful file metadata such as filename, size, folder/stay, and upload timestamp where available.
+  - Keep preview/download routes authenticated and scoped under the configured upload directory.
+- [ ] **CSV exports**
+  - Export active sessions as CSV.
+  - Export registration history as CSV.
+  - Escape CSV values correctly and keep exports behind admin auth.
+- [ ] **Device-link QR code**
+  - Show a QR code alongside generated link codes where it helps guests or hosts link another device.
+  - Keep the existing text code as the accessibility and fallback path.
+- [ ] **Tests and documentation updates**
+  - Update `test-suite.sh`, README, DEPLOY/PROXY if needed, CHANGELOG, ROADMAP, and AGENTS.
+
+## Backlog (after admin operations sprint)
 
 - [ ] **UniFi external portal integration**
   - Add only after controller version, auth method, site ID, and authorization model are known.
   - Keep initial deployment on UniFi's built-in guest/hotspot authorization plus post-auth redirect.
 - [ ] **Admin quality-of-life improvements**
-  - QR code for device linking.
   - Dark mode toggle.
-  - Admin-side guest photo preview/gallery (separate from guest-facing `photo.html` gallery).
-  - CSV export for guest/session records.
