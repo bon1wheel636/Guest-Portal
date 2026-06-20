@@ -307,7 +307,7 @@ case "$GP_SETUP_MODE" in
     gp_confirm_rebuild_install || exit 0
     msg_info "Removing existing install state"
     gp_wipe_install_state "$GP_REBUILD_KEEP_UPLOADS"
-    gp_reset_application_code true
+    gp_reset_application_code true "$GP_REBUILD_KEEP_UPLOADS" || exit 1
     chown -R "${var_app_user}:${var_app_group}" "${var_app_dir}" /etc/guest-portal
     install_updateguest_command
     msg_ok "Existing install removed"
