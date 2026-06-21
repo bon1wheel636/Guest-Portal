@@ -11,6 +11,7 @@ All notable changes to this project will be documented here.
 - Admin Guest Photos now includes image previews and per-file upload metadata.
 - CSV exports for active guest sessions and registration history.
 - Device link code responses now include a same-origin link URL and QR SVG for easier second-device setup, including admin-generated codes for active guest sessions.
+- Admin Settings now includes a public portal URL so generated QR/link handoff URLs use the configured FQDN instead of localhost or an IP.
 - Guest welcome hub at `/welcome.html` with Smart Home link, inline upload, device linking, and Welcome | My Photos navigation.
 - First-stay tutorial modal on the welcome hub after registration.
 - Returning-device recognition via `/guest/validate` and registration responses (`returningDevice` flag).
