@@ -11,13 +11,14 @@ A self-hosted, mobile-friendly landing portal for guest Wi-Fi networks. Provides
 - 🛏️ Guest registration with room selection and checkout date
 - 📸 Photo uploads saved per guest with separate folders
 - 🔁 Persistent guest sessions (1-30 days, default 7)
-- 📱 Device linking - guests can add phones, tablets, and laptops to their session
+- 📱 Device linking - guests can add phones, tablets, and laptops to their session with text codes or QR codes
 - 🔐 Admin panel with:
   - Room management
   - Guest session management (view devices, extend stays, check out)
   - Background image customization
   - Configurable upload path (supports NFS/SMB NAS mounts)
-  - Guest photo browsing, download (zip), and deletion
+  - Guest photo preview, browsing, download (zip), and deletion
+  - CSV exports for active sessions and registration history
   - Session settings (admin timeout, code expiration)
   - View & revoke session codes
 - 👥 Multiple guests per room support
@@ -182,9 +183,13 @@ Guest uploads are intentionally limited to photos, videos, HEIC/HEIF phone image
 
 ### Photo Management
 From the admin panel **Guest Photos** section:
-- **Browse** uploaded folders with file counts and sizes
+- **Browse** uploaded folders with file counts, sizes, timestamps, and image previews
 - **Download** individual folders or all photos as a `.zip`
 - **Delete** individual folders or all photos after backing up
+
+Admin guest records can also be exported as CSV from the **Guests** tab:
+- Active guest sessions
+- Registration history
 
 ---
 

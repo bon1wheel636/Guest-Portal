@@ -92,18 +92,18 @@ This roadmap tracks shareable project work only. Keep private domains, NAS hostn
   - Add an admin Guest Entry Health card or panel covering `/health`, `/`, `/guest/rooms`, `/welcome.html`, `/photo.html`, and guest room count.
   - Extend automated smoke coverage for guest entry endpoints and frontend inline script syntax.
   - Document a post-`updateguest -y` verification checklist.
-- [ ] **Admin photo preview/gallery**
+- [x] **Admin photo preview/gallery**
   - Add visual previews to the admin Guest Photos section without removing existing folder-level zip download/delete behavior.
   - Show useful file metadata such as filename, size, folder/stay, and upload timestamp where available.
   - Keep preview/download routes authenticated and scoped under the configured upload directory.
-- [ ] **CSV exports**
+- [x] **CSV exports**
   - Export active sessions as CSV.
   - Export registration history as CSV.
   - Escape CSV values correctly and keep exports behind admin auth.
-- [ ] **Device-link QR code**
+- [x] **Device-link QR code**
   - Show a QR code alongside generated link codes where it helps guests or hosts link another device.
   - Keep the existing text code as the accessibility and fallback path.
-- [ ] **Tests and documentation updates**
+- [x] **Tests and documentation updates**
   - Update `test-suite.sh`, README, DEPLOY/PROXY if needed, CHANGELOG, ROADMAP, and AGENTS.
 
 ## Backlog (after admin operations sprint)

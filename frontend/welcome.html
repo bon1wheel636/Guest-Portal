@@ -42,6 +42,8 @@
       <button id="generateLinkCode">Generate Device Link Code</button>
       <div id="linkCodeDisplay" class="guest-link-code">
         <strong>Share this code:</strong> <span id="linkCode" class="guest-code"></span>
+        <div id="linkCodeQr" class="guest-link-qr" aria-label="Device link QR code"></div>
+        <p id="linkCodeUrl" class="guest-muted"></p>
         <p class="guest-muted">Enter this code on your other device to link it. Code expires in 30 minutes.</p>
       </div>
     </section>
@@ -339,6 +341,10 @@
         if (res.ok) {
           const result = await res.json();
           document.getElementById('linkCode').textContent = result.code;
+          document.getElementById('linkCodeQr').innerHTML = result.qrSvg || '';
+          document.getElementById('linkCodeUrl').innerHTML = result.linkUrl
+            ? `Or open <a href="${escapeHtml(result.linkUrl)}">${escapeHtml(result.linkUrl)}</a> on another device.`
+            : '';
           document.getElementById('linkCodeDisplay').style.display = 'block';
         } else {
           alert('Unable to generate link code. Please try again.');

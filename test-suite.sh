@@ -348,6 +348,23 @@ test_clear_guest_devices() {
     fi
 }
 
+test_csv_exports() {
+    require_admin_creds "CSV exports" || return
+    local sessions_csv=$(admin_curl "$BASE_URL/admin-api/guest-sessions.csv")
+    if [[ "$sessions_csv" == *"Guest ID,Name,Room,Created At,Checkout Date,Active,Days Remaining,Device Count,Token Prefix"* ]]; then
+        pass "Active sessions CSV export"
+    else
+        fail "Active sessions CSV export" "CSV header" "$sessions_csv"
+    fi
+
+    local history_csv=$(admin_curl "$BASE_URL/admin-api/guests.csv")
+    if [[ "$history_csv" == *"Guest ID,Name,Room,Registered At,Has Active Session"* ]]; then
+        pass "Registration history CSV export"
+    else
+        fail "Registration history CSV export" "CSV header" "$history_csv"
+    fi
+}
+
 test_checkout_admin_guest() {
     require_admin_creds "Check out admin guest" || return
     if [[ -z "$ADMIN_GUEST_ID" ]]; then
@@ -496,6 +513,31 @@ test_guest_uploads_list() {
         pass "Guest uploads list"
     else
         fail "Guest uploads list" '{"files":[...]}' "$response"
+    fi
+}
+
+test_guest_link_code_qr() {
+    if [[ -z "$GUEST_TOKEN" ]]; then
+        fail "Guest link code QR" "Needs guest token" "No token available"
+        return
+    fi
+    local response=$(curl -s -X POST "$BASE_URL/guest/link-code" \
+        -H "Content-Type: application/json" \
+        -d "{\"token\":\"$GUEST_TOKEN\"}")
+    if [[ "$response" == *'"code"'* ]] && [[ "$response" == *'"linkUrl"'* ]] && [[ "$response" == *'"qrSvg"'* ]] && [[ "$response" == *"<svg"* ]]; then
+        pass "Guest link code includes QR"
+    else
+        fail "Guest link code includes QR" "code/linkUrl/qrSvg" "$response"
+    fi
+}
+
+test_admin_uploads_metadata() {
+    require_admin_creds "Admin upload preview metadata" || return
+    local response=$(admin_curl "$BASE_URL/admin-api/uploads")
+    if [[ "$response" == *'"uploadedAt"'* ]] && [[ "$response" == *'"url"'* ]]; then
+        pass "Admin uploads include preview metadata"
+    else
+        fail "Admin uploads include preview metadata" "uploadedAt/url fields" "$response"
     fi
 }
 
@@ -702,6 +744,7 @@ test_list_guest_history
 test_admin_register_guest
 test_update_guest_room
 test_clear_guest_devices
+test_csv_exports
 test_checkout_admin_guest
 test_remove_guest_history
 
@@ -712,6 +755,8 @@ test_upload_requires_token
 test_upload_rejects_code
 test_validate_returning_device
 test_guest_uploads_list
+test_guest_link_code_qr
+test_admin_uploads_metadata
 test_guest_uploads_requires_token
 test_guest_upload_delete
 test_guest_upload_delete_requires_token
