@@ -143,7 +143,7 @@ Planned order after PR #40. Each sprint should get its own handoff doc (`docs/SP
 
 | Order | Sprint | Handoff | Status |
 |-------|--------|---------|--------|
-| 1 | Guest types hardening and test coverage | [docs/SPRINT_GUEST_TYPES_HARDENING.md](docs/SPRINT_GUEST_TYPES_HARDENING.md) | Complete (PR pending) |
+| 1 | Guest types hardening and test coverage | [docs/SPRINT_GUEST_TYPES_HARDENING.md](docs/SPRINT_GUEST_TYPES_HARDENING.md) | Complete |
 | 2 | Events UX | [docs/SPRINT_EVENTS_UX.md](docs/SPRINT_EVENTS_UX.md) | Planned |
 | 3 | Admin quality-of-life | _(planned — create `docs/SPRINT_ADMIN_QOL.md`)_ | Planned |
 | 4 | UniFi external portal | _(planned — create `docs/SPRINT_UNIFI_PORTAL.md`)_ | Planned (needs controller details) |
@@ -181,7 +181,7 @@ Follow-up from PR #40 review. Hardened event-scoped uploads, safe permission fal
 
 **Depends on:** guest types hardening (scoped `eventSlug` + filename paths).
 
-Guest- and admin-facing improvements for event-tagged photos after PR #40.
+Guest- and admin-facing improvements for event-tagged photos after PR #40. **All new UI must be responsive** — usable on phones and desktops (see sprint handoff).
 
 - [ ] **Admin Events tab**
   - Add an **Events** tab in the admin panel listing all events from `storage.json`.

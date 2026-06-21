@@ -98,9 +98,20 @@
 
     fetch('/guest/background').then(res => res.json()).then(applyBackground).catch(() => {});
 
-    function showRegistrationForm() {
+    function showRegistrationForm(options = {}) {
       document.getElementById('heroView').hidden = true;
-      document.getElementById('mainContainer').classList.remove('registration-hidden');
+      const container = document.getElementById('mainContainer');
+      container.classList.remove('registration-hidden');
+
+      requestAnimationFrame(() => {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        container.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        if (options.focus !== false) {
+          const guestType = document.getElementById('guestType');
+          const focusTarget = guestType && !guestType.disabled ? guestType : document.getElementById('name');
+          focusTarget?.focus({ preventScroll: true });
+        }
+      });
     }
 
     function showHeroView() {
