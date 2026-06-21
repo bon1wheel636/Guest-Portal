@@ -144,7 +144,7 @@ Planned order after PR #40. Each sprint should get its own handoff doc (`docs/SP
 | Order | Sprint | Handoff | Status |
 |-------|--------|---------|--------|
 | 1 | Guest types hardening and test coverage | [docs/SPRINT_GUEST_TYPES_HARDENING.md](docs/SPRINT_GUEST_TYPES_HARDENING.md) | Complete |
-| 2 | Events UX | [docs/SPRINT_EVENTS_UX.md](docs/SPRINT_EVENTS_UX.md) | In progress |
+| 2 | Events UX | [docs/SPRINT_EVENTS_UX.md](docs/SPRINT_EVENTS_UX.md) | Complete |
 | 3 | Admin quality-of-life | _(planned — create `docs/SPRINT_ADMIN_QOL.md`)_ | Planned |
 | 4 | UniFi external portal | _(planned — create `docs/SPRINT_UNIFI_PORTAL.md`)_ | Planned (needs controller details) |
 
@@ -232,6 +232,35 @@ Gather (from owner, not in repo):
 ---
 
 ## Backlog
+
+### Event tagging UX redesign (deferred — owner feedback after PR #50)
+
+Current event tagging **works** (registration picker, upload-time event, gallery tabs, per-file move/clear) but the flow is **not intuitive**. Defer a redesign until after Admin QoL unless the owner reprioritizes.
+
+**Known pain points:**
+
+- Three tagging moments — registration, upload, gallery re-tag — without a clear “when do I use which?” story.
+- Per-file **Move to event** fieldsets on every row feel heavy; most guests expect “set once” or a single bulk action.
+- **General / No event** is a storage concept that still surfaces in mixed ways across guest and admin UI.
+- Admin event context is split across Guests, Events, and Storage tabs with no single “guest → event → files” view.
+
+**Proposed direction (when revisited):**
+
+- [ ] **One primary tagging moment**
+  - Prefer **tag at upload** as the main action; registration event becomes a **default suggestion** on Welcome/upload, not a separate mental model.
+  - Reduce or hide gallery re-tag except as a light “fix mistake” path.
+- [ ] **Gallery: browse first, edit lightly**
+  - Keep **event filter tabs** for browsing.
+  - Replace per-row mini-forms with one obvious **Change event** control (dialog or inline picker), plus **Remove tag** as a single action — not buried in a dropdown.
+  - Optional: bulk move selected photos to an event.
+- [ ] **Admin: unified event view**
+  - One place to see **guest → registered event → uploads by event** (could extend Guests tab, Events tab, or Storage).
+  - Keep merge/rename/delete on Events; surface file counts and deep links from the unified view.
+- [ ] **Copy and labeling pass**
+  - Consistent guest-facing language (avoid “General”, “slug”, or admin jargon).
+  - Short helper text on Welcome and My Photos explaining when tagging applies for the guest’s type.
+- [ ] **Handoff doc, tests, and documentation updates**
+  - Create `docs/SPRINT_EVENT_TAGGING_UX.md` when planning starts.
 
 ### Deferred (no sprint assigned yet)
 
