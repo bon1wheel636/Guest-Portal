@@ -548,13 +548,100 @@ body.has-hero-background .container:not(.registration-hidden) {
   scroll-margin-top: 1rem;
 }
 
+body.registration-modal-open {
+  overflow: hidden;
+}
+
+.registration-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+}
+
+.registration-modal[hidden] {
+  display: none !important;
+}
+
+.registration-modal-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+}
+
+.registration-modal-dialog {
+  position: relative;
+  z-index: 1;
+  width: min(100%, 520px);
+  max-height: min(92vh, 860px);
+  overflow: auto;
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.28);
+  padding: 1.25rem 1.25rem 1.5rem;
+}
+
+.registration-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.registration-modal-header h2 {
+  margin: 0;
+  font-size: 1.35rem;
+}
+
+.registration-modal-close {
+  border: none;
+  background: transparent;
+  font-size: 1.75rem;
+  line-height: 1;
+  cursor: pointer;
+  color: #555;
+  padding: 0.15rem 0.35rem;
+}
+
+.registration-modal-body form button[type="submit"] {
+  width: 100%;
+}
+
+@media (max-width: 600px) {
+  .registration-modal {
+    padding: 0.75rem;
+    align-items: flex-end;
+  }
+
+  .registration-modal-dialog {
+    width: 100%;
+    max-height: 92vh;
+    border-bottom-left-radius: 0;
+    border-bottom-right-radius: 0;
+  }
+}
+
 .guest-gallery-group h2 {
   font-size: 1.1rem;
   margin: 1.5rem 0 0.5rem;
   color: #444;
 }
 
-.admin-permissions-fieldset {
+.admin-event-item {
+  display: grid;
+  gap: 0.75rem;
+}
+
+@media (min-width: 720px) {
+  .admin-event-item {
+    grid-template-columns: 1fr auto;
+    align-items: center;
+  }
+}
   border: 1px solid #ddd;
   border-radius: 8px;
   padding: 1rem;

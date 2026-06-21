@@ -944,12 +944,51 @@ PY
     fi
 }
 
+test_admin_events_crud() {
+    require_admin_creds "Admin events CRUD" || return
+    local create=$(admin_curl -X POST "$BASE_URL/admin-api/events" \
+        -H "Content-Type: application/json" \
+        -d '{"name":"Admin Test Event"}')
+    local event_id=$(echo "$create" | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4)
+    if [[ -z "$event_id" ]]; then
+        fail "Admin events CRUD" "create event id" "$create"
+        return
+    fi
+    local list=$(admin_curl "$BASE_URL/admin-api/events")
+    if [[ "$list" == *'"name":"Admin Test Event"'* ]]; then
+        pass "Admin events list includes created event"
+    else
+        fail "Admin events list includes created event" "Admin Test Event" "$list"
+        return
+    fi
+    local rename=$(admin_curl -X PATCH "$BASE_URL/admin-api/events/$event_id" \
+        -H "Content-Type: application/json" \
+        -d '{"name":"Admin Test Event Renamed"}')
+    if [[ "$rename" == *'"name":"Admin Test Event Renamed"'* ]]; then
+        pass "Admin event rename"
+    else
+        fail "Admin event rename" "renamed event" "$rename"
+    fi
+    local del=$(admin_curl -X DELETE "$BASE_URL/admin-api/events/$event_id")
+    if [[ "$del" == *'"success":true'* ]]; then
+        pass "Admin event delete"
+    else
+        fail "Admin event delete" '{"success":true}' "$del"
+    fi
+    local guest_events=$(curl -s "$BASE_URL/guest/events")
+    if [[ "$guest_events" != *"Admin Test Event Renamed"* ]]; then
+        pass "Guest events list reflects admin delete"
+    else
+        fail "Guest events list reflects admin delete" "event removed" "$guest_events"
+    fi
+}
+
 test_index_hero_markup() {
     local response=$(curl -s "$BASE_URL/")
-    if [[ "$response" == *"hero-view"* ]] && [[ "$response" == *"heroRegisterBtn"* ]]; then
+    if [[ "$response" == *"hero-view"* ]] && [[ "$response" == *"heroRegisterBtn"* ]] && [[ "$response" == *"registrationModal"* ]]; then
         pass "Index page includes hero landing markup"
     else
-        fail "Index page includes hero landing markup" "hero-view + heroRegisterBtn" "Missing hero markup"
+        fail "Index page includes hero landing markup" "hero-view + heroRegisterBtn + registrationModal" "Missing hero markup"
     fi
 }
 
@@ -1136,6 +1175,7 @@ test_legacy_session
 test_day_personal_registration
 test_delete_forbidden
 test_scoped_delete
+test_admin_events_crud
 test_index_hero_markup
 
 test_index_html

@@ -37,6 +37,7 @@
         <button type="button" class="admin-tab" data-tab="rooms" role="tab" aria-selected="false">Rooms &amp; Portal</button>
         <button type="button" class="admin-tab" data-tab="guests" role="tab" aria-selected="false">Guests</button>
         <button type="button" class="admin-tab" data-tab="guesttypes" role="tab" aria-selected="false">Guest Types</button>
+        <button type="button" class="admin-tab" data-tab="events" role="tab" aria-selected="false">Events</button>
         <button type="button" class="admin-tab" data-tab="storage" role="tab" aria-selected="false">Photos &amp; Storage</button>
         <button type="button" class="admin-tab" data-tab="settings" role="tab" aria-selected="false">Settings</button>
       </nav>
@@ -96,8 +97,13 @@
           </div>
           <div id="adminEventField" hidden>
             <label>Event:</label>
-            <input type="text" id="adminGuestEvent" list="adminEventSuggestions" />
-            <datalist id="adminEventSuggestions"></datalist>
+            <select id="adminGuestEventSelect">
+              <option value="">Select an event...</option>
+            </select>
+            <div id="adminEventNewField" hidden>
+              <label>New event name:</label>
+              <input type="text" id="adminGuestEvent" />
+            </div>
           </div>
           <button type="submit">Register Guest</button>
         </form>
@@ -163,6 +169,23 @@
           <div class="admin-actions">
             <button type="submit" id="guestTypeSaveBtn">Save Guest Type</button>
             <button type="button" id="guestTypeCancelBtn" class="btn-secondary">Cancel Edit</button>
+          </div>
+        </form>
+      </section>
+
+      <section class="admin-panel" data-panel="events" role="tabpanel">
+        <h2>Events</h2>
+        <p class="admin-help">Manage event names used at guest registration and for photo grouping. Guests see these in the registration event picker.</p>
+        <div id="eventList"></div>
+
+        <h3 id="eventFormTitle">Add Event</h3>
+        <form id="eventForm" class="admin-card">
+          <input type="hidden" id="eventEditId" value="" />
+          <label for="eventNameInput">Event Name</label>
+          <input type="text" id="eventNameInput" required maxlength="100" placeholder="Birthday Party, Reunion, etc." />
+          <div class="admin-actions">
+            <button type="submit" id="eventSaveBtn">Save Event</button>
+            <button type="button" id="eventCancelBtn" class="btn-secondary">Cancel Edit</button>
           </div>
         </form>
       </section>
@@ -262,6 +285,7 @@
       rooms: () => { loadRooms(); loadBackground(); },
       guests: () => { loadGuestTypesForAdmin(); loadGuestSessions(); loadGuests(); loadSessions(); },
       guesttypes: () => loadGuestTypesAdmin(),
+      events: () => loadEventsAdmin(),
       storage: () => { loadUploadPath(); loadPhotos(); },
       settings: () => { loadAdminAccountInfo(); loadPortalUrl(); loadExpiration(); }
     };
@@ -349,23 +373,135 @@
           select.appendChild(option);
         });
         updateAdminRegistrationFields();
-        const eventRes = await authFetch('/guest/events');
-        if (eventRes.ok) {
-          const events = await eventRes.json();
-          const datalist = document.getElementById('adminEventSuggestions');
-          if (datalist) {
-            datalist.innerHTML = '';
-            events.forEach(event => {
-              const opt = document.createElement('option');
-              opt.value = event.name;
-              datalist.appendChild(opt);
-            });
-          }
-        }
+        await populateAdminEventSelect();
       } catch (err) {
         console.error('Failed to load guest types:', err);
       }
     }
+
+    async function populateAdminEventSelect() {
+      try {
+        const res = await authFetch('/admin-api/events');
+        if (!res.ok) return;
+        const adminEvents = await res.json();
+        const select = document.getElementById('adminGuestEventSelect');
+        if (!select) return;
+        const previous = select.value;
+        select.innerHTML = '<option value="">Select an event...</option>';
+        adminEvents.forEach(event => {
+          const option = document.createElement('option');
+          option.value = event.id;
+          option.textContent = event.name;
+          select.appendChild(option);
+        });
+        const newOption = document.createElement('option');
+        newOption.value = '__new__';
+        newOption.textContent = '+ Add new event...';
+        select.appendChild(newOption);
+        if (previous && [...select.options].some(option => option.value === previous)) {
+          select.value = previous;
+        }
+        document.getElementById('adminEventNewField').hidden = select.value !== '__new__';
+      } catch (err) {
+        console.error('Failed to load admin events:', err);
+      }
+    }
+
+    function getAdminRegistrationEventName() {
+      const select = document.getElementById('adminGuestEventSelect');
+      if (!select || select.closest('#adminEventField')?.hidden) {
+        return '';
+      }
+      if (select.value === '__new__') {
+        return document.getElementById('adminGuestEvent').value.trim();
+      }
+      if (select.value) {
+        return select.options[select.selectedIndex].textContent.trim();
+      }
+      return '';
+    }
+
+    async function loadEventsAdmin() {
+      try {
+        const res = await authFetch('/admin-api/events');
+        if (!res.ok) return;
+        const adminEvents = await res.json();
+        const container = document.getElementById('eventList');
+        container.innerHTML = '';
+        if (adminEvents.length === 0) {
+          container.innerHTML = '<p class="admin-muted">No events yet. Add one below so guests can select it during registration.</p>';
+        } else {
+          adminEvents.forEach(event => {
+            const div = document.createElement('div');
+            div.className = 'admin-item admin-event-item';
+            div.innerHTML = `<strong>${escapeHtml(event.name)}</strong><br><small class="admin-muted">Created ${escapeHtml(new Date(event.createdAt).toLocaleString())} · ${escapeHtml(event.createdBy || 'unknown')} · ${event.uploadFileCount || 0} upload(s)</small>`;
+
+            const editBtn = document.createElement('button');
+            editBtn.textContent = 'Rename';
+            editBtn.className = 'btn-secondary';
+            editBtn.onclick = () => editEvent(event);
+
+            const deleteBtn = document.createElement('button');
+            deleteBtn.textContent = 'Delete';
+            deleteBtn.className = 'btn-danger-inline';
+            deleteBtn.onclick = async () => {
+              if (!confirm(`Delete event "${event.name}"?`)) return;
+              const delRes = await authFetch(`/admin-api/events/${encodeURIComponent(event.id)}`, { method: 'DELETE' });
+              if (delRes.ok) loadEventsAdmin();
+              else alert('Delete failed: ' + await delRes.text());
+            };
+
+            div.appendChild(editBtn);
+            div.appendChild(deleteBtn);
+            container.appendChild(div);
+          });
+        }
+        if (!document.getElementById('eventEditId').value) {
+          resetEventForm();
+        }
+        await populateAdminEventSelect();
+      } catch (err) {
+        console.error('Failed to load events:', err);
+      }
+    }
+
+    function resetEventForm() {
+      document.getElementById('eventEditId').value = '';
+      document.getElementById('eventFormTitle').textContent = 'Add Event';
+      document.getElementById('eventNameInput').value = '';
+      document.getElementById('eventSaveBtn').textContent = 'Save Event';
+    }
+
+    function editEvent(event) {
+      document.getElementById('eventEditId').value = event.id;
+      document.getElementById('eventFormTitle').textContent = 'Rename Event';
+      document.getElementById('eventNameInput').value = event.name;
+      document.getElementById('eventSaveBtn').textContent = 'Save Changes';
+    }
+
+    document.getElementById('eventCancelBtn')?.addEventListener('click', resetEventForm);
+    document.getElementById('eventForm')?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const editId = document.getElementById('eventEditId').value;
+      const name = document.getElementById('eventNameInput').value.trim();
+      const url = editId ? `/admin-api/events/${encodeURIComponent(editId)}` : '/admin-api/events';
+      const method = editId ? 'PATCH' : 'POST';
+      const res = await authFetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name })
+      });
+      if (res.ok) {
+        resetEventForm();
+        loadEventsAdmin();
+      } else {
+        alert('Failed to save event: ' + await res.text());
+      }
+    });
+    document.getElementById('adminGuestEventSelect')?.addEventListener('change', () => {
+      const select = document.getElementById('adminGuestEventSelect');
+      document.getElementById('adminEventNewField').hidden = select.value !== '__new__';
+    });
 
     function getSelectedAdminGuestType() {
       const id = document.getElementById('adminGuestType')?.value;
@@ -379,7 +515,7 @@
       const eventField = document.getElementById('adminEventField');
       const roomSelect = document.getElementById('adminGuestRoom');
       const stayInput = document.getElementById('adminGuestStayDays');
-      const eventInput = document.getElementById('adminGuestEvent');
+      const eventSelect = document.getElementById('adminGuestEventSelect');
       if (!type) return;
 
       roomField.hidden = !type.requiresRoom;
@@ -387,8 +523,9 @@
       stayField.hidden = !type.permissions?.selectStayLength;
       stayInput.required = Boolean(type.permissions?.selectStayLength);
       if (type.defaultStayDays) stayInput.value = type.defaultStayDays;
-      eventField.hidden = !type.permissions?.selectEventAtRegistration;
-      eventInput.required = Boolean(type.permissions?.selectEventAtRegistration);
+      const showEvent = Boolean(type.permissions?.selectEventAtRegistration || type.permissions?.tagPhotosToEvent);
+      eventField.hidden = !showEvent;
+      eventSelect.required = Boolean(type.permissions?.selectEventAtRegistration);
     }
 
     function renderPermissionCheckboxes(selected = {}, visitMode = 'overnight') {
@@ -888,8 +1025,15 @@
         if (type.permissions?.selectStayLength) {
           payload.stayDays = parseInt(document.getElementById('adminGuestStayDays').value, 10) || type.defaultStayDays || 7;
         }
+        const eventName = getAdminRegistrationEventName();
         if (type.permissions?.selectEventAtRegistration) {
-          payload.eventName = document.getElementById('adminGuestEvent').value.trim();
+          if (!eventName) {
+            resultBox.innerHTML = '<p class="admin-error-text">Select or enter an event.</p>';
+            return;
+          }
+          payload.eventName = eventName;
+        } else if (eventName) {
+          payload.eventName = eventName;
         }
         const res = await authFetch('/admin-api/guests', {
           method: 'POST',

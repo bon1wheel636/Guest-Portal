@@ -22,42 +22,60 @@
     </div>
   </div>
 
+  <div id="registrationModal" class="registration-modal" hidden aria-hidden="true">
+    <div class="registration-modal-backdrop" id="registrationModalBackdrop"></div>
+    <div class="registration-modal-dialog" role="dialog" aria-modal="true" aria-labelledby="registrationModalTitle">
+      <div class="registration-modal-header">
+        <h2 id="registrationModalTitle">Guest Registration</h2>
+        <button type="button" id="closeRegistrationModal" class="registration-modal-close" aria-label="Close registration">&times;</button>
+      </div>
+      <div id="registrationModalBody" class="registration-modal-body"></div>
+    </div>
+  </div>
+
   <div class="container" id="mainContainer">
-    <h1>Welcome to the Guest Portal</h1>
-    <form id="registrationForm">
-      <label for="guestType">Guest Type</label>
-      <select id="guestType" name="guestType" required>
-        <option value="" disabled selected>Loading guest types...</option>
-      </select>
-      <p id="guestTypeDescription" class="guest-muted"></p>
-
-      <label for="name">Your Name</label>
-      <input type="text" id="name" name="name" required />
-
-      <div id="roomField">
-        <label for="room">Select Your Room</label>
-        <select id="room" name="room">
-          <option value="" disabled selected>Select a room</option>
+    <h1 id="mainHeading">Welcome to the Guest Portal</h1>
+    <div id="inlineRegistrationHost">
+      <form id="registrationForm">
+        <label for="guestType">Guest Type</label>
+        <select id="guestType" name="guestType" required>
+          <option value="" disabled selected>Loading guest types...</option>
         </select>
-        <small id="roomLoadError" class="guest-error" hidden>Unable to load rooms. Please refresh the page or ask your host for help.</small>
-      </div>
+        <p id="guestTypeDescription" class="guest-muted"></p>
 
-      <div id="stayDaysField">
-        <label for="stayDays">Length of Stay (days)</label>
-        <input type="number" id="stayDays" name="stayDays" min="1" max="30" value="7" />
-        <small>How many days will you be staying? (1-30 days)</small>
-      </div>
+        <label for="name">Your Name</label>
+        <input type="text" id="name" name="name" required />
 
-      <div id="eventField" hidden>
-        <label for="eventName">Event</label>
-        <input type="text" id="eventName" name="eventName" list="eventSuggestions" placeholder="Birthday Party, Reunion, etc." />
-        <datalist id="eventSuggestions"></datalist>
-        <small>Select an existing event or enter a new one if permitted.</small>
-      </div>
+        <div id="roomField">
+          <label for="room">Select Your Room</label>
+          <select id="room" name="room">
+            <option value="" disabled selected>Select a room</option>
+          </select>
+          <small id="roomLoadError" class="guest-error" hidden>Unable to load rooms. Please refresh the page or ask your host for help.</small>
+        </div>
 
-      <button type="submit">Register</button>
-      <button type="button" id="backToHeroBtn" class="btn-secondary" hidden>Back</button>
-    </form>
+        <div id="stayDaysField">
+          <label for="stayDays">Length of Stay (days)</label>
+          <input type="number" id="stayDays" name="stayDays" min="1" max="30" value="7" />
+          <small>How many days will you be staying? (1-30 days)</small>
+        </div>
+
+        <div id="eventField" hidden>
+          <label for="eventSelect">Event</label>
+          <select id="eventSelect">
+            <option value="">Select an event...</option>
+          </select>
+          <div id="eventNewField" hidden>
+            <label for="eventName">New event name</label>
+            <input type="text" id="eventName" name="eventName" placeholder="Birthday Party, Reunion, etc." />
+          </div>
+          <small id="eventHelp" class="guest-muted">Choose a host-created event, or add a new one if permitted.</small>
+        </div>
+
+        <button type="submit">Register</button>
+        <button type="button" id="backToHeroBtn" class="btn-secondary" hidden>Back</button>
+      </form>
+    </div>
 
     <hr style="margin: 20px 0;" id="codeDivider" />
 
@@ -74,11 +92,23 @@
     let guestTypes = [];
     let events = [];
     let hasBackground = false;
+    let registrationHost = document.getElementById('inlineRegistrationHost');
 
     function escapeHtml(text) {
       const div = document.createElement('div');
       div.textContent = text;
       return div.innerHTML;
+    }
+
+    function mountRegistrationForm(useModal) {
+      const form = document.getElementById('registrationForm');
+      const target = useModal
+        ? document.getElementById('registrationModalBody')
+        : document.getElementById('inlineRegistrationHost');
+      if (form.parentElement !== target) {
+        target.appendChild(form);
+      }
+      document.getElementById('backToHeroBtn').hidden = !useModal;
     }
 
     function applyBackground(data) {
@@ -92,20 +122,56 @@
         document.body.style.backgroundAttachment = 'fixed';
         document.getElementById('heroView').hidden = false;
         document.getElementById('mainContainer').classList.add('registration-hidden');
-        document.getElementById('backToHeroBtn').hidden = false;
+        mountRegistrationForm(true);
       }
     }
 
-    fetch('/guest/background').then(res => res.json()).then(applyBackground).catch(() => {});
+    fetch('/guest/background').then(res => res.json()).then(data => {
+      applyBackground(data);
+      const linkCodeParam = new URLSearchParams(window.location.search).get('linkCode');
+      if (linkCodeParam) {
+        const code = linkCodeParam.trim().toUpperCase();
+        document.getElementById('sessionCode').value = code;
+        document.getElementById('heroSessionCode').value = code;
+        if (hasBackground) {
+          showRegistrationForm({ focus: false });
+        }
+        document.getElementById('sessionCode').focus();
+      }
+    }).catch(() => {});
+
+    function openRegistrationModal(options = {}) {
+      const modal = document.getElementById('registrationModal');
+      modal.hidden = false;
+      modal.setAttribute('aria-hidden', 'false');
+      document.body.classList.add('registration-modal-open');
+      if (options.focus !== false) {
+        requestAnimationFrame(() => {
+          const guestType = document.getElementById('guestType');
+          const focusTarget = guestType && !guestType.disabled ? guestType : document.getElementById('name');
+          focusTarget?.focus({ preventScroll: true });
+        });
+      }
+    }
+
+    function closeRegistrationModal() {
+      const modal = document.getElementById('registrationModal');
+      modal.hidden = true;
+      modal.setAttribute('aria-hidden', 'true');
+      document.body.classList.remove('registration-modal-open');
+      if (hasBackground) {
+        document.getElementById('heroView').hidden = false;
+      }
+    }
 
     function showRegistrationForm(options = {}) {
-      document.getElementById('heroView').hidden = true;
-      const container = document.getElementById('mainContainer');
-      container.classList.remove('registration-hidden');
-
+      if (hasBackground) {
+        openRegistrationModal(options);
+        return;
+      }
+      document.getElementById('mainContainer').classList.remove('registration-hidden');
       requestAnimationFrame(() => {
-        window.scrollTo({ top: 0, behavior: 'smooth' });
-        container.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        document.getElementById('registrationForm').scrollIntoView({ behavior: 'smooth', block: 'start' });
         if (options.focus !== false) {
           const guestType = document.getElementById('guestType');
           const focusTarget = guestType && !guestType.disabled ? guestType : document.getElementById('name');
@@ -116,16 +182,55 @@
 
     function showHeroView() {
       if (!hasBackground) return;
-      document.getElementById('heroView').hidden = false;
-      document.getElementById('mainContainer').classList.add('registration-hidden');
+      closeRegistrationModal();
     }
 
-    document.getElementById('heroRegisterBtn')?.addEventListener('click', showRegistrationForm);
+    document.getElementById('heroRegisterBtn')?.addEventListener('click', () => showRegistrationForm());
     document.getElementById('backToHeroBtn')?.addEventListener('click', showHeroView);
+    document.getElementById('closeRegistrationModal')?.addEventListener('click', showHeroView);
+    document.getElementById('registrationModalBackdrop')?.addEventListener('click', showHeroView);
 
     function getSelectedGuestType() {
       const id = document.getElementById('guestType').value;
       return guestTypes.find(type => type.id === id) || null;
+    }
+
+    function populateEventSelect(type) {
+      const eventSelect = document.getElementById('eventSelect');
+      const eventNewField = document.getElementById('eventNewField');
+      const eventHelp = document.getElementById('eventHelp');
+      const previous = eventSelect.value;
+
+      eventSelect.innerHTML = '<option value="">Select an event...</option>';
+      events.forEach(event => {
+        const opt = document.createElement('option');
+        opt.value = event.id;
+        opt.textContent = event.name;
+        eventSelect.appendChild(opt);
+      });
+
+      if (type?.permissions?.createEventNames) {
+        const opt = document.createElement('option');
+        opt.value = '__new__';
+        opt.textContent = '+ Add new event...';
+        eventSelect.appendChild(opt);
+      }
+
+      if (previous && [...eventSelect.options].some(option => option.value === previous)) {
+        eventSelect.value = previous;
+      }
+
+      const showNew = eventSelect.value === '__new__';
+      eventNewField.hidden = !showNew;
+      document.getElementById('eventName').required = showNew && Boolean(type?.permissions?.selectEventAtRegistration);
+
+      if (events.length === 0 && !type?.permissions?.createEventNames) {
+        eventHelp.textContent = 'No events are available yet. Ask your host to add events in the admin Events tab.';
+      } else if (type?.permissions?.selectEventAtRegistration) {
+        eventHelp.textContent = 'Select the event you are visiting for.';
+      } else {
+        eventHelp.textContent = 'Optional: tag your stay to an event for photo grouping.';
+      }
     }
 
     function updateRegistrationFields() {
@@ -135,7 +240,7 @@
       const eventField = document.getElementById('eventField');
       const roomSelect = document.getElementById('room');
       const stayDaysInput = document.getElementById('stayDays');
-      const eventInput = document.getElementById('eventName');
+      const eventSelect = document.getElementById('eventSelect');
       const description = document.getElementById('guestTypeDescription');
 
       if (!type) {
@@ -154,8 +259,25 @@
         stayDaysInput.value = type.defaultStayDays;
       }
 
-      eventField.hidden = !type.permissions.selectEventAtRegistration;
-      eventInput.required = Boolean(type.permissions.selectEventAtRegistration);
+      const showEvent = Boolean(type.permissions.selectEventAtRegistration || type.permissions.tagPhotosToEvent);
+      eventField.hidden = !showEvent;
+      eventSelect.required = Boolean(type.permissions.selectEventAtRegistration);
+      populateEventSelect(type);
+    }
+
+    function getRegistrationEventName(type) {
+      if (!type.permissions.selectEventAtRegistration && !type.permissions.tagPhotosToEvent) {
+        return null;
+      }
+
+      const eventSelect = document.getElementById('eventSelect');
+      if (eventSelect.value === '__new__') {
+        return document.getElementById('eventName').value.trim();
+      }
+      if (eventSelect.value) {
+        return eventSelect.options[eventSelect.selectedIndex].textContent.trim();
+      }
+      return '';
     }
 
     async function loadGuestTypes() {
@@ -189,13 +311,7 @@
         const res = await fetch('/guest/events');
         if (!res.ok) return;
         events = await res.json();
-        const datalist = document.getElementById('eventSuggestions');
-        datalist.innerHTML = '';
-        events.forEach(event => {
-          const opt = document.createElement('option');
-          opt.value = event.name;
-          datalist.appendChild(opt);
-        });
+        updateRegistrationFields();
       } catch (err) {
         console.error('Failed to load events:', err);
       }
@@ -235,20 +351,13 @@
     }
 
     document.getElementById('guestType').addEventListener('change', updateRegistrationFields);
+    document.getElementById('eventSelect').addEventListener('change', () => {
+      const type = getSelectedGuestType();
+      if (type) populateEventSelect(type);
+    });
     loadGuestTypes();
     loadEvents();
     loadRooms();
-
-    const linkCodeParam = new URLSearchParams(window.location.search).get('linkCode');
-    if (linkCodeParam) {
-      const code = linkCodeParam.trim().toUpperCase();
-      document.getElementById('sessionCode').value = code;
-      document.getElementById('heroSessionCode').value = code;
-      if (hasBackground) {
-        showRegistrationForm();
-      }
-      document.getElementById('sessionCode').focus();
-    }
 
     async function checkExistingSession() {
       const guestToken = localStorage.getItem('guestToken');
@@ -337,8 +446,15 @@
         payload.stayDays = parseInt(document.getElementById('stayDays').value, 10) || type.defaultStayDays || 7;
       }
 
+      const eventName = getRegistrationEventName(type);
       if (type.permissions.selectEventAtRegistration) {
-        payload.eventName = document.getElementById('eventName').value.trim();
+        if (!eventName) {
+          alert('Please select or enter an event.');
+          return;
+        }
+        payload.eventName = eventName;
+      } else if (eventName) {
+        payload.eventName = eventName;
       }
 
       try {

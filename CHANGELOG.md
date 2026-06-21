@@ -7,7 +7,9 @@ All notable changes to this project will be documented here.
 ## [Unreleased]
 
 ### Added
-- Event-scoped guest upload paths: `GET/DELETE /guest/uploads/:eventSlug/:filename`; upload list includes `eventSlug`.
+- Hero registration **modal overlay** on the landing page when a background image is configured.
+- Admin **Events** tab with list, create, rename, and delete (`/admin-api/events`).
+- Registration **event picker** (`<select>`) populated from host-created events; optional for overnight guests, required for day-personal.
 - Session `permissionsSnapshot` on registration and admin type change; restricted fallback when a guest type is missing or disabled.
 - Integration tests for event subfolder upload, legacy sessions, day-personal registration, delete 403, and scoped delete with duplicate basenames.
 - Deprecation header on legacy unscoped `/guest/uploads/:filename` routes (409 when path is ambiguous).
@@ -21,7 +23,7 @@ All notable changes to this project will be documented here.
 - Tests for guest types, permission 403s, validate permissions, guest type changes, and hero markup.
 
 ### Changed
-- Hero landing **Register** button now scrolls to the registration form and focuses the first field so the next step is obvious on mobile and desktop.
+- Hero landing **Register** opens a modal dialog instead of scrolling to a form below the fold.
 - `photo.html` gallery download/delete uses scoped upload URLs from the list response.
 - Admin `PATCH` guest session: clearing `guestTypeId` simulates legacy sessions; switching to overnight extends checkout when it would otherwise expire too soon.
 - Guest type hardening sprint marked complete in ROADMAP; Events UX is next in the sprint queue.

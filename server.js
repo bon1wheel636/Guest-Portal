@@ -414,6 +414,96 @@ function findEventByName(name) {
   return (guestData.events || []).find(event => event.name.toLowerCase() === trimmed.toLowerCase()) || null;
 }
 
+function findEventById(id) {
+  return (guestData.events || []).find(event => event.id === id) || null;
+}
+
+function createEventRecord(name, createdBy = 'admin') {
+  const trimmed = (name || '').trim().substring(0, 100);
+  if (!trimmed) {
+    return { error: 'Event name is required' };
+  }
+  if (findEventByName(trimmed)) {
+    return { error: 'Event already exists' };
+  }
+
+  const event = {
+    id: `event_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`,
+    name: trimmed,
+    createdAt: new Date().toISOString(),
+    createdBy: createdBy || 'admin'
+  };
+  guestData.events.push(event);
+  saveGuestData();
+  return { event };
+}
+
+function forEachStayUploadFolder(callback) {
+  const uploadsDir = getUploadsDir();
+  if (!fs.existsSync(uploadsDir)) {
+    return;
+  }
+
+  fs.readdirSync(uploadsDir, { withFileTypes: true })
+    .filter(entry => entry.isDirectory() && entry.name !== 'backgrounds')
+    .forEach(entry => callback(path.join(uploadsDir, entry.name)));
+}
+
+function countEventFilesOnDisk(eventSlug) {
+  let count = 0;
+  forEachStayUploadFolder(stayPath => {
+    const eventDir = path.join(stayPath, eventSlug);
+    if (!fs.existsSync(eventDir) || !fs.statSync(eventDir).isDirectory()) {
+      return;
+    }
+    fs.readdirSync(eventDir, { withFileTypes: true }).forEach(entry => {
+      if (entry.isFile()) {
+        count += 1;
+      }
+    });
+  });
+  return count;
+}
+
+function renameEventFoldersOnDisk(oldSlug, newSlug) {
+  if (!oldSlug || !newSlug || oldSlug === newSlug) {
+    return;
+  }
+
+  forEachStayUploadFolder(stayPath => {
+    const oldPath = path.resolve(path.join(stayPath, oldSlug));
+    const newPath = path.resolve(path.join(stayPath, newSlug));
+    if (!oldPath.startsWith(path.resolve(stayPath)) || !newPath.startsWith(path.resolve(stayPath))) {
+      return;
+    }
+    if (!fs.existsSync(oldPath) || !fs.statSync(oldPath).isDirectory()) {
+      return;
+    }
+    if (fs.existsSync(newPath)) {
+      fs.readdirSync(oldPath, { withFileTypes: true }).forEach(entry => {
+        if (!entry.isFile()) {
+          return;
+        }
+        const source = path.join(oldPath, entry.name);
+        const target = path.join(newPath, entry.name);
+        if (!fs.existsSync(target)) {
+          fs.renameSync(source, target);
+        }
+      });
+      fs.rmdirSync(oldPath, { recursive: true });
+      return;
+    }
+    fs.renameSync(oldPath, newPath);
+  });
+}
+
+function mergeEventFoldersOnDisk(sourceSlug, targetSlug) {
+  if (!sourceSlug || !targetSlug || sourceSlug === targetSlug) {
+    return;
+  }
+  renameEventFoldersOnDisk(sourceSlug, targetSlug);
+}
+
 function getOrCreateEvent(eventName, createdBy, guestType) {
   const trimmed = (eventName || '').trim().substring(0, 100);
   if (!trimmed) return null;
@@ -434,6 +524,18 @@ function getOrCreateEvent(eventName, createdBy, guestType) {
   guestData.events.push(event);
   saveGuestData();
   return event;
+}
+
+function formatEventForAdmin(event) {
+  const eventSlug = sanitizeEventSlug(event.name);
+  return {
+    id: event.id,
+    name: event.name,
+    eventSlug,
+    createdAt: event.createdAt,
+    createdBy: event.createdBy || 'unknown',
+    uploadFileCount: countEventFilesOnDisk(eventSlug)
+  };
 }
 
 function resolveUploadEventName(guest, requestedEventName) {
@@ -2105,6 +2207,70 @@ app.get('/admin-api/guests.csv', authMiddleware, (req, res) => {
 
 app.get('/admin-api/guest-types', authMiddleware, (req, res) => {
   res.json(guestData.guestTypes || []);
+});
+
+app.get('/admin-api/events', authMiddleware, (req, res) => {
+  res.json((guestData.events || []).map(formatEventForAdmin));
+});
+
+app.post('/admin-api/events', authMiddleware, (req, res) => {
+  const result = createEventRecord(req.body?.name, 'admin');
+  if (result.error) {
+    return res.status(400).send(result.error);
+  }
+  res.json({ success: true, event: formatEventForAdmin(result.event) });
+});
+
+app.patch('/admin-api/events/:id', authMiddleware, (req, res) => {
+  const event = findEventById(req.params.id);
+  if (!event) {
+    return res.status(404).send('Event not found');
+  }
+
+  if (req.body?.mergeIntoId) {
+    const target = findEventById(req.body.mergeIntoId);
+    if (!target) {
+      return res.status(400).send('Target event not found');
+    }
+    if (target.id === event.id) {
+      return res.status(400).send('Cannot merge an event into itself');
+    }
+    mergeEventFoldersOnDisk(sanitizeEventSlug(event.name), sanitizeEventSlug(target.name));
+    guestData.events = (guestData.events || []).filter(entry => entry.id !== event.id);
+    saveGuestData();
+    return res.json({ success: true, mergedInto: target.id, event: formatEventForAdmin(target) });
+  }
+
+  const newName = typeof req.body?.name === 'string' ? req.body.name.trim() : '';
+  if (!newName) {
+    return res.status(400).send('Event name is required');
+  }
+  const duplicate = findEventByName(newName);
+  if (duplicate && duplicate.id !== event.id) {
+    return res.status(400).send('Event name already exists');
+  }
+
+  const oldSlug = sanitizeEventSlug(event.name);
+  event.name = newName.substring(0, 100);
+  renameEventFoldersOnDisk(oldSlug, sanitizeEventSlug(event.name));
+  saveGuestData();
+  res.json({ success: true, event: formatEventForAdmin(event) });
+});
+
+app.delete('/admin-api/events/:id', authMiddleware, (req, res) => {
+  const event = findEventById(req.params.id);
+  if (!event) {
+    return res.status(404).send('Event not found');
+  }
+
+  const eventSlug = sanitizeEventSlug(event.name);
+  if (countEventFilesOnDisk(eventSlug) > 0) {
+    return res.status(409).send('Event has uploaded photos. Rename or merge it before deleting.');
+  }
+
+  guestData.events = (guestData.events || []).filter(entry => entry.id !== event.id);
+  saveGuestData();
+  res.json({ success: true });
 });
 
 app.post('/admin-api/guest-types', authMiddleware, (req, res) => {
