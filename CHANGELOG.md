@@ -26,6 +26,8 @@ All notable changes to this project will be documented here.
 - Tests for guest types, permission 403s, validate permissions, guest type changes, and hero markup.
 
 ### Changed
+- Photo gallery **event tabs** filter uploads by event; move-to-event controls use labeled fieldsets.
+- Admin guest sessions and Storage photo browser show registered and per-file event names.
 - Hero landing **Register** opens a modal dialog instead of scrolling to a form below the fold.
 - `photo.html` gallery download/delete uses scoped upload URLs from the list response.
 - Admin `PATCH` guest session: clearing `guestTypeId` simulates legacy sessions; switching to overnight extends checkout when it would otherwise expire too soon.

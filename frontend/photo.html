@@ -19,6 +19,7 @@
 
     <section class="guest-section">
       <div id="galleryStatus" class="guest-muted">Loading your uploads...</div>
+      <nav id="galleryEventTabs" class="guest-event-tabs" aria-label="Browse by event" hidden></nav>
       <div id="galleryGroups"></div>
       <p><a href="welcome.html">Upload photos &amp; files on the Welcome page</a></p>
     </section>
@@ -41,10 +42,13 @@
     const guestToken = localStorage.getItem('guestToken');
     let permissions = guestData.permissions || {};
     let availableEvents = [];
+    let galleryFiles = [];
+    let activeEventFilter = 'all';
     const guestNameSpan = document.getElementById('guestName');
     const greeting = document.getElementById('guestGreeting');
     const checkoutInfo = document.getElementById('checkoutInfo');
     const galleryStatus = document.getElementById('galleryStatus');
+    const galleryEventTabs = document.getElementById('galleryEventTabs');
     const galleryGroups = document.getElementById('galleryGroups');
     const previewUrls = [];
 
@@ -102,6 +106,50 @@
       return groups;
     }
 
+    function renderEventTabs(files) {
+      const groups = groupFilesByEvent(files);
+      galleryEventTabs.innerHTML = '';
+
+      if (groups.size <= 1) {
+        galleryEventTabs.hidden = true;
+        return;
+      }
+
+      galleryEventTabs.hidden = false;
+      const tabDefs = [{ key: 'all', label: 'All events', count: files.length }];
+      [...groups.entries()]
+        .sort((a, b) => a[0].localeCompare(b[0]))
+        .forEach(([eventName, eventFiles]) => {
+          tabDefs.push({ key: eventName, label: eventName, count: eventFiles.length });
+        });
+
+      tabDefs.forEach(tab => {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'guest-event-tab';
+        button.setAttribute('role', 'tab');
+        button.dataset.event = tab.key;
+        button.setAttribute('aria-selected', tab.key === activeEventFilter ? 'true' : 'false');
+        if (tab.key === activeEventFilter) {
+          button.classList.add('active');
+        }
+        button.textContent = `${tab.label} (${tab.count})`;
+        button.addEventListener('click', () => {
+          activeEventFilter = tab.key;
+          renderEventTabs(galleryFiles);
+          renderGallery(galleryFiles);
+        });
+        galleryEventTabs.appendChild(button);
+      });
+    }
+
+    function filesForActiveFilter(files) {
+      if (activeEventFilter === 'all') {
+        return files;
+      }
+      return files.filter(file => (file.event || 'General') === activeEventFilter);
+    }
+
     async function loadAvailableEvents() {
       if (!permissions.tagPhotosToEvent) {
         return;
@@ -154,16 +202,29 @@
 
       if (files.length === 0) {
         galleryStatus.textContent = 'No uploads yet. Add photos or files from the Welcome page.';
+        galleryEventTabs.hidden = true;
         return;
       }
 
-      galleryStatus.textContent = `${files.length} file${files.length === 1 ? '' : 's'} uploaded during your stay.`;
-      const groups = groupFilesByEvent(files);
+      renderEventTabs(files);
+      const visibleFiles = filesForActiveFilter(files);
+      const filterLabel = activeEventFilter === 'all' ? '' : ` in ${activeEventFilter}`;
+      galleryStatus.textContent = `${visibleFiles.length} file${visibleFiles.length === 1 ? '' : 's'}${filterLabel} uploaded during your stay.`;
+
+      if (visibleFiles.length === 0) {
+        galleryGroups.innerHTML = '<p class="guest-muted">No uploads in this event yet.</p>';
+        return;
+      }
+
+      const groups = groupFilesByEvent(visibleFiles);
+      const showGroupHeadings = activeEventFilter === 'all' && groups.size > 1;
 
       for (const [eventName, eventFiles] of groups.entries()) {
         const section = document.createElement('section');
         section.className = 'guest-gallery-group';
-        section.innerHTML = `<h2>${escapeHtml(eventName)}</h2>`;
+        if (showGroupHeadings) {
+          section.innerHTML = `<h2>${escapeHtml(eventName)}</h2>`;
+        }
         const list = document.createElement('ul');
         list.className = 'guest-gallery';
 
@@ -171,6 +232,7 @@
           const item = document.createElement('li');
           item.className = 'guest-gallery-item';
           item.dataset.filename = file.name;
+          item.dataset.event = file.event || 'General';
 
           const preview = document.createElement('div');
           preview.className = 'guest-gallery-preview';
@@ -193,7 +255,10 @@
 
           const meta = document.createElement('div');
           meta.className = 'guest-gallery-meta';
-          meta.innerHTML = `<strong>${escapeHtml(file.name)}</strong><br><span class="guest-muted">${formatBytes(file.size)}</span>`;
+          const eventBadge = showGroupHeadings
+            ? ''
+            : `<span class="guest-event-badge">${escapeHtml(file.event || 'General')}</span><br>`;
+          meta.innerHTML = `${eventBadge}<strong>${escapeHtml(file.name)}</strong><br><span class="guest-muted">${formatBytes(file.size)}</span>`;
 
           const actions = document.createElement('div');
           actions.className = 'guest-gallery-actions';
@@ -221,12 +286,22 @@
           if (permissions.tagPhotosToEvent) {
             const retagOptions = buildRetagOptions(file.event || 'General');
             if (retagOptions.length > 0) {
-              const moveWrap = document.createElement('div');
+              const moveWrap = document.createElement('fieldset');
               moveWrap.className = 'guest-gallery-move';
 
+              const legend = document.createElement('legend');
+              legend.textContent = 'Move to event';
+              moveWrap.appendChild(legend);
+
+              const selectId = `retag-${file.eventSlug || 'General'}-${file.name}`.replace(/[^a-zA-Z0-9_-]/g, '-');
+              const selectLabel = document.createElement('label');
+              selectLabel.className = 'guest-field-label';
+              selectLabel.setAttribute('for', selectId);
+              selectLabel.textContent = 'Choose event';
+
               const select = document.createElement('select');
+              select.id = selectId;
               select.className = 'guest-retag-select';
-              select.setAttribute('aria-label', `Move ${file.name} to event`);
               retagOptions.forEach(option => {
                 const opt = document.createElement('option');
                 opt.value = option.value;
@@ -239,6 +314,7 @@
               newEventInput.className = 'guest-retag-new';
               newEventInput.placeholder = 'New event name';
               newEventInput.maxLength = 100;
+              newEventInput.setAttribute('aria-label', 'New event name');
               newEventInput.hidden = select.value !== '__new__';
 
               select.addEventListener('change', () => {
@@ -248,7 +324,7 @@
               const moveBtn = document.createElement('button');
               moveBtn.type = 'button';
               moveBtn.className = 'btn-secondary';
-              moveBtn.textContent = 'Move';
+              moveBtn.textContent = 'Move file';
               moveBtn.addEventListener('click', async () => {
                 if (select.value === '__new__' && !newEventInput.value.trim()) {
                   alert('Enter a name for the new event.');
@@ -268,6 +344,7 @@
                 }
               });
 
+              moveWrap.appendChild(selectLabel);
               moveWrap.appendChild(select);
               moveWrap.appendChild(newEventInput);
               moveWrap.appendChild(moveBtn);
@@ -333,7 +410,14 @@
           throw new Error(await res.text() || `HTTP ${res.status}`);
         }
         const data = await res.json();
-        await renderGallery(data.files || []);
+        galleryFiles = data.files || [];
+        if (activeEventFilter !== 'all') {
+          const stillVisible = galleryFiles.some(file => (file.event || 'General') === activeEventFilter);
+          if (!stillVisible) {
+            activeEventFilter = 'all';
+          }
+        }
+        await renderGallery(galleryFiles);
       } catch (err) {
         galleryStatus.textContent = 'Unable to load uploads: ' + err.message;
       }
@@ -375,6 +459,9 @@
       greeting.innerHTML = guestData.room
         ? `Photos for <strong>${escapeHtml(guestData.name)}</strong> — room <strong>${escapeHtml(guestData.room)}</strong>.`
         : `Photos for <strong>${escapeHtml(guestData.name)}</strong>.`;
+      if (guestData.eventName) {
+        greeting.innerHTML += `<br><span class="guest-muted">Registered event: <strong>${escapeHtml(guestData.eventName)}</strong></span>`;
+      }
       guestNameSpan.textContent = guestData.name;
 
       if (guestData.checkoutDate) {

@@ -251,6 +251,23 @@ a:hover {
   word-break: break-word;
 }
 
+.admin-photo-event-heading {
+  margin: 1rem 0 0.35rem;
+  font-size: 0.95rem;
+  color: #444;
+}
+
+.admin-photo-event-label {
+  display: inline-block;
+  margin-bottom: 0.2rem;
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  background: #eef2f7;
+  color: #334155;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
 .btn-secondary {
   background: #6c757d;
 }
@@ -312,6 +329,67 @@ a:hover {
   background: #0078d4;
   color: #fff;
   border-color: #0078d4;
+}
+
+.guest-event-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 1rem 0 1.25rem;
+}
+
+.guest-event-tab {
+  padding: 0.55rem 1rem;
+  background: #eef2f7;
+  color: #333;
+  border: 1px solid #d7dee8;
+  border-radius: 999px;
+  font-size: 0.95rem;
+  cursor: pointer;
+}
+
+.guest-event-tab:hover {
+  background: #e2e8f0;
+}
+
+.guest-event-tab.active {
+  background: #0078d4;
+  color: #fff;
+  border-color: #0078d4;
+}
+
+.guest-event-badge {
+  display: inline-block;
+  margin-bottom: 0.25rem;
+  padding: 0.15rem 0.55rem;
+  border-radius: 999px;
+  background: #eef2f7;
+  color: #334155;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.guest-field-label {
+  display: block;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #444;
+  margin-bottom: 0.25rem;
+}
+
+.guest-gallery-move {
+  margin: 0;
+  padding: 0.75rem;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  background: #fafafa;
+}
+
+.guest-gallery-move legend {
+  padding: 0 0.25rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #444;
 }
 
 .guest-section {
@@ -478,8 +556,10 @@ a:hover {
   gap: 0.35rem;
 }
 
-.guest-retag-select,
-.guest-retag-new {
+.guest-gallery-move .guest-field-label,
+.guest-gallery-move select,
+.guest-gallery-move input,
+.guest-gallery-move button {
   width: 100%;
   max-width: 100%;
   box-sizing: border-box;
