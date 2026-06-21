@@ -8,23 +8,29 @@
 </head>
 <body>
   <div class="container">
-    <nav class="guest-nav" aria-label="Guest pages">
+    <nav class="guest-nav" id="guestNav" aria-label="Guest pages">
       <a href="welcome.html" class="guest-nav-link active" aria-current="page">Welcome</a>
-      <a href="photo.html" class="guest-nav-link">My Photos</a>
+      <a href="photo.html" class="guest-nav-link" id="photosNavLink">My Photos</a>
     </nav>
 
     <h1 id="pageTitle">We're glad you're here</h1>
     <p id="guestGreeting"></p>
     <p id="checkoutInfo" class="guest-muted"></p>
+    <p id="guestTypeInfo" class="guest-muted"></p>
 
-    <section class="guest-section">
+    <section class="guest-section" id="smartHomeSection">
       <h2>Smart Home</h2>
       <p><a id="smartHomeLink" href="#">Go to your Smart Home Controls</a></p>
     </section>
 
-    <section class="guest-section">
+    <section class="guest-section" id="uploadSection">
       <h2>Upload Photos &amp; Files</h2>
       <form id="uploadForm" enctype="multipart/form-data">
+        <div id="uploadEventField" hidden>
+          <label for="uploadEventName">Event</label>
+          <input type="text" id="uploadEventName" name="eventName" list="uploadEventSuggestions" placeholder="Tag photos to an event" />
+          <datalist id="uploadEventSuggestions"></datalist>
+        </div>
         <label for="photo">Choose files to upload</label>
         <input type="file" name="photo" id="photo" accept="image/jpeg,image/png,image/gif,image/webp,image/heic,image/heif,video/mp4,video/quicktime,video/webm,application/pdf,.heic,.heif" multiple required />
         <small>Allowed: phone photos, videos, HEIC/HEIF images, and PDF letters. For handwritten notes, upload a photo or a PDF. Code, scripts, archives, executables, and macro documents are blocked.</small>
@@ -33,10 +39,10 @@
         <div id="uploadStatus" class="guest-status"></div>
         <button type="submit">Upload</button>
       </form>
-      <p class="guest-muted">View files you have already uploaded on <a href="photo.html">My Photos</a>.</p>
+      <p class="guest-muted" id="galleryHint">View files you have already uploaded on <a href="photo.html">My Photos</a>.</p>
     </section>
 
-    <section class="guest-section">
+    <section class="guest-section" id="linkDeviceSection">
       <h2>Link Another Device</h2>
       <p class="guest-muted">Want to access this session from another phone, tablet, or computer?</p>
       <button id="generateLinkCode">Generate Device Link Code</button>
@@ -48,14 +54,14 @@
       </div>
     </section>
 
-    <p class="guest-footer"><a href="#" id="reset">If you're not <span id="guestName"></span>, click here to register</a></p>
+    <p class="guest-footer" id="signOutFooter"><a href="#" id="reset">If you're not <span id="guestName"></span>, click here to register</a></p>
   </div>
 
   <div id="tutorialModal" class="guest-modal" hidden>
     <div class="guest-modal-content" role="dialog" aria-labelledby="tutorialTitle" aria-modal="true">
       <h2 id="tutorialTitle">Quick tour of your guest portal</h2>
       <p>Here is what you can do during your stay:</p>
-      <ul class="guest-tutorial-list">
+      <ul class="guest-tutorial-list" id="tutorialList">
         <li><strong>Smart Home</strong> — open your room dashboard for lights, climate, and other controls.</li>
         <li><strong>Upload photos &amp; files</strong> — share vacation photos, videos, or PDF notes with your hosts.</li>
         <li><strong>My Photos</strong> — review what you have uploaded and remove any mistakes.</li>
@@ -77,8 +83,9 @@
       }
     }).catch(() => {});
 
-    const guestData = JSON.parse(localStorage.getItem('guestData')) || {};
+    let guestData = JSON.parse(localStorage.getItem('guestData')) || {};
     const guestToken = localStorage.getItem('guestToken');
+    let permissions = guestData.permissions || {};
     const pageTitle = document.getElementById('pageTitle');
     const greeting = document.getElementById('guestGreeting');
     const smartHomeLink = document.getElementById('smartHomeLink');
@@ -184,18 +191,65 @@
       uploadStatus.textContent = message;
     }
 
+    function roomLabel() {
+      return guestData.room ? `<strong>${escapeHtml(guestData.room)}</strong>` : 'your visit';
+    }
+
     function applyGreeting(returningDevice, arrival) {
       const isReturnVisit = returningDevice && arrival !== 'new';
 
       if (isReturnVisit) {
         pageTitle.textContent = 'Welcome back!';
-        greeting.innerHTML = `Welcome back, ${escapeHtml(guestData.name)}! You're staying in <strong>${escapeHtml(guestData.room)}</strong>.`;
+        greeting.innerHTML = guestData.room
+          ? `Welcome back, ${escapeHtml(guestData.name)}! You're staying in ${roomLabel()}.`
+          : `Welcome back, ${escapeHtml(guestData.name)}!`;
       } else {
         pageTitle.textContent = "We're glad you're here";
-        greeting.innerHTML = `Hi ${escapeHtml(guestData.name)}! You're staying in <strong>${escapeHtml(guestData.room)}</strong>.`;
+        greeting.innerHTML = guestData.room
+          ? `Hi ${escapeHtml(guestData.name)}! You're staying in ${roomLabel()}.`
+          : `Hi ${escapeHtml(guestData.name)}! Thanks for checking in.`;
       }
 
       sessionStorage.setItem('welcomeSeen', '1');
+    }
+
+    function applyPermissions() {
+      document.getElementById('uploadSection').hidden = !permissions.uploadPhotos;
+      document.getElementById('photosNavLink').hidden = !permissions.viewPhotoGallery;
+      document.getElementById('galleryHint').hidden = !permissions.viewPhotoGallery;
+      document.getElementById('linkDeviceSection').hidden = !permissions.linkDevice;
+      document.getElementById('signOutFooter').hidden = permissions.signOut === false;
+
+      const showSmartHome = permissions.smartHomeControls && guestData.dashboardUrl;
+      document.getElementById('smartHomeSection').hidden = !showSmartHome;
+
+      const uploadEventField = document.getElementById('uploadEventField');
+      uploadEventField.hidden = !permissions.tagPhotosToEvent;
+      if (permissions.tagPhotosToEvent && guestData.eventName) {
+        document.getElementById('uploadEventName').value = guestData.eventName;
+      }
+
+      if (guestData.guestTypeName) {
+        document.getElementById('guestTypeInfo').textContent = `Guest type: ${guestData.guestTypeName}`;
+      }
+    }
+
+    async function loadEventsForUpload() {
+      if (!permissions.tagPhotosToEvent) return;
+      try {
+        const res = await fetch('/guest/events');
+        if (!res.ok) return;
+        const events = await res.json();
+        const datalist = document.getElementById('uploadEventSuggestions');
+        datalist.innerHTML = '';
+        events.forEach(event => {
+          const opt = document.createElement('option');
+          opt.value = event.name;
+          datalist.appendChild(opt);
+        });
+      } catch (err) {
+        console.error('Failed to load events:', err);
+      }
     }
 
     function maybeShowTutorial(returningDevice, arrival) {
@@ -209,12 +263,29 @@
         return;
       }
 
+      const tutorialList = document.getElementById('tutorialList');
+      tutorialList.innerHTML = '';
+      const items = [];
+      if (permissions.smartHomeControls && guestData.dashboardUrl) {
+        items.push('<li><strong>Smart Home</strong> — open your room dashboard for lights, climate, and other controls.</li>');
+      }
+      if (permissions.uploadPhotos) {
+        items.push('<li><strong>Upload photos &amp; files</strong> — share vacation photos, videos, or PDF notes with your hosts.</li>');
+      }
+      if (permissions.viewPhotoGallery) {
+        items.push('<li><strong>My Photos</strong> — review what you have uploaded and remove any mistakes.</li>');
+      }
+      if (permissions.linkDevice) {
+        items.push('<li><strong>Link another device</strong> — generate a code so a second phone or tablet can join this stay.</li>');
+      }
+      items.push('<li><strong>Bookmark this page</strong> — save the portal to your home screen or bookmarks so it is easy to find again.</li>');
+      tutorialList.innerHTML = items.join('');
       tutorialModal.hidden = false;
       sessionStorage.setItem('tutorialSeen', '1');
     }
 
     async function initWelcomePage() {
-      if (!(guestData.name && guestData.room)) {
+      if (!guestData.name) {
         window.location.href = 'index.html';
         return;
       }
@@ -224,8 +295,15 @@
 
       if (guestData.checkoutDate) {
         const checkout = new Date(guestData.checkoutDate);
-        const daysLeft = Math.ceil((checkout - new Date()) / (1000 * 60 * 60 * 24));
-        checkoutInfo.innerHTML = `Your session is active until <strong>${checkout.toLocaleDateString()}</strong> (${daysLeft} days remaining)`;
+        const isDayVisit = guestData.visitMode === 'day';
+        const remainingMs = checkout - new Date();
+        if (isDayVisit) {
+          const hoursLeft = Math.max(1, Math.ceil(remainingMs / (1000 * 60 * 60)));
+          checkoutInfo.innerHTML = `Your session is active until <strong>${checkout.toLocaleString()}</strong> (${hoursLeft} hour${hoursLeft === 1 ? '' : 's'} remaining)`;
+        } else {
+          const daysLeft = Math.ceil(remainingMs / (1000 * 60 * 60 * 24));
+          checkoutInfo.innerHTML = `Your session is active until <strong>${checkout.toLocaleDateString()}</strong> (${daysLeft} days remaining)`;
+        }
       }
 
       let returningDevice = false;
@@ -240,13 +318,21 @@
             const data = await res.json();
             if (data.valid) {
               returningDevice = Boolean(data.returningDevice);
-              localStorage.setItem('guestData', JSON.stringify(data.guest));
+              guestData = data.guest;
+              permissions = guestData.permissions || {};
+              localStorage.setItem('guestData', JSON.stringify(guestData));
             }
+          } else if (res.status === 403) {
+            window.location.href = 'index.html';
+            return;
           }
         } catch (err) {
           console.error('Token validation failed:', err);
         }
       }
+
+      applyPermissions();
+      await loadEventsForUpload();
 
       const arrival = sessionStorage.getItem('guestArrival');
       applyGreeting(returningDevice, arrival);
@@ -282,6 +368,10 @@
       const formData = new FormData();
       const files = fileInput.files;
       for (let i = 0; i < files.length; i++) formData.append('photos', files[i]);
+      if (permissions.tagPhotosToEvent) {
+        const eventName = document.getElementById('uploadEventName').value.trim();
+        if (eventName) formData.append('eventName', eventName);
+      }
 
       uploadButton.disabled = true;
       uploadProgress.style.display = 'block';
@@ -352,7 +442,7 @@
           expiryEl.hidden = false;
           document.getElementById('linkCodeDisplay').style.display = 'block';
         } else {
-          alert('Unable to generate link code. Please try again.');
+          alert('Unable to generate link code: ' + (await res.text()));
         }
       } catch (err) {
         alert('Error: ' + err.message);

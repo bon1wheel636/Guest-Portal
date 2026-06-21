@@ -1,6 +1,6 @@
 # Sprint: Guest types, permissions, events, and entry landing
 
-**Status:** Planned — handoff complete; implementation not started.
+**Status:** Implemented.
 
 Use this document to continue work in a **new agent session** without relying on prior chat history.
 
@@ -307,11 +307,11 @@ Verify guest type defaults appear in admin, registration offers types, permissio
 ## Sprint checklist (mirror ROADMAP)
 
 - [x] Handoff doc and ROADMAP/AGENTS updates (planning)
-- [ ] Guest types storage, defaults, and admin CRUD with permission checkboxes
-- [ ] Server permission resolver and route enforcement
-- [ ] Event list storage and event-scoped upload folder paths
-- [ ] Registration flows driven by guest type (public + admin)
-- [ ] Guest UI sections shown/hidden by permissions
-- [ ] Admin guest type assignment and CSV/list columns
-- [ ] Background hero landing on `/` when background image is set
-- [ ] Tests and documentation updates
+- [x] Guest types storage, defaults, and admin CRUD with permission checkboxes
+- [x] Server permission resolver and route enforcement
+- [x] Event list storage and event-scoped upload folder paths
+- [x] Registration flows driven by guest type (public + admin)
+- [x] Guest UI sections shown/hidden by permissions
+- [x] Admin guest type assignment and CSV/list columns
+- [x] Background hero landing on `/` when background image is set
+- [x] Tests and documentation updates

@@ -7,6 +7,21 @@ All notable changes to this project will be documented here.
 ## [Unreleased]
 
 ### Added
+- Configurable **guest types** with visit modes (`overnight` / `day`) and per-type permission checkboxes in Admin → Guest Types.
+- Default guest types: Overnight Guest, Day Visitor — Personal, and Day Visitor — Business (seeded on first run).
+- Public `GET /guest/guest-types` and admin CRUD/reorder APIs for guest types.
+- Permission enforcement on guest upload, gallery, delete, and device-link routes; `/guest/validate` returns effective permissions.
+- Event names in `storage.json` with event-scoped upload subfolders under each stay folder; gallery groups by event.
+- Hero landing on `/` when a background image is configured (Register button + device link code entry).
+- Admin can change a guest's type on an active session; CSV exports include guest type and visit mode columns.
+- Tests for guest types, permission 403s, validate permissions, guest type changes, and hero markup.
+
+### Changed
+- Registration (guest and admin) uses a guest type picker with permission-driven fields (room, stay length, event).
+- `welcome.html` and `photo.html` show/hide sections based on resolved guest type permissions.
+- Day visitors use hour-based session TTL from `defaultDayVisitHours`.
+- Rate limit raised to 200 requests/minute so the integration test suite completes reliably.
+- Legacy sessions without `guestTypeId` behave as the default overnight type.
 - Admin Overview now includes Guest Entry Health for `/health`, `/`, `/guest/rooms`, `/welcome.html`, `/photo.html`, and guest room count.
 - Admin Guest Photos now includes image previews and per-file upload metadata.
 - CSV exports for active guest sessions and registration history.

@@ -116,25 +116,25 @@ This roadmap tracks shareable project work only. Keep private domains, NAS hostn
 
 **Handoff:** [docs/SPRINT_DAY_VISITORS.md](docs/SPRINT_DAY_VISITORS.md) — read this at the start of a new agent session (avoids relying on full chat context).
 
-- [ ] **Configurable guest types (admin)**
+- [x] **Configurable guest types (admin)**
   - Add a Guest Types section in the admin panel to create, edit, enable/disable, and reorder types.
   - Each type defines visit mode (`overnight` or `day`), session defaults (stay days or day-visit hours), whether room is required, and a **permission checkbox matrix**.
   - Seed defaults: Overnight Guest, Day Visitor — Personal, Day Visitor — Business (hosts can customize).
   - Permissions include at minimum: upload photos, delete own photos, view photo gallery, Smart Home controls, link device, extend stay (future), select stay length, select event at registration, tag photos to event, create event names, view welcome hub, sign out.
   - Gray out visit-mode-inapplicable permissions in the admin UI (e.g. stay length only for overnight).
-- [ ] **Permission enforcement (server + guest UI)**
+- [x] **Permission enforcement (server + guest UI)**
   - Resolve effective permissions from the guest's assigned type on every guest-scoped route.
   - Return permission flags in `/guest/validate` and registration responses so `welcome.html` / `photo.html` hide disabled sections.
   - Admin can change a guest's type on an active session; CSV and session lists show type and visit mode.
   - Legacy sessions without a type id map to the default overnight type.
-- [ ] **Event names and photo grouping**
+- [x] **Event names and photo grouping**
   - Event name field (free text) with guest/admin creation when permitted by type.
   - Day types may require event at registration; overnight types tag at upload when allowed.
   - Event-scoped upload subfolders under each stay folder; gallery groups by event.
-- [ ] **Background hero landing page**
+- [x] **Background hero landing page**
   - When a background image is set, `/` (`index.html`) shows a hero with a mid-to-low Register button; device link entry preserved.
   - Registration from hero uses guest type picker and permission-driven fields.
-- [ ] **Tests and documentation updates**
+- [x] **Tests and documentation updates**
   - Update `test-suite.sh`, README, CHANGELOG, ROADMAP, and AGENTS.
 
 ## Backlog

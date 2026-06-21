@@ -6,9 +6,9 @@ See [README.md](README.md) for product features, deployment, and local developme
 
 ## Active sprint
 
-**Guest types, permissions, events, and entry landing (planned):** read [docs/SPRINT_DAY_VISITORS.md](docs/SPRINT_DAY_VISITORS.md) first in a new session. It covers configurable guest types with admin permission checkboxes, day vs overnight visit modes, event-scoped uploads, and the hero entry landing — so you do not need prior chat context.
+**Guest types, permissions, events, and entry landing (completed):** read [docs/SPRINT_DAY_VISITORS.md](docs/SPRINT_DAY_VISITORS.md) for the sprint handoff. Covers configurable guest types with admin permission checkboxes, day vs overnight visit modes, event-scoped uploads, and the hero entry landing.
 
-Track high-level items in [ROADMAP.md](ROADMAP.md) under **In progress sprint: guest types, permissions, events, and entry landing**.
+Track high-level items in [ROADMAP.md](ROADMAP.md).
 
 ## Cursor Cloud specific instructions
 
