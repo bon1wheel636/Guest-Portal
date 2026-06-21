@@ -15,6 +15,7 @@ A self-hosted, mobile-friendly landing portal for guest Wi-Fi networks. Provides
 - 🔐 Admin panel with:
   - Room management
   - Guest session management (view devices, extend stays, check out)
+  - Admin-generated guest link codes and QR codes
   - Background image customization
   - Configurable upload path (supports NFS/SMB NAS mounts)
   - Guest photo preview, browsing, download (zip), and deletion

@@ -1213,6 +1213,40 @@ app.get('/admin-api/guest-sessions.csv', authMiddleware, (req, res) => {
   ], getGuestSessionRows());
 });
 
+app.post('/admin-api/guest-sessions/:guestId/link-code', authMiddleware, async (req, res) => {
+  const { guestId } = req.params;
+  const entry = findGuestTokenEntryByGuestId(guestId);
+  if (!entry) {
+    return res.status(404).send('Guest not found');
+  }
+
+  const [guestToken, guest] = entry;
+  const linkCode = generateCode();
+  const expires = Date.now() + 30 * 60 * 1000;
+
+  sessionCodes[linkCode] = {
+    type: 'device-link',
+    guestToken,
+    guestId: guest.id,
+    expires
+  };
+  saveSessions();
+
+  const linkUrl = `${publicBaseUrl(req)}/?linkCode=${encodeURIComponent(linkCode)}`;
+  try {
+    const qrSvg = await QRCode.toString(linkUrl, {
+      type: 'svg',
+      errorCorrectionLevel: 'M',
+      margin: 1,
+      width: 180
+    });
+    res.json({ code: linkCode, linkUrl, qrSvg, expiresIn: '30 minutes' });
+  } catch (err) {
+    console.error('Failed to generate admin link QR:', err);
+    res.json({ code: linkCode, linkUrl, expiresIn: '30 minutes' });
+  }
+});
+
 app.post('/admin-api/guest-sessions/:guestId/extend', authMiddleware, (req, res) => {
   const { guestId } = req.params;
   const { days } = req.body;
