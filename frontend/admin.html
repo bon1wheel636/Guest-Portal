@@ -831,6 +831,36 @@
           div.appendChild(roomSelect);
           div.appendChild(changeRoomBtn);
 
+          const linkCodeBox = document.createElement('div');
+          linkCodeBox.className = 'admin-link-code-box';
+          linkCodeBox.style.display = 'none';
+
+          const linkCodeBtn = document.createElement('button');
+          linkCodeBtn.textContent = 'Generate Link Code';
+          linkCodeBtn.className = 'btn-success';
+          linkCodeBtn.onclick = async () => {
+            linkCodeBtn.disabled = true;
+            try {
+              const linkRes = await authFetch(`/admin-api/guest-sessions/${guest.id}/link-code`, { method: 'POST' });
+              if (!linkRes.ok) {
+                alert('Failed to generate link code: ' + await linkRes.text());
+                return;
+              }
+              const link = await linkRes.json();
+              linkCodeBox.innerHTML = `
+                <p><strong>Device link code:</strong> <span class="guest-code">${escapeHtml(link.code)}</span></p>
+                <div class="guest-link-qr">${link.qrSvg || ''}</div>
+                <p class="admin-muted">Give this code or QR to the guest. It expires in ${escapeHtml(link.expiresIn || '30 minutes')}.</p>
+                <p class="admin-mono">${escapeHtml(link.linkUrl || '')}</p>
+              `;
+              linkCodeBox.style.display = 'block';
+            } finally {
+              linkCodeBtn.disabled = false;
+            }
+          };
+          div.appendChild(linkCodeBtn);
+          div.appendChild(linkCodeBox);
+
           const clearDevicesBtn = document.createElement('button');
           clearDevicesBtn.textContent = 'Clear Devices';
           clearDevicesBtn.onclick = async () => {
