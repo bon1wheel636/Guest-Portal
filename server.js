@@ -681,6 +681,85 @@ function findGuestUploadFile(guestId, filename, eventSlug) {
   return null;
 }
 
+function getStayFolderFromUploadPath(filePath, guestId) {
+  const resolvedFile = path.resolve(filePath);
+  for (const folderPath of getGuestUploadFolders(guestId)) {
+    const resolvedFolder = path.resolve(folderPath);
+    if (resolvedFile === resolvedFolder || resolvedFile.startsWith(resolvedFolder + path.sep)) {
+      return folderPath;
+    }
+  }
+  return null;
+}
+
+function resolveRetagTargetEvent(guest, body) {
+  const guestType = resolveGuestType(guest);
+  let event = null;
+
+  if (body?.eventId) {
+    event = findEventById(body.eventId);
+    if (!event) {
+      return { error: 'Target event not found', status: 400 };
+    }
+    return { event };
+  }
+
+  const trimmed = typeof body?.eventName === 'string' ? body.eventName.trim() : '';
+  if (!trimmed) {
+    return { error: 'Target event is required', status: 400 };
+  }
+
+  event = findEventByName(trimmed);
+  if (!event) {
+    event = getOrCreateEvent(trimmed, guest.id, guestType);
+  }
+  if (!event) {
+    return { error: 'Unknown event name', status: 400 };
+  }
+  return { event };
+}
+
+function moveGuestUploadFile(guestId, sourcePath, targetEventName) {
+  const stayFolder = getStayFolderFromUploadPath(sourcePath, guestId);
+  if (!stayFolder) {
+    return { error: 'Invalid source path', status: 500 };
+  }
+
+  const filename = path.basename(sourcePath);
+  const targetSlug = sanitizeEventSlug(targetEventName);
+  const targetDir = path.join(stayFolder, targetSlug);
+  const targetPath = path.resolve(path.join(targetDir, filename));
+  const resolvedStayFolder = path.resolve(stayFolder);
+
+  if (!targetPath.startsWith(resolvedStayFolder + path.sep)) {
+    return { error: 'Invalid target path', status: 500 };
+  }
+
+  if (path.resolve(sourcePath) === targetPath) {
+    return { path: targetPath, eventSlug: targetSlug };
+  }
+
+  if (fs.existsSync(targetPath)) {
+    return { error: 'A file with that name already exists in the target event', status: 409 };
+  }
+
+  fs.mkdirSync(targetDir, { recursive: true });
+  fs.renameSync(sourcePath, targetPath);
+
+  const sourceDir = path.dirname(sourcePath);
+  if (sourceDir !== stayFolder && fs.existsSync(sourceDir)) {
+    try {
+      if (fs.readdirSync(sourceDir).length === 0) {
+        fs.rmdirSync(sourceDir);
+      }
+    } catch (err) {
+      console.error('Failed to remove empty event folder after re-tag:', err);
+    }
+  }
+
+  return { path: targetPath, eventSlug: targetSlug };
+}
+
 function resolveLegacyGuestUploadFile(guestId, filename) {
   if (!isSafeUploadFilename(filename)) {
     return { status: 404 };
@@ -1577,6 +1656,50 @@ app.delete('/guest/uploads/:eventSlug/:filename', validateGuestUploadToken, requ
   } catch (err) {
     console.error('Failed to delete guest upload:', err);
     res.status(500).send('Failed to delete file');
+  }
+});
+
+app.patch('/guest/uploads/:eventSlug/:filename', validateGuestUploadToken, requireGuestPermission('tagPhotosToEvent'), (req, res) => {
+  const guest = req.guestSession.guest;
+  const filePath = findGuestUploadFile(guest.id, req.params.filename, req.params.eventSlug);
+  if (!filePath) {
+    return res.status(404).send('File not found');
+  }
+
+  const targetResult = resolveRetagTargetEvent(guest, req.body);
+  if (targetResult.error) {
+    return res.status(targetResult.status || 400).send(targetResult.error);
+  }
+
+  const targetSlug = sanitizeEventSlug(targetResult.event.name);
+  const sourceSlug = sanitizeEventSlug(req.params.eventSlug);
+  if (targetSlug === sourceSlug) {
+    const stat = fs.statSync(filePath);
+    return res.json({
+      name: path.basename(filePath),
+      eventSlug: targetSlug,
+      event: targetResult.event.name,
+      size: stat.size,
+      uploadedAt: stat.mtime.toISOString()
+    });
+  }
+
+  try {
+    const moveResult = moveGuestUploadFile(guest.id, filePath, targetResult.event.name);
+    if (moveResult.error) {
+      return res.status(moveResult.status || 500).send(moveResult.error);
+    }
+    const stat = fs.statSync(moveResult.path);
+    res.json({
+      name: path.basename(moveResult.path),
+      eventSlug: targetSlug,
+      event: targetResult.event.name,
+      size: stat.size,
+      uploadedAt: stat.mtime.toISOString()
+    });
+  } catch (err) {
+    console.error('Failed to re-tag guest upload:', err);
+    res.status(500).send('Failed to move file');
   }
 });
 

@@ -983,6 +983,136 @@ test_admin_events_crud() {
     fi
 }
 
+test_admin_event_merge() {
+    require_admin_creds "Admin event merge" || return
+    local create_a=$(admin_curl -X POST "$BASE_URL/admin-api/events" \
+        -H "Content-Type: application/json" \
+        -d '{"name":"Merge Source Event"}')
+    local create_b=$(admin_curl -X POST "$BASE_URL/admin-api/events" \
+        -H "Content-Type: application/json" \
+        -d '{"name":"Merge Target Event"}')
+    local source_id=$(echo "$create_a" | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4)
+    local target_id=$(echo "$create_b" | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4)
+    if [[ -z "$source_id" || -z "$target_id" ]]; then
+        fail "Admin event merge" "source and target ids" "source=$create_a target=$create_b"
+        return
+    fi
+    local merge=$(admin_curl -X PATCH "$BASE_URL/admin-api/events/$source_id" \
+        -H "Content-Type: application/json" \
+        -d "{\"mergeIntoId\":\"$target_id\"}")
+    if [[ "$merge" != *'"success":true'* ]] || [[ "$merge" != *'"name":"Merge Target Event"'* ]]; then
+        fail "Admin event merge" "success + survivor event" "$merge"
+        return
+    fi
+    local list=$(admin_curl "$BASE_URL/admin-api/events")
+    if [[ "$list" == *'"name":"Merge Target Event"'* ]] && [[ "$list" != *'"name":"Merge Source Event"'* ]]; then
+        pass "Admin event merge removes source and keeps target"
+    else
+        fail "Admin event merge removes source and keeps target" "target only" "$list"
+    fi
+    admin_curl -X DELETE "$BASE_URL/admin-api/events/$target_id" > /dev/null
+}
+
+test_guest_upload_retag() {
+    require_admin_creds "Guest upload re-tag" || return
+    admin_curl -X POST "$BASE_URL/admin-api/events" \
+        -H "Content-Type: application/json" \
+        -d '{"name":"Retag Event A"}' > /dev/null
+    admin_curl -X POST "$BASE_URL/admin-api/events" \
+        -H "Content-Type: application/json" \
+        -d '{"name":"Retag Event B"}' > /dev/null
+    local response=$(curl -s -X POST "$BASE_URL/register" \
+        -H "Content-Type: application/json" \
+        -d '{"name":"Retag Guest","room":"Room 1","stayDays":2,"guestTypeId":"type_overnight"}')
+    local token=$(echo "$response" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
+    if [[ -z "$token" ]]; then
+        fail "Guest upload re-tag" "registration token" "$response"
+        return
+    fi
+    printf '%s\n' '%PDF-1.4' '1 0 obj <<>> endobj' '%%EOF' > /tmp/test-retag-upload.pdf
+    local upload_code=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$BASE_URL/upload" \
+        -H "X-Guest-Token: $token" \
+        -F "eventName=Retag Event A" \
+        -F "photos=@/tmp/test-retag-upload.pdf;type=application/pdf")
+    rm -f /tmp/test-retag-upload.pdf
+    if [[ "$upload_code" != "200" ]]; then
+        fail "Guest upload re-tag" "200 upload" "$upload_code"
+        return
+    fi
+    local list=$(curl -s "$BASE_URL/guest/uploads" -H "X-Guest-Token: $token")
+    local filename=$(echo "$list" | grep -o '"name":"[^"]*"' | head -1 | cut -d'"' -f4)
+    local source_slug=$(echo "$list" | grep -o '"eventSlug":"[^"]*"' | head -1 | cut -d'"' -f4)
+    if [[ -z "$filename" || -z "$source_slug" ]]; then
+        fail "Guest upload re-tag" "upload filename + slug" "$list"
+        return
+    fi
+    local target_id=$(curl -s "$BASE_URL/guest/events" | python3 -c "
+import json, sys
+events = json.load(sys.stdin)
+match = next((e['id'] for e in events if e['name'] == 'Retag Event B'), '')
+print(match)
+")
+    local encoded_slug=$(python3 -c "import urllib.parse; print(urllib.parse.quote('$source_slug'))")
+    local encoded_name=$(python3 -c "import urllib.parse; print(urllib.parse.quote('$filename'))")
+    local patch=$(curl -s -X PATCH "$BASE_URL/guest/uploads/$encoded_slug/$encoded_name" \
+        -H "Content-Type: application/json" \
+        -H "X-Guest-Token: $token" \
+        -d "{\"eventId\":\"$target_id\"}")
+    if [[ "$patch" != *'"event":"Retag Event B"'* ]] || [[ "$patch" != *'"eventSlug":"Retag-Event-B"'* ]]; then
+        fail "Guest upload re-tag" "Retag Event B response" "$patch"
+        return
+    fi
+    local after=$(curl -s "$BASE_URL/guest/uploads" -H "X-Guest-Token: $token")
+    if [[ "$after" == *'"eventSlug":"Retag-Event-B"'* ]] && [[ "$after" != *'"eventSlug":"Retag-Event-A"'* ]]; then
+        pass "Guest upload re-tag moves file between events"
+    else
+        fail "Guest upload re-tag moves file between events" "Retag-Event-B only" "$after"
+    fi
+}
+
+test_guest_upload_retag_forbidden() {
+    require_admin_creds "Guest upload re-tag forbidden" || return
+    admin_curl -X POST "$BASE_URL/admin-api/rooms" \
+        -H "Content-Type: application/json" \
+        -d '{"name":"Retag Forbidden Room","dashboardUrl":"http://example.com/retag-forbidden"}' > /dev/null
+    local reg=$(admin_curl -X POST "$BASE_URL/admin-api/guests" \
+        -H "Content-Type: application/json" \
+        -d '{"name":"Retag Forbidden Guest","room":"Retag Forbidden Room","stayDays":2}')
+    local guest_id=$(echo "$reg" | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4)
+    local token=$(echo "$reg" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
+    if [[ -z "$guest_id" || -z "$token" ]]; then
+        fail "Guest upload re-tag forbidden" "guest id + token" "$reg"
+        return
+    fi
+    printf '%s\n' '%PDF-1.4' '1 0 obj <<>> endobj' '%%EOF' > /tmp/test-retag-forbidden.pdf
+    curl -s -X POST "$BASE_URL/upload" \
+        -H "X-Guest-Token: $token" \
+        -F "photos=@/tmp/test-retag-forbidden.pdf;type=application/pdf" > /dev/null
+    rm -f /tmp/test-retag-forbidden.pdf
+    local list=$(curl -s "$BASE_URL/guest/uploads" -H "X-Guest-Token: $token")
+    local filename=$(echo "$list" | grep -o '"name":"[^"]*"' | head -1 | cut -d'"' -f4)
+    local slug=$(echo "$list" | grep -o '"eventSlug":"[^"]*"' | head -1 | cut -d'"' -f4)
+    slug="${slug:-General}"
+    admin_curl -X PATCH "$BASE_URL/admin-api/guest-sessions/$guest_id" \
+        -H "Content-Type: application/json" \
+        -d '{"guestTypeId":"type_day_business"}' > /dev/null
+    local target_id=$(curl -s "$BASE_URL/guest/events" | python3 -c "
+import json, sys
+events = json.load(sys.stdin)
+print(events[0]['id'] if events else '')
+")
+    local http_code=$(curl -s -o /dev/null -w "%{http_code}" -X PATCH "$BASE_URL/guest/uploads/$slug/$filename" \
+        -H "Content-Type: application/json" \
+        -H "X-Guest-Token: $token" \
+        -d "{\"eventId\":\"$target_id\"}")
+    if [[ "$http_code" == "403" ]]; then
+        pass "Guest upload re-tag forbidden for business type (403)"
+    else
+        fail "Guest upload re-tag forbidden for business type" "403" "$http_code"
+    fi
+    admin_curl -X DELETE "$BASE_URL/admin-api/guest-sessions/$guest_id" > /dev/null
+}
+
 test_index_hero_markup() {
     local response=$(curl -s "$BASE_URL/")
     if [[ "$response" == *"hero-view"* ]] && [[ "$response" == *"heroRegisterBtn"* ]] && [[ "$response" == *"registrationModal"* ]]; then
@@ -1176,6 +1306,9 @@ test_day_personal_registration
 test_delete_forbidden
 test_scoped_delete
 test_admin_events_crud
+test_admin_event_merge
+test_guest_upload_retag
+test_guest_upload_retag_forbidden
 test_index_hero_markup
 
 test_index_html
