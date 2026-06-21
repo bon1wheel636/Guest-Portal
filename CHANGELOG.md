@@ -7,6 +7,10 @@ All notable changes to this project will be documented here.
 ## [Unreleased]
 
 ### Added
+- Event-scoped guest upload paths: `GET/DELETE /guest/uploads/:eventSlug/:filename`; upload list includes `eventSlug`.
+- Session `permissionsSnapshot` on registration and admin type change; restricted fallback when a guest type is missing or disabled.
+- Integration tests for event subfolder upload, legacy sessions, day-personal registration, delete 403, and scoped delete with duplicate basenames.
+- Deprecation header on legacy unscoped `/guest/uploads/:filename` routes (409 when path is ambiguous).
 - Configurable **guest types** with visit modes (`overnight` / `day`) and per-type permission checkboxes in Admin → Guest Types.
 - Default guest types: Overnight Guest, Day Visitor — Personal, and Day Visitor — Business (seeded on first run).
 - Public `GET /guest/guest-types` and admin CRUD/reorder APIs for guest types.
@@ -17,6 +21,9 @@ All notable changes to this project will be documented here.
 - Tests for guest types, permission 403s, validate permissions, guest type changes, and hero markup.
 
 ### Changed
+- `photo.html` gallery download/delete uses scoped upload URLs from the list response.
+- Admin `PATCH` guest session: clearing `guestTypeId` simulates legacy sessions; switching to overnight extends checkout when it would otherwise expire too soon.
+- Guest type hardening sprint marked complete in ROADMAP; Events UX is next in the sprint queue.
 - Registration (guest and admin) uses a guest type picker with permission-driven fields (room, stay length, event).
 - `welcome.html` and `photo.html` show/hide sections based on resolved guest type permissions.
 - Day visitors use hour-based session TTL from `defaultDayVisitHours`.

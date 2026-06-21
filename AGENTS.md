@@ -6,11 +6,13 @@ See [README.md](README.md) for product features, deployment, and local developme
 
 ## Active sprint
 
-**Guest types hardening and test coverage (in progress):** read [docs/SPRINT_GUEST_TYPES_HARDENING.md](docs/SPRINT_GUEST_TYPES_HARDENING.md) first in a new session.
+**Events UX (planned — next):** read [docs/SPRINT_EVENTS_UX.md](docs/SPRINT_EVENTS_UX.md) first in a new session. Admin Events tab, guest re-tag from gallery.
 
-**Sprint queue (see [ROADMAP.md](ROADMAP.md)):** hardening → Events UX → Admin QoL → UniFi external portal. Before starting the UniFi sprint, **ask the project owner** for the controller details listed in [UNIFI.md](UNIFI.md); the owner has this information available.
+**Sprint queue (see [ROADMAP.md](ROADMAP.md)):** ~~hardening~~ → Events UX → Admin QoL → UniFi external portal. Before starting the UniFi sprint, **ask the project owner** for the controller details listed in [UNIFI.md](UNIFI.md); the owner has this information available.
 
-Previous sprint (completed): [docs/SPRINT_DAY_VISITORS.md](docs/SPRINT_DAY_VISITORS.md) — guest types, permissions, events, hero landing (PR #40).
+Previous sprint (completed): [docs/SPRINT_GUEST_TYPES_HARDENING.md](docs/SPRINT_GUEST_TYPES_HARDENING.md) — scoped upload paths, permission snapshot/fallback, integration tests.
+
+Earlier sprint (completed): [docs/SPRINT_DAY_VISITORS.md](docs/SPRINT_DAY_VISITORS.md) — guest types, permissions, events, hero landing (PR #40).
 
 Track high-level items in [ROADMAP.md](ROADMAP.md) under **Sprint queue**.
 
