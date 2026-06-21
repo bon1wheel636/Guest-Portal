@@ -96,12 +96,14 @@
         <div class="admin-actions">
           <button id="purgeExpiredSessions" class="btn-secondary">Purge Expired Sessions</button>
           <button id="refreshGuestSessions" class="btn-secondary">Refresh</button>
+          <button id="exportGuestSessions" class="btn-success">Export Sessions CSV</button>
         </div>
         <div id="guestSessionList"></div>
 
         <h2>Registration History</h2>
         <p class="admin-help">Audit log of registrations. Repeated registrations add new rows.</p>
         <div class="admin-actions">
+          <button id="exportGuestHistory" class="btn-success">Export History CSV</button>
           <button id="purgeInactiveHistory" class="btn-secondary">Remove Inactive History</button>
           <button id="purgeAllHistory" class="btn-danger">Clear All History</button>
         </div>
@@ -662,6 +664,15 @@
       return (bytes / Math.pow(1024, i)).toFixed(i > 0 ? 1 : 0) + ' ' + units[i];
     }
 
+    function fileExtension(name) {
+      const index = name.lastIndexOf('.');
+      return index >= 0 ? name.substring(index).toLowerCase() : '';
+    }
+
+    function isPreviewableImage(name) {
+      return ['.jpg', '.jpeg', '.png', '.gif', '.webp'].includes(fileExtension(name));
+    }
+
     async function loadPhotos() {
       try {
         const res = await authFetch('/admin-api/uploads');
@@ -677,9 +688,38 @@
           const div = document.createElement('div');
           div.className = 'admin-item';
           div.innerHTML = `<strong>${escapeHtml(folder.name)}</strong><span class="admin-item-meta">${folder.fileCount} file${folder.fileCount !== 1 ? 's' : ''} &bull; ${formatBytes(folder.totalSize)}</span>`;
+          const fileGrid = document.createElement('div');
+          fileGrid.className = 'admin-photo-grid';
+          (folder.files || []).forEach(file => {
+            const fileCard = document.createElement('div');
+            fileCard.className = 'admin-photo-card';
+
+            const preview = document.createElement('a');
+            preview.className = 'admin-photo-preview';
+            preview.href = file.url;
+            preview.target = '_blank';
+            preview.rel = 'noopener';
+            if (isPreviewableImage(file.name)) {
+              const img = document.createElement('img');
+              img.src = file.url;
+              img.alt = file.name;
+              preview.appendChild(img);
+            } else {
+              preview.textContent = fileExtension(file.name).toUpperCase().replace('.', '') || 'FILE';
+            }
+
+            const meta = document.createElement('div');
+            meta.className = 'admin-photo-meta';
+            meta.innerHTML = `<strong>${escapeHtml(file.name)}</strong><br><span>${formatBytes(file.size)}</span><br><small>${escapeHtml(file.uploadedAt ? new Date(file.uploadedAt).toLocaleString() : 'Upload time unavailable')}</small>`;
+
+            fileCard.appendChild(preview);
+            fileCard.appendChild(meta);
+            fileGrid.appendChild(fileCard);
+          });
+          div.appendChild(fileGrid);
           const downloadBtn = document.createElement('button');
           downloadBtn.textContent = 'Download';
-          downloadBtn.onclick = () => downloadZip('/admin-api/uploads/download/' + encodeURIComponent(folder.name), folder.name + '.zip');
+          downloadBtn.onclick = () => downloadFile('/admin-api/uploads/download/' + encodeURIComponent(folder.name), folder.name + '.zip');
           div.appendChild(downloadBtn);
           const deleteBtn = document.createElement('button');
           deleteBtn.textContent = 'Delete';
@@ -698,7 +738,7 @@
       }
     }
 
-    async function downloadZip(url, filename) {
+    async function downloadFile(url, filename) {
       const res = await authFetch(url);
       if (!res.ok) {
         alert('Download failed: ' + await res.text());
@@ -713,7 +753,15 @@
     }
 
     document.getElementById('downloadAllPhotos')?.addEventListener('click', () => {
-      downloadZip('/admin-api/uploads/download-all', 'guest-photos-' + new Date().toISOString().split('T')[0] + '.zip');
+      downloadFile('/admin-api/uploads/download-all', 'guest-photos-' + new Date().toISOString().split('T')[0] + '.zip');
+    });
+
+    document.getElementById('exportGuestSessions')?.addEventListener('click', () => {
+      downloadFile('/admin-api/guest-sessions.csv', 'active-guest-sessions.csv');
+    });
+
+    document.getElementById('exportGuestHistory')?.addEventListener('click', () => {
+      downloadFile('/admin-api/guests.csv', 'registration-history.csv');
     });
 
     document.getElementById('deleteAllPhotos')?.addEventListener('click', async () => {

@@ -1,6 +1,6 @@
 # Sprint: Admin operations and confidence
 
-**Status:** In progress.
+**Status:** Complete (PR in progress on `cursor/guest-entry-health-0c5d`).
 
 Use this document to continue work in a **new agent session** without relying on prior chat history.
 
@@ -152,7 +152,7 @@ Then verify:
 ## Sprint checklist (mirror ROADMAP)
 
 - [x] Guest entry health checks and production smoke checklist
-- [ ] Admin photo preview/gallery
-- [ ] CSV exports for active sessions and registration history
-- [ ] Device-link QR code
-- [ ] Tests and documentation updates
+- [x] Admin photo preview/gallery
+- [x] CSV exports for active sessions and registration history
+- [x] Device-link QR code
+- [x] Tests and documentation updates

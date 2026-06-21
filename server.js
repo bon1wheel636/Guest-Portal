@@ -10,6 +10,7 @@ const basicAuth = require('basic-auth');
 const bcrypt = require('bcrypt');
 const rateLimit = require('express-rate-limit');
 const archiver = require('archiver');
+const QRCode = require('qrcode');
 const app = express();
 
 // ─── Constants & Data Loading ───────────────────────────────────────────────
@@ -183,6 +184,69 @@ function findGuestUploadFile(guestId, filename) {
   }
 
   return null;
+}
+
+function publicBaseUrl(req) {
+  const proto = (req.get('X-Forwarded-Proto') || req.protocol || 'http').split(',')[0].trim();
+  const host = (req.get('X-Forwarded-Host') || req.get('Host') || '').split(',')[0].trim();
+  return `${proto}://${host}`;
+}
+
+function csvEscape(value) {
+  if (value === null || value === undefined) return '';
+  const text = String(value);
+  if (/[",\r\n]/.test(text)) {
+    return `"${text.replace(/"/g, '""')}"`;
+  }
+  return text;
+}
+
+function sendCsv(res, filename, columns, rows) {
+  const header = columns.map(column => csvEscape(column.header)).join(',');
+  const body = rows.map(row => columns.map(column => csvEscape(row[column.key])).join(',')).join('\n');
+  const csv = `${header}\n${body}${body ? '\n' : ''}`;
+  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+  res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+  res.send(csv);
+}
+
+function getGuestSessionRows() {
+  const now = new Date();
+  return Object.entries(guestTokens)
+    .map(([token, guest]) => {
+      const checkout = new Date(guest.checkoutDate);
+      return {
+        token: token.substring(0, 8) + '...',
+        guestId: guest.id,
+        name: guest.name,
+        room: guest.room,
+        createdAt: guest.createdAt || '',
+        checkoutDate: guest.checkoutDate || '',
+        active: checkout >= now ? 'yes' : 'no',
+        daysRemaining: Math.ceil((checkout - now) / (1000 * 60 * 60 * 24)),
+        deviceCount: (guest.devices || []).length
+      };
+    })
+    .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+}
+
+function getRegistrationHistoryRows() {
+  const now = new Date();
+  const activeGuestIds = new Set(
+    Object.values(guestTokens)
+      .filter(guest => new Date(guest.checkoutDate) >= now)
+      .map(guest => guest.id)
+  );
+
+  return (guestData.guests || [])
+    .map(entry => ({
+      guestId: entry.guestId || '',
+      name: entry.name || '',
+      room: entry.room || '',
+      timestamp: entry.timestamp || '',
+      hasActiveSession: activeGuestIds.has(entry.guestId) ? 'yes' : 'no'
+    }))
+    .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
 }
 
 function countGuestSessionsByExpiry() {
@@ -655,7 +719,7 @@ app.post('/guest/validate', (req, res) => {
   });
 });
 
-app.post('/guest/link-code', (req, res) => {
+app.post('/guest/link-code', async (req, res) => {
   const { token } = req.body;
   if (!token || !guestTokens[token]) {
     return res.status(404).send('Invalid token');
@@ -673,7 +737,19 @@ app.post('/guest/link-code', (req, res) => {
   };
   saveSessions();
 
-  res.json({ code: linkCode, expiresIn: '30 minutes' });
+  const linkUrl = `${publicBaseUrl(req)}/?linkCode=${encodeURIComponent(linkCode)}`;
+  try {
+    const qrSvg = await QRCode.toString(linkUrl, {
+      type: 'svg',
+      errorCorrectionLevel: 'M',
+      margin: 1,
+      width: 180
+    });
+    res.json({ code: linkCode, linkUrl, qrSvg, expiresIn: '30 minutes' });
+  } catch (err) {
+    console.error('Failed to generate link QR:', err);
+    res.json({ code: linkCode, linkUrl, expiresIn: '30 minutes' });
+  }
 });
 
 app.post('/guest/link-device', (req, res) => {
@@ -941,10 +1017,16 @@ app.get('/admin-api/uploads', authMiddleware, (req, res) => {
           name: e.name,
           fileCount: files.length,
           totalSize,
-          files: files.map(f => ({
-            name: f,
-            size: fs.statSync(path.join(folderPath, f)).size
-          }))
+          files: files.map(f => {
+            const filePath = path.join(folderPath, f);
+            const stat = fs.statSync(filePath);
+            return {
+              name: f,
+              size: stat.size,
+              uploadedAt: stat.mtime.toISOString(),
+              url: `/admin/uploads/${encodeURIComponent(e.name)}/${encodeURIComponent(f)}`
+            };
+          })
         };
       })
       .filter(f => f.fileCount > 0)
@@ -1103,17 +1185,32 @@ app.post('/admin-api/session-expiration', authMiddleware, (req, res) => {
 
 // C4: Remove fullToken from response
 app.get('/admin-api/guest-sessions', authMiddleware, (req, res) => {
-  const now = new Date();
-  const sessions = Object.entries(guestTokens)
-    .map(([token, guest]) => ({
-      token: token.substring(0, 8) + '...',
-      ...guest,
-      isExpired: new Date(guest.checkoutDate) < now,
-      daysRemaining: Math.ceil((new Date(guest.checkoutDate) - now) / (1000 * 60 * 60 * 24))
-    }))
-    .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-
+  const sessions = getGuestSessionRows().map(row => ({
+    token: row.token,
+    id: row.guestId,
+    name: row.name,
+    room: row.room,
+    createdAt: row.createdAt,
+    checkoutDate: row.checkoutDate,
+    devices: (findGuestTokenEntryByGuestId(row.guestId)?.[1].devices) || [],
+    isExpired: row.active !== 'yes',
+    daysRemaining: row.daysRemaining
+  }));
   res.json(sessions);
+});
+
+app.get('/admin-api/guest-sessions.csv', authMiddleware, (req, res) => {
+  sendCsv(res, 'active-guest-sessions.csv', [
+    { key: 'guestId', header: 'Guest ID' },
+    { key: 'name', header: 'Name' },
+    { key: 'room', header: 'Room' },
+    { key: 'createdAt', header: 'Created At' },
+    { key: 'checkoutDate', header: 'Checkout Date' },
+    { key: 'active', header: 'Active' },
+    { key: 'daysRemaining', header: 'Days Remaining' },
+    { key: 'deviceCount', header: 'Device Count' },
+    { key: 'token', header: 'Token Prefix' }
+  ], getGuestSessionRows());
 });
 
 app.post('/admin-api/guest-sessions/:guestId/extend', authMiddleware, (req, res) => {
@@ -1219,21 +1316,25 @@ app.post('/admin-api/guest-sessions/purge-expired', authMiddleware, (req, res) =
 });
 
 app.get('/admin-api/guests', authMiddleware, (req, res) => {
-  const now = new Date();
-  const activeGuestIds = new Set(
-    Object.values(guestTokens)
-      .filter(guest => new Date(guest.checkoutDate) >= now)
-      .map(guest => guest.id)
-  );
-
-  const guests = (guestData.guests || [])
-    .map(entry => ({
-      ...entry,
-      hasActiveSession: activeGuestIds.has(entry.guestId)
-    }))
-    .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+  const guests = getRegistrationHistoryRows().map(row => ({
+    guestId: row.guestId,
+    name: row.name,
+    room: row.room,
+    timestamp: row.timestamp,
+    hasActiveSession: row.hasActiveSession === 'yes'
+  }));
 
   res.json(guests);
+});
+
+app.get('/admin-api/guests.csv', authMiddleware, (req, res) => {
+  sendCsv(res, 'registration-history.csv', [
+    { key: 'guestId', header: 'Guest ID' },
+    { key: 'name', header: 'Name' },
+    { key: 'room', header: 'Room' },
+    { key: 'timestamp', header: 'Registered At' },
+    { key: 'hasActiveSession', header: 'Has Active Session' }
+  ], getRegistrationHistoryRows());
 });
 
 app.post('/admin-api/guests', authMiddleware, (req, res) => {

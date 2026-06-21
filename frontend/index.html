@@ -79,6 +79,13 @@
     }
     loadRooms();
 
+    const linkCodeParam = new URLSearchParams(window.location.search).get('linkCode');
+    if (linkCodeParam) {
+      const sessionCodeInput = document.getElementById('sessionCode');
+      sessionCodeInput.value = linkCodeParam.trim().toUpperCase();
+      sessionCodeInput.focus();
+    }
+
     // Check for existing guest token and validate
     async function checkExistingSession() {
       const guestToken = localStorage.getItem('guestToken');
