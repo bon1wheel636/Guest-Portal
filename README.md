@@ -21,7 +21,7 @@ A self-hosted, mobile-friendly landing portal for guest Wi-Fi networks. Provides
   - Configurable upload path (supports NFS/SMB NAS mounts)
   - Guest photo preview, browsing, download (zip), and deletion
   - CSV exports for active sessions and registration history
-  - Session settings (admin timeout, code expiration)
+  - Session settings (device link code expiration)
   - View & revoke session codes
 - 👥 Multiple guests per room support
 - 🖼️ Customizable landing page background

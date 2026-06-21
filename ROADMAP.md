@@ -84,9 +84,9 @@ This roadmap tracks shareable project work only. Keep private domains, NAS hostn
   - Prioritize layout and copy that make upload feel easy, optional, and safe so guests are more likely to use it.
 - [x] **Guest-scoped upload list/delete APIs** (supports gallery; see sprint doc)
 
-## In progress sprint: admin operations and confidence
+## Completed sprint: admin operations and confidence
 
-**Handoff:** [docs/SPRINT_ADMIN_OPS.md](docs/SPRINT_ADMIN_OPS.md) — read this at the start of a new agent session (avoids relying on full chat context).
+**Handoff:** [docs/SPRINT_ADMIN_OPS.md](docs/SPRINT_ADMIN_OPS.md).
 
 - [x] **Guest entry health checks**
   - Add an admin Guest Entry Health card or panel covering `/health`, `/`, `/guest/rooms`, `/welcome.html`, `/photo.html`, and guest room count.
@@ -103,10 +103,16 @@ This roadmap tracks shareable project work only. Keep private domains, NAS hostn
 - [x] **Device-link QR code**
   - Show a QR code alongside generated link codes where it helps guests or hosts link another device.
   - Keep the existing text code as the accessibility and fallback path.
+- [x] **Admin guest handoff and portal URL**
+  - Per-guest link code/QR generation from the admin Guests tab.
+  - Configurable public portal URL for correct FQDN in generated links.
+- [x] **Device link code expiration**
+  - Configurable expiration for guest- and admin-generated link codes and QR codes.
+  - Removed non-functional admin auto-logout setting; documented HTTP Basic Auth sign-out.
 - [x] **Tests and documentation updates**
   - Update `test-suite.sh`, README, DEPLOY/PROXY if needed, CHANGELOG, ROADMAP, and AGENTS.
 
-## Backlog (after admin operations sprint)
+## Backlog
 
 - [ ] **UniFi external portal integration**
   - Add only after controller version, auth method, site ID, and authorization model are known.

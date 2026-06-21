@@ -58,8 +58,14 @@ function getExpirationMinutes() {
   return config.sessionExpirationMinutes || 10;
 }
 
-function getAdminTimeoutMinutes() {
-  return config.adminSessionTimeoutMinutes || 15;
+function formatExpirationLabel(minutes) {
+  const value = Number(minutes);
+  if (!Number.isFinite(value) || value <= 0) return '10 minutes';
+  return value === 1 ? '1 minute' : `${value} minutes`;
+}
+
+function getLinkCodeExpirationMs() {
+  return getExpirationMinutes() * 60 * 1000;
 }
 
 // L5: Async file writes to avoid blocking the event loop
@@ -759,7 +765,8 @@ app.post('/guest/link-code', async (req, res) => {
 
   const guest = guestTokens[token];
   const linkCode = generateCode();
-  const expires = Date.now() + 30 * 60 * 1000;
+  const expirationMinutes = getExpirationMinutes();
+  const expires = Date.now() + getLinkCodeExpirationMs();
 
   sessionCodes[linkCode] = {
     type: 'device-link',
@@ -770,6 +777,7 @@ app.post('/guest/link-code', async (req, res) => {
   saveSessions();
 
   const linkUrl = `${publicBaseUrl(req)}/?linkCode=${encodeURIComponent(linkCode)}`;
+  const expiresIn = formatExpirationLabel(expirationMinutes);
   try {
     const qrSvg = await QRCode.toString(linkUrl, {
       type: 'svg',
@@ -777,10 +785,10 @@ app.post('/guest/link-code', async (req, res) => {
       margin: 1,
       width: 180
     });
-    res.json({ code: linkCode, linkUrl, qrSvg, expiresIn: '30 minutes' });
+    res.json({ code: linkCode, linkUrl, qrSvg, expiresIn, expiresAt: expires });
   } catch (err) {
     console.error('Failed to generate link QR:', err);
-    res.json({ code: linkCode, linkUrl, expiresIn: '30 minutes' });
+    res.json({ code: linkCode, linkUrl, expiresIn, expiresAt: expires });
   }
 });
 
@@ -886,13 +894,6 @@ app.get('/session/:code', (req, res) => {
 
 // ─── Admin-Protected Routes ─────────────────────────────────────────────────
 // C1: All admin endpoints below require authMiddleware
-
-app.post('/admin-api/admin-timeout', authMiddleware, (req, res) => {
-  const { minutes } = req.body;
-  config.adminSessionTimeoutMinutes = minutes;
-  saveConfig();
-  res.sendStatus(200);
-});
 
 app.get('/admin-api/deployment-status', authMiddleware, async (req, res) => {
   const checkUrls = req.query.checkUrls === 'true';
@@ -1181,11 +1182,6 @@ app.delete('/admin-api/uploads', authMiddleware, (req, res) => {
   }
 });
 
-// M6: GET endpoint to retrieve current admin timeout setting
-app.get('/admin-api/admin-timeout', authMiddleware, (req, res) => {
-  res.json({ minutes: getAdminTimeoutMinutes() });
-});
-
 app.get('/admin-api/portal-url', authMiddleware, (req, res) => {
   res.json({ portalPublicUrl: config.portalPublicUrl || '' });
 });
@@ -1228,13 +1224,18 @@ app.delete('/admin-api/background', authMiddleware, (req, res) => {
   res.json({ success: true });
 });
 
+app.get('/admin-api/session-expiration', authMiddleware, (req, res) => {
+  res.json({ minutes: getExpirationMinutes() });
+});
+
 app.post('/admin-api/session-expiration', authMiddleware, (req, res) => {
-  const { minutes } = req.body;
-  if (minutes && typeof minutes === 'number' && minutes > 0) {
-    config.sessionExpirationMinutes = minutes;
-    saveConfig();
+  const minutes = parseInt(req.body?.minutes, 10);
+  if (!Number.isFinite(minutes) || minutes <= 0) {
+    return res.status(400).send('Invalid expiration minutes');
   }
-  res.sendStatus(200);
+  config.sessionExpirationMinutes = minutes;
+  saveConfig();
+  res.json({ success: true, minutes });
 });
 
 // C4: Remove fullToken from response
@@ -1276,7 +1277,8 @@ app.post('/admin-api/guest-sessions/:guestId/link-code', authMiddleware, async (
 
   const [guestToken, guest] = entry;
   const linkCode = generateCode();
-  const expires = Date.now() + 30 * 60 * 1000;
+  const expirationMinutes = getExpirationMinutes();
+  const expires = Date.now() + getLinkCodeExpirationMs();
 
   sessionCodes[linkCode] = {
     type: 'device-link',
@@ -1287,6 +1289,7 @@ app.post('/admin-api/guest-sessions/:guestId/link-code', authMiddleware, async (
   saveSessions();
 
   const linkUrl = `${publicBaseUrl(req)}/?linkCode=${encodeURIComponent(linkCode)}`;
+  const expiresIn = formatExpirationLabel(expirationMinutes);
   try {
     const qrSvg = await QRCode.toString(linkUrl, {
       type: 'svg',
@@ -1294,10 +1297,10 @@ app.post('/admin-api/guest-sessions/:guestId/link-code', authMiddleware, async (
       margin: 1,
       width: 180
     });
-    res.json({ code: linkCode, linkUrl, qrSvg, expiresIn: '30 minutes' });
+    res.json({ code: linkCode, linkUrl, qrSvg, expiresIn, expiresAt: expires });
   } catch (err) {
     console.error('Failed to generate admin link QR:', err);
-    res.json({ code: linkCode, linkUrl, expiresIn: '30 minutes' });
+    res.json({ code: linkCode, linkUrl, expiresIn, expiresAt: expires });
   }
 });
 

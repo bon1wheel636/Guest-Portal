@@ -149,17 +149,16 @@
           <button type="submit">Update Portal URL</button>
         </form>
         <h2>Session Settings</h2>
-        <form id="timeoutForm" class="admin-card">
-          <label>Admin Auto-Logout Timeout (minutes):</label>
-          <input type="number" id="adminTimeoutMinutes" min="1" value="15" required />
-          <small>Stored for future use. With HTTP Basic Auth, sign out by closing the browser tab.</small>
-          <button type="submit">Update Timeout</button>
-        </form>
         <form id="expirationForm" class="admin-card">
-          <label>Session Code Expiration (minutes):</label>
+          <label>Device Link Code Expiration (minutes):</label>
           <input type="number" id="expirationMinutes" min="1" value="10" required />
+          <small>How long QR codes and device link codes stay valid before they expire. Applies to guest-generated and admin-generated link codes.</small>
           <button type="submit">Update Expiration</button>
         </form>
+        <div class="admin-card">
+          <h3>Signing Out</h3>
+          <p class="admin-muted">The admin panel uses HTTP Basic Auth. Browsers keep your credentials until you close the tab or clear saved passwords. To sign out, close the admin tab or use your browser's password manager to forget this site.</p>
+        </div>
       </section>
     </div>
   </div>
@@ -191,7 +190,7 @@
       rooms: () => { loadRooms(); loadBackground(); },
       guests: () => { loadGuestSessions(); loadGuests(); loadSessions(); },
       storage: () => { loadUploadPath(); loadPhotos(); },
-      settings: () => { loadAdminAccountInfo(); loadPortalUrl(); loadTimeout(); }
+      settings: () => { loadAdminAccountInfo(); loadPortalUrl(); loadExpiration(); }
     };
 
     function switchTab(tabId) {
@@ -395,12 +394,18 @@
 
     document.getElementById('expirationForm').addEventListener('submit', async (e) => {
       e.preventDefault();
-      await authFetch('/admin-api/session-expiration', {
+      const res = await authFetch('/admin-api/session-expiration', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ minutes: parseInt(document.getElementById('expirationMinutes').value, 10) })
       });
-      alert('Updated expiration time.');
+      if (res.ok) {
+        const data = await res.json();
+        document.getElementById('expirationMinutes').value = data.minutes || 10;
+        alert('Device link code expiration updated.');
+      } else {
+        alert('Failed: ' + await res.text());
+      }
     });
 
     async function loadSessions() {
@@ -441,12 +446,12 @@
       }
     }
 
-    async function loadTimeout() {
+    async function loadExpiration() {
       try {
-        const res = await authFetch('/admin-api/admin-timeout');
+        const res = await authFetch('/admin-api/session-expiration');
         if (res.ok) {
           const data = await res.json();
-          document.getElementById('adminTimeoutMinutes').value = data.minutes || 15;
+          document.getElementById('expirationMinutes').value = data.minutes || 10;
         }
       } catch {}
     }
@@ -476,16 +481,6 @@
       } else {
         alert('Failed: ' + await res.text());
       }
-    });
-
-    document.getElementById('timeoutForm').addEventListener('submit', async (e) => {
-      e.preventDefault();
-      await authFetch('/admin-api/admin-timeout', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ minutes: parseInt(document.getElementById('adminTimeoutMinutes').value, 10) })
-      });
-      alert('Admin timeout updated.');
     });
 
     async function loadGuests() {
@@ -885,7 +880,7 @@
               linkCodeBox.innerHTML = `
                 <p><strong>Device link code:</strong> <span class="guest-code">${escapeHtml(link.code)}</span></p>
                 <div class="guest-link-qr">${link.qrSvg || ''}</div>
-                <p class="admin-muted">Give this code or QR to the guest. It expires in ${escapeHtml(link.expiresIn || '30 minutes')}.</p>
+                <p class="admin-muted">Give this code or QR to the guest. It expires in ${escapeHtml(link.expiresIn || '10 minutes')}.</p>
                 <p class="admin-mono">${escapeHtml(link.linkUrl || '')}</p>
               `;
               linkCodeBox.style.display = 'block';
