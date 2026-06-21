@@ -1158,7 +1158,35 @@ test_photo_html() {
         pass "Photo gallery page loads"
     else
         fail "Photo gallery page loads" "HTML with gallery nav" "Empty or error"
+        return
     fi
+    if [[ "$response" == *"galleryEventTabs"* && "$response" == *"guest-event-tab"* && "$response" == *"Move to event"* ]]; then
+        pass "Photo gallery includes labeled event tabs and move controls"
+    else
+        fail "Photo gallery includes labeled event tabs and move controls" "galleryEventTabs + guest-event-tab + Move to event" "Missing markup"
+    fi
+}
+
+test_admin_guest_session_shows_event() {
+    require_admin_creds "Admin guest session shows event" || return
+    admin_curl -X POST "$BASE_URL/admin-api/events" \
+        -H "Content-Type: application/json" \
+        -d '{"name":"Session Event Label Test"}' > /dev/null
+    local reg=$(admin_curl -X POST "$BASE_URL/admin-api/guests" \
+        -H "Content-Type: application/json" \
+        -d '{"name":"Session Event Guest","room":"Room 1","stayDays":2,"guestTypeId":"type_day_personal","eventName":"Session Event Label Test"}')
+    local guest_id=$(echo "$reg" | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4)
+    if [[ -z "$guest_id" ]]; then
+        fail "Admin guest session shows event" "guest id" "$reg"
+        return
+    fi
+    local sessions=$(admin_curl "$BASE_URL/admin-api/guest-sessions")
+    if [[ "$sessions" == *'"eventName":"Session Event Label Test"'* ]]; then
+        pass "Admin guest sessions include registered event name"
+    else
+        fail "Admin guest sessions include registered event name" "Session Event Label Test" "$sessions"
+    fi
+    admin_curl -X DELETE "$BASE_URL/admin-api/guest-sessions/$guest_id" > /dev/null
 }
 
 test_guest_entry_smoke_routes() {
@@ -1315,6 +1343,7 @@ test_index_html
 test_admin_html
 test_welcome_html
 test_photo_html
+test_admin_guest_session_shows_event
 test_guest_entry_smoke_routes
 test_frontend_script_syntax
 

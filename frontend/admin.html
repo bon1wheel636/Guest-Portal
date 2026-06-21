@@ -96,7 +96,7 @@
             <input type="number" id="adminGuestStayDays" min="1" max="30" value="7" />
           </div>
           <div id="adminEventField" hidden>
-            <label>Event:</label>
+            <label for="adminGuestEventSelect">Event:</label>
             <select id="adminGuestEventSelect">
               <option value="">Select an event...</option>
             </select>
@@ -1266,35 +1266,59 @@
           const div = document.createElement('div');
           div.className = 'admin-item';
           div.innerHTML = `<strong>${escapeHtml(folder.name)}</strong><span class="admin-item-meta">${folder.fileCount} file${folder.fileCount !== 1 ? 's' : ''} &bull; ${formatBytes(folder.totalSize)}</span>`;
-          const fileGrid = document.createElement('div');
-          fileGrid.className = 'admin-photo-grid';
+
+          const filesByEvent = new Map();
           (folder.files || []).forEach(file => {
-            const fileCard = document.createElement('div');
-            fileCard.className = 'admin-photo-card';
-
-            const preview = document.createElement('a');
-            preview.className = 'admin-photo-preview';
-            preview.href = file.url;
-            preview.target = '_blank';
-            preview.rel = 'noopener';
-            if (isPreviewableImage(file.name)) {
-              const img = document.createElement('img');
-              img.src = file.url;
-              img.alt = file.name;
-              preview.appendChild(img);
-            } else {
-              preview.textContent = fileExtension(file.name).toUpperCase().replace('.', '') || 'FILE';
+            const eventName = file.event || 'General';
+            if (!filesByEvent.has(eventName)) {
+              filesByEvent.set(eventName, []);
             }
-
-            const meta = document.createElement('div');
-            meta.className = 'admin-photo-meta';
-            meta.innerHTML = `<strong>${escapeHtml(file.name)}</strong><br><span>${formatBytes(file.size)}</span><br><small>${escapeHtml(file.uploadedAt ? new Date(file.uploadedAt).toLocaleString() : 'Upload time unavailable')}</small>`;
-
-            fileCard.appendChild(preview);
-            fileCard.appendChild(meta);
-            fileGrid.appendChild(fileCard);
+            filesByEvent.get(eventName).push(file);
           });
-          div.appendChild(fileGrid);
+
+          [...filesByEvent.entries()]
+            .sort((a, b) => a[0].localeCompare(b[0]))
+            .forEach(([eventName, eventFiles]) => {
+              if (filesByEvent.size > 1) {
+                const eventHeading = document.createElement('h4');
+                eventHeading.className = 'admin-photo-event-heading';
+                eventHeading.textContent = `Event: ${eventName} (${eventFiles.length})`;
+                div.appendChild(eventHeading);
+              }
+
+              const fileGrid = document.createElement('div');
+              fileGrid.className = 'admin-photo-grid';
+              eventFiles.forEach(file => {
+                const fileCard = document.createElement('div');
+                fileCard.className = 'admin-photo-card';
+
+                const preview = document.createElement('a');
+                preview.className = 'admin-photo-preview';
+                preview.href = file.url;
+                preview.target = '_blank';
+                preview.rel = 'noopener';
+                if (isPreviewableImage(file.name)) {
+                  const img = document.createElement('img');
+                  img.src = file.url;
+                  img.alt = file.name;
+                  preview.appendChild(img);
+                } else {
+                  preview.textContent = fileExtension(file.name).toUpperCase().replace('.', '') || 'FILE';
+                }
+
+                const meta = document.createElement('div');
+                meta.className = 'admin-photo-meta';
+                const eventLine = filesByEvent.size > 1
+                  ? ''
+                  : `<span class="admin-photo-event-label">Event: ${escapeHtml(eventName)}</span><br>`;
+                meta.innerHTML = `${eventLine}<strong>${escapeHtml(file.name)}</strong><br><span>${formatBytes(file.size)}</span><br><small>${escapeHtml(file.uploadedAt ? new Date(file.uploadedAt).toLocaleString() : 'Upload time unavailable')}</small>`;
+
+                fileCard.appendChild(preview);
+                fileCard.appendChild(meta);
+                fileGrid.appendChild(fileCard);
+              });
+              div.appendChild(fileGrid);
+            });
           const downloadBtn = document.createElement('button');
           downloadBtn.textContent = 'Download';
           downloadBtn.onclick = () => downloadFile('/admin-api/uploads/download/' + encodeURIComponent(folder.name), folder.name + '.zip');
@@ -1380,6 +1404,9 @@
           const daysLeft = Math.ceil((new Date(guest.checkoutDate) - new Date()) / (1000 * 60 * 60 * 24));
           const expiredLabel = guest.isExpired ? ' <span class="admin-error-text">(expired)</span>' : '';
           let html = `<strong>${escapeHtml(guest.name)}</strong> - ${escapeHtml(guest.guestTypeName || 'Guest')} (${escapeHtml(guest.visitMode || 'overnight')})${guest.room ? ' - Room: ' + escapeHtml(guest.room) : ''}${expiredLabel}<br>`;
+          if (guest.eventName) {
+            html += `<small>Event: <strong>${escapeHtml(guest.eventName)}</strong></small><br>`;
+          }
           html += `<small>Checkout: ${new Date(guest.checkoutDate).toLocaleString()} (${daysLeft} days remaining)</small><br>`;
           html += `<small>Devices (${guest.devices.length}):</small><ul class="admin-device-list">`;
           guest.devices.forEach(device => {

@@ -408,6 +408,15 @@ function sanitizeEventSlug(name) {
   return slug || 'General';
 }
 
+function resolveEventNameFromSlug(eventSlug) {
+  const slug = sanitizeEventSlug(eventSlug);
+  if (slug === 'General') {
+    return 'General';
+  }
+  const match = (guestData.events || []).find(event => sanitizeEventSlug(event.name) === slug);
+  return match ? match.name : slug.replace(/-/g, ' ');
+}
+
 function findEventByName(name) {
   const trimmed = (name || '').trim();
   if (!trimmed) return null;
@@ -633,7 +642,7 @@ function listGuestUploadFiles(guestId) {
           name: fileName,
           size: fileStat.size,
           uploadedAt: fileStat.mtime.toISOString(),
-          event: name.replace(/-/g, ' '),
+          event: resolveEventNameFromSlug(name),
           eventSlug: name
         });
       });
@@ -885,6 +894,7 @@ function getGuestSessionRows() {
         guestTypeId: guest.guestTypeId || guestType.id,
         guestTypeName: guestType.name,
         visitMode: guest.visitMode || guestType.visitMode,
+        eventName: guest.eventName || '',
         createdAt: guest.createdAt || '',
         checkoutDate: guest.checkoutDate || '',
         active: checkout >= now ? 'yes' : 'no',
@@ -1214,7 +1224,8 @@ function collectStayFolderFiles(stayFolderPath, stayFolderName, uploadsDir) {
         name: fileEntry.name,
         size: stat.size,
         uploadedAt: stat.mtime.toISOString(),
-        event: entry.name.replace(/-/g, ' '),
+        event: resolveEventNameFromSlug(entry.name),
+        eventSlug: entry.name,
         url: `/admin/uploads/${encodeURIComponent(stayFolderName)}/${encodeURIComponent(entry.name)}/${encodeURIComponent(fileEntry.name)}`
       });
     });
@@ -2105,6 +2116,7 @@ app.get('/admin-api/guest-sessions', authMiddleware, (req, res) => {
       guestTypeId: row.guestTypeId,
       guestTypeName: row.guestTypeName,
       visitMode: row.visitMode,
+      eventName: row.eventName || null,
       createdAt: row.createdAt,
       checkoutDate: row.checkoutDate,
       devices: guestEntry?.devices || [],
