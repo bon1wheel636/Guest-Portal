@@ -175,13 +175,11 @@ Follow-up from PR #40 review. Hardened event-scoped uploads, safe permission fal
 
 ---
 
-## In progress sprint: events UX
+## Completed sprint: events UX
 
-**Handoff:** [docs/SPRINT_EVENTS_UX.md](docs/SPRINT_EVENTS_UX.md) — read this at the start of a new agent session.
+**Handoff:** [docs/SPRINT_EVENTS_UX.md](docs/SPRINT_EVENTS_UX.md).
 
-**Depends on:** guest types hardening (complete — PR #44).
-
-Guest- and admin-facing improvements for event-tagged photos. **All new UI must be responsive** — usable on phones and desktops.
+Guest- and admin-facing improvements for event-tagged photos. **All new UI is responsive** — usable on phones and desktops.
 
 - [x] **Admin Events tab**
   - Events tab in admin panel; create, rename, delete via `/admin-api/events`.
@@ -189,24 +187,25 @@ Guest- and admin-facing improvements for event-tagged photos. **All new UI must 
 - [x] **Registration event picker**
   - Guest registration uses a select list of host-created events (+ optional new event when permitted).
   - Overnight guests see optional event field when tagging is allowed.
-- [ ] **Re-tag upload to a different event from gallery**
+- [x] **Re-tag upload to a different event from gallery**
   - Move file on disk between event subfolders under the same stay folder.
   - Respect `tagPhotosToEvent` and event creation permissions.
-- [ ] **Admin event merge** (optional follow-up)
-- [ ] **Handoff doc, tests, and documentation updates**
+- [x] **Admin event merge UI**
+  - Events tab merge action using `PATCH /admin-api/events/:id` with `mergeIntoId`.
+- [x] **Tests and documentation updates**
 
 ---
 
 ## Planned sprint: admin quality-of-life
 
-**Depends on:** none (can run in parallel with Events UX if desired, but queue it after hardening to limit concurrent API/UI churn).
+**Depends on:** none.
 
-Admin panel polish without guest permission or upload path changes.
+Admin panel polish without guest permission or upload path changes. **Responsive on mobile and desktop.**
 
 - [ ] **Dark mode toggle**
-  - Admin panel theme preference (CSS variables or class on `admin.html`).
-  - Sensible contrast for existing cards, tabs, and forms.
-- [ ] **Handoff doc and documentation updates**
+  - Admin panel theme preference via CSS variables; persist in `localStorage` (v1).
+  - Sensible contrast for cards, tabs, forms, deployment status, and photo grid.
+- [ ] **Handoff doc, tests, and documentation updates**
 
 ---
 

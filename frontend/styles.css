@@ -472,6 +472,19 @@ a:hover {
   margin-top: 0;
 }
 
+.guest-gallery-move {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.guest-retag-select,
+.guest-retag-new {
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
 @media (max-width: 540px) {
   .guest-gallery-item {
     grid-template-columns: 72px 1fr;
@@ -642,10 +655,36 @@ body.registration-modal-open {
     align-items: center;
   }
 }
-  border: 1px solid #ddd;
-  border-radius: 8px;
+
+.admin-event-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.admin-event-actions button {
+  margin-top: 0;
+  margin-right: 0;
+}
+
+.admin-merge-dialog {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
   padding: 1rem;
-  margin-top: 1rem;
+  z-index: 1000;
+}
+
+.admin-merge-dialog[hidden] {
+  display: none;
+}
+
+.admin-merge-dialog .admin-card {
+  width: min(100%, 420px);
+  margin-bottom: 0;
 }
 
 .admin-permissions-grid {

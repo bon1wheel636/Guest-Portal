@@ -40,6 +40,7 @@
     let guestData = JSON.parse(localStorage.getItem('guestData')) || {};
     const guestToken = localStorage.getItem('guestToken');
     let permissions = guestData.permissions || {};
+    let availableEvents = [];
     const guestNameSpan = document.getElementById('guestName');
     const greeting = document.getElementById('guestGreeting');
     const checkoutInfo = document.getElementById('checkoutInfo');
@@ -99,6 +100,52 @@
         groups.get(eventName).push(file);
       });
       return groups;
+    }
+
+    async function loadAvailableEvents() {
+      if (!permissions.tagPhotosToEvent) {
+        return;
+      }
+      try {
+        const res = await fetch('/guest/events');
+        if (!res.ok) {
+          return;
+        }
+        availableEvents = await res.json();
+      } catch (err) {
+        console.error('Failed to load events:', err);
+      }
+    }
+
+    function buildRetagOptions(currentEventName) {
+      const options = [];
+      availableEvents.forEach(event => {
+        if (event.name !== currentEventName) {
+          options.push({ value: event.id, label: event.name });
+        }
+      });
+      if (permissions.createEventNames) {
+        options.push({ value: '__new__', label: 'New event…' });
+      }
+      return options;
+    }
+
+    async function retagUpload(file, targetEventId, newEventName) {
+      const body = targetEventId === '__new__'
+        ? { eventName: newEventName }
+        : { eventId: targetEventId };
+      const res = await fetch(guestUploadPath(file), {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Guest-Token': guestToken
+        },
+        body: JSON.stringify(body)
+      });
+      if (!res.ok) {
+        throw new Error(await res.text() || `HTTP ${res.status}`);
+      }
+      return res.json();
     }
 
     async function renderGallery(files) {
@@ -170,6 +217,63 @@
           });
 
           actions.appendChild(downloadBtn);
+
+          if (permissions.tagPhotosToEvent) {
+            const retagOptions = buildRetagOptions(file.event || 'General');
+            if (retagOptions.length > 0) {
+              const moveWrap = document.createElement('div');
+              moveWrap.className = 'guest-gallery-move';
+
+              const select = document.createElement('select');
+              select.className = 'guest-retag-select';
+              select.setAttribute('aria-label', `Move ${file.name} to event`);
+              retagOptions.forEach(option => {
+                const opt = document.createElement('option');
+                opt.value = option.value;
+                opt.textContent = option.label;
+                select.appendChild(opt);
+              });
+
+              const newEventInput = document.createElement('input');
+              newEventInput.type = 'text';
+              newEventInput.className = 'guest-retag-new';
+              newEventInput.placeholder = 'New event name';
+              newEventInput.maxLength = 100;
+              newEventInput.hidden = select.value !== '__new__';
+
+              select.addEventListener('change', () => {
+                newEventInput.hidden = select.value !== '__new__';
+              });
+
+              const moveBtn = document.createElement('button');
+              moveBtn.type = 'button';
+              moveBtn.className = 'btn-secondary';
+              moveBtn.textContent = 'Move';
+              moveBtn.addEventListener('click', async () => {
+                if (select.value === '__new__' && !newEventInput.value.trim()) {
+                  alert('Enter a name for the new event.');
+                  newEventInput.focus();
+                  return;
+                }
+                moveBtn.disabled = true;
+                select.disabled = true;
+                try {
+                  await retagUpload(file, select.value, newEventInput.value.trim());
+                  await loadAvailableEvents();
+                  await loadGallery();
+                } catch (err) {
+                  alert('Move failed: ' + err.message);
+                  moveBtn.disabled = false;
+                  select.disabled = false;
+                }
+              });
+
+              moveWrap.appendChild(select);
+              moveWrap.appendChild(newEventInput);
+              moveWrap.appendChild(moveBtn);
+              actions.appendChild(moveWrap);
+            }
+          }
 
           if (permissions.deleteOwnPhotos) {
             const deleteBtn = document.createElement('button');
@@ -265,6 +369,8 @@
         window.location.href = 'welcome.html';
         return;
       }
+
+      await loadAvailableEvents();
 
       greeting.innerHTML = guestData.room
         ? `Photos for <strong>${escapeHtml(guestData.name)}</strong> — room <strong>${escapeHtml(guestData.room)}</strong>.`

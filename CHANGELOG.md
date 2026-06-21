@@ -7,6 +7,9 @@ All notable changes to this project will be documented here.
 ## [Unreleased]
 
 ### Added
+- Guest gallery **re-tag** — `PATCH /guest/uploads/:eventSlug/:filename` moves uploads between event folders; UI on `photo.html` when `tagPhotosToEvent` is allowed.
+- Admin Events tab **merge** action with confirmation dialog; uses existing `mergeIntoId` API.
+- Integration tests for guest re-tag, re-tag 403 for business type, and admin event merge.
 - Hero registration **modal overlay** on the landing page when a background image is configured.
 - Admin **Events** tab with list, create, rename, and delete (`/admin-api/events`).
 - Registration **event picker** (`<select>`) populated from host-created events; optional for overnight guests, required for day-personal.

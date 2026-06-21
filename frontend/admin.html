@@ -188,6 +188,19 @@
             <button type="button" id="eventCancelBtn" class="btn-secondary">Cancel Edit</button>
           </div>
         </form>
+
+        <div id="eventMergeDialog" class="admin-merge-dialog" hidden>
+          <div class="admin-card">
+            <h3>Merge Event</h3>
+            <p id="eventMergeSourceText" class="admin-muted"></p>
+            <label for="eventMergeTargetSelect">Merge into</label>
+            <select id="eventMergeTargetSelect"></select>
+            <div class="admin-actions">
+              <button type="button" id="eventMergeConfirmBtn">Merge</button>
+              <button type="button" id="eventMergeCancelBtn" class="btn-secondary">Cancel</button>
+            </div>
+          </div>
+        </div>
       </section>
 
       <section class="admin-panel" data-panel="storage" role="tabpanel">
@@ -436,10 +449,18 @@
             div.className = 'admin-item admin-event-item';
             div.innerHTML = `<strong>${escapeHtml(event.name)}</strong><br><small class="admin-muted">Created ${escapeHtml(new Date(event.createdAt).toLocaleString())} · ${escapeHtml(event.createdBy || 'unknown')} · ${event.uploadFileCount || 0} upload(s)</small>`;
 
+            const actions = document.createElement('div');
+            actions.className = 'admin-event-actions';
+
             const editBtn = document.createElement('button');
             editBtn.textContent = 'Rename';
             editBtn.className = 'btn-secondary';
             editBtn.onclick = () => editEvent(event);
+
+            const mergeBtn = document.createElement('button');
+            mergeBtn.textContent = 'Merge';
+            mergeBtn.className = 'btn-secondary';
+            mergeBtn.onclick = () => openEventMergeDialog(event, adminEvents);
 
             const deleteBtn = document.createElement('button');
             deleteBtn.textContent = 'Delete';
@@ -451,8 +472,12 @@
               else alert('Delete failed: ' + await delRes.text());
             };
 
-            div.appendChild(editBtn);
-            div.appendChild(deleteBtn);
+            actions.appendChild(editBtn);
+            if (adminEvents.length > 1) {
+              actions.appendChild(mergeBtn);
+            }
+            actions.appendChild(deleteBtn);
+            div.appendChild(actions);
             container.appendChild(div);
           });
         }
@@ -464,6 +489,60 @@
         console.error('Failed to load events:', err);
       }
     }
+
+    let pendingEventMerge = null;
+
+    function closeEventMergeDialog() {
+      pendingEventMerge = null;
+      document.getElementById('eventMergeDialog').hidden = true;
+      document.getElementById('eventMergeTargetSelect').innerHTML = '';
+    }
+
+    function openEventMergeDialog(sourceEvent, allEvents) {
+      const others = allEvents.filter(event => event.id !== sourceEvent.id);
+      if (others.length === 0) {
+        alert('Create another event before merging.');
+        return;
+      }
+      pendingEventMerge = sourceEvent;
+      document.getElementById('eventMergeSourceText').textContent =
+        `Photos tagged to "${sourceEvent.name}" will move to the selected event. "${sourceEvent.name}" will be removed.`;
+      const select = document.getElementById('eventMergeTargetSelect');
+      select.innerHTML = '';
+      others.forEach(event => {
+        const opt = document.createElement('option');
+        opt.value = event.id;
+        opt.textContent = event.name;
+        select.appendChild(opt);
+      });
+      document.getElementById('eventMergeDialog').hidden = false;
+    }
+
+    document.getElementById('eventMergeCancelBtn')?.addEventListener('click', closeEventMergeDialog);
+    document.getElementById('eventMergeConfirmBtn')?.addEventListener('click', async () => {
+      if (!pendingEventMerge) return;
+      const targetId = document.getElementById('eventMergeTargetSelect').value;
+      const targetName = document.getElementById('eventMergeTargetSelect').selectedOptions[0]?.textContent || 'selected event';
+      if (!targetId) {
+        alert('Choose an event to merge into.');
+        return;
+      }
+      if (!confirm(`Merge "${pendingEventMerge.name}" into "${targetName}"? This cannot be undone.`)) {
+        return;
+      }
+      const sourceEvent = pendingEventMerge;
+      closeEventMergeDialog();
+      const res = await authFetch(`/admin-api/events/${encodeURIComponent(sourceEvent.id)}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mergeIntoId: targetId })
+      });
+      if (res.ok) {
+        loadEventsAdmin();
+      } else {
+        alert('Merge failed: ' + await res.text());
+      }
+    });
 
     function resetEventForm() {
       document.getElementById('eventEditId').value = '';
