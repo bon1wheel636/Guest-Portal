@@ -144,7 +144,7 @@ Planned order after PR #40. Each sprint should get its own handoff doc (`docs/SP
 | Order | Sprint | Handoff | Status |
 |-------|--------|---------|--------|
 | 1 | Guest types hardening and test coverage | [docs/SPRINT_GUEST_TYPES_HARDENING.md](docs/SPRINT_GUEST_TYPES_HARDENING.md) | Complete |
-| 2 | Events UX | [docs/SPRINT_EVENTS_UX.md](docs/SPRINT_EVENTS_UX.md) | Planned |
+| 2 | Events UX | [docs/SPRINT_EVENTS_UX.md](docs/SPRINT_EVENTS_UX.md) | In progress |
 | 3 | Admin quality-of-life | _(planned — create `docs/SPRINT_ADMIN_QOL.md`)_ | Planned |
 | 4 | UniFi external portal | _(planned — create `docs/SPRINT_UNIFI_PORTAL.md`)_ | Planned (needs controller details) |
 
@@ -175,22 +175,24 @@ Follow-up from PR #40 review. Hardened event-scoped uploads, safe permission fal
 
 ---
 
-## Planned sprint: events UX
+## In progress sprint: events UX
 
 **Handoff:** [docs/SPRINT_EVENTS_UX.md](docs/SPRINT_EVENTS_UX.md) — read this at the start of a new agent session.
 
-**Depends on:** guest types hardening (scoped `eventSlug` + filename paths).
+**Depends on:** guest types hardening (complete — PR #44).
 
-Guest- and admin-facing improvements for event-tagged photos after PR #40. **All new UI must be responsive** — usable on phones and desktops (see sprint handoff).
+Guest- and admin-facing improvements for event-tagged photos. **All new UI must be responsive** — usable on phones and desktops.
 
-- [ ] **Admin Events tab**
-  - Add an **Events** tab in the admin panel listing all events from `storage.json`.
-  - Hosts can **create**, **rename**, **merge**, and **delete** events from the UI (not only via guest registration or upload flows).
-  - Show useful metadata per event (name, created date, created-by source where available).
-  - Admin-only authenticated API routes for event CRUD; validate names and handle conflicts with existing upload subfolders.
+- [x] **Admin Events tab**
+  - Events tab in admin panel; create, rename, delete via `/admin-api/events`.
+  - List shows name, created date, source, upload file count.
+- [x] **Registration event picker**
+  - Guest registration uses a select list of host-created events (+ optional new event when permitted).
+  - Overnight guests see optional event field when tagging is allowed.
 - [ ] **Re-tag upload to a different event from gallery**
   - Move file on disk between event subfolders under the same stay folder.
   - Respect `tagPhotosToEvent` and event creation permissions.
+- [ ] **Admin event merge** (optional follow-up)
 - [ ] **Handoff doc, tests, and documentation updates**
 
 ---

@@ -1,6 +1,6 @@
 # Sprint: Events UX
 
-**Status:** Planned — handoff complete; implementation not started.
+**Status:** In progress — admin Events tab, registration event picker, and hero registration modal shipped; gallery re-tag remaining.
 
 Use this document to continue work in a **new agent session** without relying on prior chat history.
 
@@ -109,8 +109,10 @@ Add integration tests for admin event CRUD (create, rename, delete rejection whe
 ## Sprint checklist (mirror ROADMAP)
 
 - [ ] Handoff doc and ROADMAP updates (planning)
-- [ ] Admin Events tab — list all events with metadata
-- [ ] Admin event create, rename, merge, and delete (UI + API)
+- [x] Admin Events tab — list all events with metadata
+- [x] Admin event create, rename, and delete (UI + API)
+- [x] Registration event picker on guest and admin register forms
+- [x] Hero registration modal overlay (responsive)
 - [ ] On-disk subfolder behavior documented and implemented for rename/merge/delete
 - [ ] Guest gallery re-tag upload to a different event
 - [ ] Responsive layouts verified on mobile and desktop
