@@ -348,6 +348,20 @@ test_clear_guest_devices() {
     fi
 }
 
+test_admin_guest_link_code_qr() {
+    require_admin_creds "Admin guest link code QR" || return
+    if [[ -z "$ADMIN_GUEST_ID" ]]; then
+        fail "Admin guest link code QR" "Needs admin guest id" "No guest id available"
+        return
+    fi
+    local response=$(admin_curl -X POST "$BASE_URL/admin-api/guest-sessions/$ADMIN_GUEST_ID/link-code")
+    if [[ "$response" == *'"code"'* ]] && [[ "$response" == *'"linkUrl"'* ]] && [[ "$response" == *'"qrSvg"'* ]] && [[ "$response" == *"<svg"* ]]; then
+        pass "Admin guest link code includes QR"
+    else
+        fail "Admin guest link code includes QR" "code/linkUrl/qrSvg" "$response"
+    fi
+}
+
 test_csv_exports() {
     require_admin_creds "CSV exports" || return
     local sessions_csv=$(admin_curl "$BASE_URL/admin-api/guest-sessions.csv")
@@ -744,6 +758,7 @@ test_list_guest_history
 test_admin_register_guest
 test_update_guest_room
 test_clear_guest_devices
+test_admin_guest_link_code_qr
 test_csv_exports
 test_checkout_admin_guest
 test_remove_guest_history
