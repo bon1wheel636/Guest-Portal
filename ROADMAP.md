@@ -146,6 +146,34 @@ This roadmap tracks shareable project work only. Keep private domains, NAS hostn
 - [ ] **Event calendar integration (low priority)**
   - Optional sync with a family or household calendar for suggested event names and dates.
 
+### Day visitors, visitor types, and event tagging
+
+- [ ] **Day visitor registration and types**
+  - Support same-day visitors separately from overnight registered guests.
+  - Visitor types at minimum: **Personal** (friends, family) and **Other** (business, sales, service, etc.).
+  - Admin can create day visitors and change visitor type after registration.
+  - **Personal** day visitors may upload photos; **Other** day visitors may not.
+  - Day visitors should have a shorter session model appropriate to a single visit (exact expiry/TTL TBD during design).
+- [ ] **Event names and photo grouping**
+  - Add an **event name** field (free text), e.g. "Birthday Party", "Graduation", "Retirement".
+  - Day visitors pick or enter an event during registration.
+  - Overnight registered guests can tag uploads to an event when uploading from the welcome hub or gallery.
+  - Allow guests to create a new event name when an existing one is not listed.
+  - Support grouping/tagging photos by event even when no preset event exists.
+  - Drive upload folder structure from visitor + event (e.g. event-scoped subfolders under each guest/visitor stay folder) so admin storage browsing matches portal organization.
+  - Admin and guests can add event names for now; no calendar integration in the first version.
+- [ ] **Low priority / future**
+  - Optional sync with a family or household calendar for suggested event names and dates.
+
+### Background hero landing page
+
+- [ ] **Hero landing when a background image is configured**
+  - When an admin background image is set, show it prominently on the guest entry landing page.
+  - Replace the current full registration form-first layout with a **hero view**: background image visible, minimal chrome, and a **Register** (or equivalent) button centered mid-to-low on the screen.
+  - Tapping the button opens registration (inline expand, modal, or navigate to the existing registration form).
+  - Preserve device link code entry for returning sessions; keep the hero usable on phones and tablets.
+  - Unregistered visitors should see the hero; registered guests continue to land on `welcome.html` as today.
+
 ### Other backlog
 
 - [ ] **UniFi external portal integration**
