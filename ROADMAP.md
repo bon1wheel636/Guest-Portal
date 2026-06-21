@@ -137,26 +137,38 @@ This roadmap tracks shareable project work only. Keep private domains, NAS hostn
 - [x] **Tests and documentation updates**
   - Update `test-suite.sh`, README, CHANGELOG, ROADMAP, and AGENTS.
 
-## Backlog
+## In progress sprint: guest types hardening and test coverage
 
-### Follow-ups from day visitors sprint (PR #40 review)
+**Handoff:** [docs/SPRINT_GUEST_TYPES_HARDENING.md](docs/SPRINT_GUEST_TYPES_HARDENING.md) — read this at the start of a new agent session (avoids relying on full chat context).
 
-- [ ] **Duplicate filename handling across event subfolders**
-  - Guest gallery download/delete APIs key files by filename only; the same name in `General/` and an event folder can resolve to the wrong file.
-  - Include event (or a composite file id) in guest upload list/download/delete paths.
+Follow-up from PR #40 review. Harden event-scoped uploads, safe permission fallback, and close remaining integration test gaps.
+
+- [ ] **Event-scoped file identity (duplicate filename fix)**
+  - Guest download/delete APIs address files by `eventSlug` + filename, not filename alone.
+  - Gallery (`photo.html`) uses scoped paths from upload list response.
+  - Legacy unscoped `/:filename` route limited to flat stay-folder files or returns error on ambiguity.
 - [ ] **Safe fallback when a guest type is missing**
-  - Sessions whose `guestTypeId` no longer exists currently fall back to the default overnight type with full legacy permissions.
-  - Use a minimal restricted fallback (or snapshot permissions on the session) when the assigned type is deleted or unavailable.
-- [ ] **Remaining sprint integration tests**
-  - Upload with `tagPhotosToEvent` lands in the correct event subfolder.
-  - Legacy session without `guestTypeId` still uploads and validates as overnight.
-  - Registration with `selectEventAtRegistration` (day personal flow).
-  - `deleteOwnPhotos: false` returns 403 on guest delete.
+  - Snapshot effective permissions on session write; use restricted fallback when `guestTypeId` is set but type is gone.
+  - Legacy sessions without `guestTypeId` still map to default overnight type.
+- [ ] **Remaining integration tests**
+  - Event subfolder upload, legacy session, day-personal registration with event, delete 403, scoped delete with duplicate basenames.
+- [ ] **Admin session type change polish (optional)**
+  - When changing session to overnight, avoid leaving a guest with only minutes of checkout remaining.
+- [ ] **Tests and documentation updates**
+  - Update `test-suite.sh`, CHANGELOG, ROADMAP, and AGENTS.
+
+## Backlog
 
 ### Deferred from day visitors sprint
 
 - [ ] **Event calendar integration (low priority)**
   - Optional sync with a family or household calendar for suggested event names and dates.
+
+### Optional stretch (guest types hardening sprint)
+
+- [ ] **Re-tag upload to different event from gallery**
+- [ ] **Admin merge/rename events**
+- [ ] **Deprecation warning on unscoped guest upload paths**
 
 ### Other backlog
 
