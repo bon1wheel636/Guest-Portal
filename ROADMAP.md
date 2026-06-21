@@ -137,11 +137,24 @@ This roadmap tracks shareable project work only. Keep private domains, NAS hostn
 - [x] **Tests and documentation updates**
   - Update `test-suite.sh`, README, CHANGELOG, ROADMAP, and AGENTS.
 
+## Sprint queue
+
+Planned order after PR #40. Each sprint should get its own handoff doc (`docs/SPRINT_*.md`) when planning starts.
+
+| Order | Sprint | Handoff | Status |
+|-------|--------|---------|--------|
+| 1 | Guest types hardening and test coverage | [docs/SPRINT_GUEST_TYPES_HARDENING.md](docs/SPRINT_GUEST_TYPES_HARDENING.md) | In progress |
+| 2 | Events UX | [docs/SPRINT_EVENTS_UX.md](docs/SPRINT_EVENTS_UX.md) | Planned |
+| 3 | Admin quality-of-life | _(planned — create `docs/SPRINT_ADMIN_QOL.md`)_ | Planned |
+| 4 | UniFi external portal | _(planned — create `docs/SPRINT_UNIFI_PORTAL.md`)_ | Planned (needs controller details) |
+
+---
+
 ## In progress sprint: guest types hardening and test coverage
 
 **Handoff:** [docs/SPRINT_GUEST_TYPES_HARDENING.md](docs/SPRINT_GUEST_TYPES_HARDENING.md) — read this at the start of a new agent session (avoids relying on full chat context).
 
-Follow-up from PR #40 review. Harden event-scoped uploads, safe permission fallback, and close remaining integration test gaps.
+Follow-up from PR #40 review. Harden event-scoped uploads, safe permission fallback, and close remaining integration test gaps. Keep scope tight; do not bundle Events UX, Admin QoL, or UniFi work here.
 
 - [ ] **Event-scoped file identity (duplicate filename fix)**
   - Guest download/delete APIs address files by `eventSlug` + filename, not filename alone.
@@ -157,23 +170,70 @@ Follow-up from PR #40 review. Harden event-scoped uploads, safe permission fallb
 - [ ] **Tests and documentation updates**
   - Update `test-suite.sh`, CHANGELOG, ROADMAP, and AGENTS.
 
+**Optional stretch (only if core items finish early):**
+- [ ] Deprecation warning on unscoped guest upload paths
+
+---
+
+## Planned sprint: events UX
+
+**Handoff:** [docs/SPRINT_EVENTS_UX.md](docs/SPRINT_EVENTS_UX.md) — read this at the start of a new agent session.
+
+**Depends on:** guest types hardening (scoped `eventSlug` + filename paths).
+
+Guest- and admin-facing improvements for event-tagged photos after PR #40.
+
+- [ ] **Admin Events tab**
+  - Add an **Events** tab in the admin panel listing all events from `storage.json`.
+  - Hosts can **create**, **rename**, **merge**, and **delete** events from the UI (not only via guest registration or upload flows).
+  - Show useful metadata per event (name, created date, created-by source where available).
+  - Admin-only authenticated API routes for event CRUD; validate names and handle conflicts with existing upload subfolders.
+- [ ] **Re-tag upload to a different event from gallery**
+  - Move file on disk between event subfolders under the same stay folder.
+  - Respect `tagPhotosToEvent` and event creation permissions.
+- [ ] **Handoff doc, tests, and documentation updates**
+
+---
+
+## Planned sprint: admin quality-of-life
+
+**Depends on:** none (can run in parallel with Events UX if desired, but queue it after hardening to limit concurrent API/UI churn).
+
+Admin panel polish without guest permission or upload path changes.
+
+- [ ] **Dark mode toggle**
+  - Admin panel theme preference (CSS variables or class on `admin.html`).
+  - Sensible contrast for existing cards, tabs, and forms.
+- [ ] **Handoff doc and documentation updates**
+
+---
+
+## Planned sprint: UniFi external portal integration
+
+**Depends on:** controller details from the project owner (see note below). Keep the current deployment path documented in [UNIFI.md](UNIFI.md): UniFi hotspot/voucher admission + post-auth redirect to `/`.
+
+> **Note for agents and implementers:** Before starting this sprint, **ask the project owner for the UniFi information** listed in [UNIFI.md](UNIFI.md) § Future external portal integration. The owner has this information available; do not guess controller URLs, site IDs, or API credentials. Store secrets only in local config outside git.
+
+Gather (from owner, not in repo):
+
+- UniFi Network Application URL and version
+- Site ID (often `default`)
+- Auth method (local admin API account, API key, or version-specific integration path)
+- Guest WiFi VLAN/subnet and portal FQDN/TLS plan
+- Authorization model (voucher, room code, admin-approved, etc.)
+
+- [ ] **External portal flow**
+  - Receive UniFi guest parameters, authorize client via Network Application API, redirect to registration.
+- [ ] **Deployment and test documentation**
+  - Update [UNIFI.md](UNIFI.md), [DEPLOY.md](DEPLOY.md), and integration tests where feasible.
+- [ ] **Handoff doc and documentation updates**
+
+---
+
 ## Backlog
 
-### Deferred from day visitors sprint
+### Deferred (no sprint assigned yet)
 
 - [ ] **Event calendar integration (low priority)**
   - Optional sync with a family or household calendar for suggested event names and dates.
 
-### Optional stretch (guest types hardening sprint)
-
-- [ ] **Re-tag upload to different event from gallery**
-- [ ] **Admin merge/rename events**
-- [ ] **Deprecation warning on unscoped guest upload paths**
-
-### Other backlog
-
-- [ ] **UniFi external portal integration**
-  - Add only after controller version, auth method, site ID, and authorization model are known.
-  - Keep initial deployment on UniFi's built-in guest/hotspot authorization plus post-auth redirect.
-- [ ] **Admin quality-of-life improvements**
-  - Dark mode toggle.
