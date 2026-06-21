@@ -119,6 +119,21 @@ const PERMISSION_KEYS = [
   'signOut'
 ];
 
+const RESTRICTED_FALLBACK_PERMISSIONS = {
+  uploadPhotos: false,
+  deleteOwnPhotos: false,
+  viewPhotoGallery: false,
+  smartHomeControls: false,
+  linkDevice: false,
+  extendStay: false,
+  selectStayLength: false,
+  selectEventAtRegistration: false,
+  tagPhotosToEvent: false,
+  createEventNames: false,
+  viewWelcomeHub: true,
+  signOut: true
+};
+
 function ensureStorageDefaults() {
   let changed = false;
   if (!Array.isArray(guestData.events)) {
@@ -255,14 +270,58 @@ function getLegacyGuestType() {
   return getGuestTypeById('type_overnight') || DEFAULT_GUEST_TYPES[0];
 }
 
+function isGuestTypeMissing(guest) {
+  if (!guest || !guest.guestTypeId) {
+    return false;
+  }
+  const type = getGuestTypeById(guest.guestTypeId);
+  return !type || !type.enabled;
+}
+
+function writePermissionsSnapshot(guest, guestType) {
+  guest.permissionsSnapshot = normalizeGuestTypePermissions(
+    guestType.permissions,
+    guestType.visitMode
+  );
+}
+
 function resolveGuestType(guest) {
   if (!guest) return getLegacyGuestType();
-  const type = guest.guestTypeId ? getGuestTypeById(guest.guestTypeId) : null;
-  return type || getLegacyGuestType();
+  if (!guest.guestTypeId) return getLegacyGuestType();
+
+  const type = getGuestTypeById(guest.guestTypeId);
+  if (type && type.enabled) {
+    return type;
+  }
+
+  return {
+    id: guest.guestTypeId,
+    name: 'Unknown (restricted)',
+    description: '',
+    visitMode: guest.visitMode || 'overnight',
+    requiresRoom: false,
+    enabled: false,
+    permissions: getGuestPermissions(guest)
+  };
 }
 
 function getGuestPermissions(guest) {
-  return { ...resolveGuestType(guest).permissions };
+  if (!guest) {
+    return { ...RESTRICTED_FALLBACK_PERMISSIONS };
+  }
+  if (!guest.guestTypeId) {
+    return { ...getLegacyGuestType().permissions };
+  }
+
+  const type = getGuestTypeById(guest.guestTypeId);
+  if (type && type.enabled) {
+    return { ...type.permissions };
+  }
+
+  if (guest.permissionsSnapshot) {
+    return { ...guest.permissionsSnapshot };
+  }
+  return { ...RESTRICTED_FALLBACK_PERMISSIONS };
 }
 
 function getEnabledGuestTypeById(id) {
@@ -329,6 +388,7 @@ function formatGuestTypeForPublic(type) {
 function formatGuestResponse(guest) {
   const guestType = resolveGuestType(guest);
   const permissions = getGuestPermissions(guest);
+  const missingType = isGuestTypeMissing(guest);
   return {
     id: guest.id,
     name: guest.name,
@@ -336,7 +396,7 @@ function formatGuestResponse(guest) {
     dashboardUrl: permissions.smartHomeControls ? (guest.dashboardUrl || null) : null,
     checkoutDate: guest.checkoutDate,
     guestTypeId: guest.guestTypeId || guestType.id,
-    guestTypeName: guestType.name,
+    guestTypeName: missingType ? 'Unknown (restricted)' : guestType.name,
     visitMode: guest.visitMode || guestType.visitMode,
     eventName: guest.eventName || null,
     permissions
@@ -451,7 +511,8 @@ function listGuestUploadFiles(guestId) {
           name,
           size: stat.size,
           uploadedAt: stat.mtime.toISOString(),
-          event: 'General'
+          event: 'General',
+          eventSlug: 'General'
         });
         return;
       }
@@ -470,7 +531,8 @@ function listGuestUploadFiles(guestId) {
           name: fileName,
           size: fileStat.size,
           uploadedAt: fileStat.mtime.toISOString(),
-          event: name.replace(/-/g, ' ')
+          event: name.replace(/-/g, ' '),
+          eventSlug: name
         });
       });
     });
@@ -479,28 +541,97 @@ function listGuestUploadFiles(guestId) {
   return files.sort((a, b) => b.uploadedAt.localeCompare(a.uploadedAt));
 }
 
-function findGuestUploadFile(guestId, filename) {
+function isSafeUploadFilename(filename) {
   const safeName = path.basename(filename);
-  if (safeName !== filename || safeName.includes('..')) {
+  return safeName === filename && !safeName.includes('..');
+}
+
+function findGuestUploadFile(guestId, filename, eventSlug) {
+  if (!isSafeUploadFilename(filename)) {
     return null;
   }
 
+  const safeName = path.basename(filename);
+  const normalizedSlug = sanitizeEventSlug(eventSlug);
+
   for (const folderPath of getGuestUploadFolders(guestId)) {
-    const directPath = path.resolve(path.join(folderPath, safeName));
-    if (directPath.startsWith(path.resolve(folderPath)) && fs.existsSync(directPath) && fs.statSync(directPath).isFile()) {
-      return directPath;
+    const scopedPath = path.resolve(path.join(folderPath, normalizedSlug, safeName));
+    if (
+      scopedPath.startsWith(path.resolve(folderPath)) &&
+      fs.existsSync(scopedPath) &&
+      fs.statSync(scopedPath).isFile()
+    ) {
+      return scopedPath;
     }
 
-    const subdirs = fs.readdirSync(folderPath, { withFileTypes: true }).filter(entry => entry.isDirectory());
-    for (const subdir of subdirs) {
-      const nestedPath = path.resolve(path.join(folderPath, subdir.name, safeName));
-      if (nestedPath.startsWith(path.resolve(folderPath)) && fs.existsSync(nestedPath) && fs.statSync(nestedPath).isFile()) {
-        return nestedPath;
+    if (normalizedSlug === 'General') {
+      const rootPath = path.resolve(path.join(folderPath, safeName));
+      if (
+        rootPath.startsWith(path.resolve(folderPath)) &&
+        fs.existsSync(rootPath) &&
+        fs.statSync(rootPath).isFile()
+      ) {
+        return rootPath;
       }
     }
   }
 
   return null;
+}
+
+function resolveLegacyGuestUploadFile(guestId, filename) {
+  if (!isSafeUploadFilename(filename)) {
+    return { status: 404 };
+  }
+
+  const safeName = path.basename(filename);
+  let flatPath = null;
+  let nestedMatches = 0;
+
+  for (const folderPath of getGuestUploadFolders(guestId)) {
+    const flatCandidates = [
+      path.resolve(path.join(folderPath, safeName)),
+      path.resolve(path.join(folderPath, 'General', safeName))
+    ];
+
+    flatCandidates.forEach(candidate => {
+      if (
+        candidate.startsWith(path.resolve(folderPath)) &&
+        fs.existsSync(candidate) &&
+        fs.statSync(candidate).isFile()
+      ) {
+        if (flatPath && flatPath !== candidate) {
+          flatPath = 'ambiguous';
+        } else if (flatPath !== 'ambiguous') {
+          flatPath = candidate;
+        }
+      }
+    });
+
+    fs.readdirSync(folderPath, { withFileTypes: true })
+      .filter(entry => entry.isDirectory() && entry.name !== 'General')
+      .forEach(subdir => {
+        const nestedPath = path.resolve(path.join(folderPath, subdir.name, safeName));
+        if (
+          nestedPath.startsWith(path.resolve(folderPath)) &&
+          fs.existsSync(nestedPath) &&
+          fs.statSync(nestedPath).isFile()
+        ) {
+          nestedMatches += 1;
+        }
+      });
+  }
+
+  if (flatPath === 'ambiguous' || nestedMatches > 0) {
+    return {
+      status: 409,
+      message: 'Ambiguous file path; use /guest/uploads/:eventSlug/:filename'
+    };
+  }
+  if (!flatPath) {
+    return { status: 404 };
+  }
+  return { status: 200, path: flatPath };
 }
 
 function publicBaseUrl(req) {
@@ -691,6 +822,7 @@ function createGuestRegistration(name, guestTypeId, options = {}, userAgent) {
     createdAt,
     devices: [{ addedAt: createdAt, userAgent: userAgent || 'Unknown' }]
   };
+  writePermissionsSnapshot(guestTokens[token], guestType);
   saveGuestTokens();
 
   guestData.guests.push({
@@ -1315,22 +1447,63 @@ app.get('/guest/uploads', validateGuestUploadToken, requireGuestPermission('view
   res.json({ files });
 });
 
-app.get('/guest/uploads/:filename', validateGuestUploadToken, requireGuestPermission('viewPhotoGallery'), (req, res) => {
-  const filePath = findGuestUploadFile(req.guestSession.guest.id, req.params.filename);
+app.get('/guest/uploads/:eventSlug/:filename', validateGuestUploadToken, requireGuestPermission('viewPhotoGallery'), (req, res) => {
+  const filePath = findGuestUploadFile(
+    req.guestSession.guest.id,
+    req.params.filename,
+    req.params.eventSlug
+  );
   if (!filePath) {
     return res.status(404).send('File not found');
   }
   res.sendFile(filePath);
 });
 
-app.delete('/guest/uploads/:filename', validateGuestUploadToken, requireGuestPermission('deleteOwnPhotos'), (req, res) => {
-  const filePath = findGuestUploadFile(req.guestSession.guest.id, req.params.filename);
+app.delete('/guest/uploads/:eventSlug/:filename', validateGuestUploadToken, requireGuestPermission('deleteOwnPhotos'), (req, res) => {
+  const filePath = findGuestUploadFile(
+    req.guestSession.guest.id,
+    req.params.filename,
+    req.params.eventSlug
+  );
   if (!filePath) {
     return res.status(404).send('File not found');
   }
 
   try {
     fs.unlinkSync(filePath);
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Failed to delete guest upload:', err);
+    res.status(500).send('Failed to delete file');
+  }
+});
+
+app.get('/guest/uploads/:filename', validateGuestUploadToken, requireGuestPermission('viewPhotoGallery'), (req, res) => {
+  const result = resolveLegacyGuestUploadFile(req.guestSession.guest.id, req.params.filename);
+  if (result.status === 409) {
+    res.set('Deprecation', 'true');
+    return res.status(409).send(result.message);
+  }
+  if (result.status !== 200) {
+    return res.status(404).send('File not found');
+  }
+  res.set('Deprecation', 'true');
+  res.sendFile(result.path);
+});
+
+app.delete('/guest/uploads/:filename', validateGuestUploadToken, requireGuestPermission('deleteOwnPhotos'), (req, res) => {
+  const result = resolveLegacyGuestUploadFile(req.guestSession.guest.id, req.params.filename);
+  if (result.status === 409) {
+    res.set('Deprecation', 'true');
+    return res.status(409).send(result.message);
+  }
+  if (result.status !== 200) {
+    return res.status(404).send('File not found');
+  }
+
+  try {
+    res.set('Deprecation', 'true');
+    fs.unlinkSync(result.path);
     res.json({ success: true });
   } catch (err) {
     console.error('Failed to delete guest upload:', err);
@@ -1801,17 +1974,30 @@ app.patch('/admin-api/guest-sessions/:guestId', authMiddleware, (req, res) => {
   const [, guest] = entry;
 
   if (guestTypeId !== undefined) {
-    const guestType = getGuestTypeById(guestTypeId);
-    if (!guestType) {
-      return res.status(400).send('Guest type not found');
-    }
-    guest.guestTypeId = guestType.id;
-    guest.visitMode = guestType.visitMode;
+    if (guestTypeId === null || guestTypeId === '') {
+      delete guest.guestTypeId;
+      delete guest.permissionsSnapshot;
+    } else {
+      const guestType = getGuestTypeById(guestTypeId);
+      if (!guestType) {
+        return res.status(400).send('Guest type not found');
+      }
+      guest.guestTypeId = guestType.id;
+      guest.visitMode = guestType.visitMode;
+      writePermissionsSnapshot(guest, guestType);
 
-    if (guestType.visitMode === 'day') {
-      const checkoutDate = new Date();
-      checkoutDate.setTime(checkoutDate.getTime() + (guestType.defaultDayVisitHours || 8) * 60 * 60 * 1000);
-      guest.checkoutDate = checkoutDate.toISOString();
+      if (guestType.visitMode === 'day') {
+        const checkoutDate = new Date();
+        checkoutDate.setTime(checkoutDate.getTime() + (guestType.defaultDayVisitHours || 8) * 60 * 60 * 1000);
+        guest.checkoutDate = checkoutDate.toISOString();
+      } else {
+        const checkoutDate = new Date(guest.checkoutDate);
+        const minCheckout = new Date();
+        minCheckout.setDate(minCheckout.getDate() + (guestType.defaultStayDays || 7));
+        if (checkoutDate < minCheckout) {
+          guest.checkoutDate = minCheckout.toISOString();
+        }
+      }
     }
   }
 

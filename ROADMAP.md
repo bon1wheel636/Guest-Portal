@@ -143,35 +143,35 @@ Planned order after PR #40. Each sprint should get its own handoff doc (`docs/SP
 
 | Order | Sprint | Handoff | Status |
 |-------|--------|---------|--------|
-| 1 | Guest types hardening and test coverage | [docs/SPRINT_GUEST_TYPES_HARDENING.md](docs/SPRINT_GUEST_TYPES_HARDENING.md) | In progress |
+| 1 | Guest types hardening and test coverage | [docs/SPRINT_GUEST_TYPES_HARDENING.md](docs/SPRINT_GUEST_TYPES_HARDENING.md) | Complete (PR pending) |
 | 2 | Events UX | [docs/SPRINT_EVENTS_UX.md](docs/SPRINT_EVENTS_UX.md) | Planned |
 | 3 | Admin quality-of-life | _(planned — create `docs/SPRINT_ADMIN_QOL.md`)_ | Planned |
 | 4 | UniFi external portal | _(planned — create `docs/SPRINT_UNIFI_PORTAL.md`)_ | Planned (needs controller details) |
 
 ---
 
-## In progress sprint: guest types hardening and test coverage
+## Completed sprint: guest types hardening and test coverage
 
-**Handoff:** [docs/SPRINT_GUEST_TYPES_HARDENING.md](docs/SPRINT_GUEST_TYPES_HARDENING.md) — read this at the start of a new agent session (avoids relying on full chat context).
+**Handoff:** [docs/SPRINT_GUEST_TYPES_HARDENING.md](docs/SPRINT_GUEST_TYPES_HARDENING.md).
 
-Follow-up from PR #40 review. Harden event-scoped uploads, safe permission fallback, and close remaining integration test gaps. Keep scope tight; do not bundle Events UX, Admin QoL, or UniFi work here.
+Follow-up from PR #40 review. Hardened event-scoped uploads, safe permission fallback, and closed remaining integration test gaps.
 
-- [ ] **Event-scoped file identity (duplicate filename fix)**
+- [x] **Event-scoped file identity (duplicate filename fix)**
   - Guest download/delete APIs address files by `eventSlug` + filename, not filename alone.
   - Gallery (`photo.html`) uses scoped paths from upload list response.
-  - Legacy unscoped `/:filename` route limited to flat stay-folder files or returns error on ambiguity.
-- [ ] **Safe fallback when a guest type is missing**
+  - Legacy unscoped `/:filename` route limited to flat/General files; returns 409 on ambiguity.
+- [x] **Safe fallback when a guest type is missing**
   - Snapshot effective permissions on session write; use restricted fallback when `guestTypeId` is set but type is gone.
   - Legacy sessions without `guestTypeId` still map to default overnight type.
-- [ ] **Remaining integration tests**
+- [x] **Remaining integration tests**
   - Event subfolder upload, legacy session, day-personal registration with event, delete 403, scoped delete with duplicate basenames.
-- [ ] **Admin session type change polish (optional)**
-  - When changing session to overnight, avoid leaving a guest with only minutes of checkout remaining.
-- [ ] **Tests and documentation updates**
+- [x] **Admin session type change polish**
+  - When changing session to overnight, extend checkout to at least `now + defaultStayDays` if checkout is sooner.
+- [x] **Tests and documentation updates**
   - Update `test-suite.sh`, CHANGELOG, ROADMAP, and AGENTS.
 
-**Optional stretch (only if core items finish early):**
-- [ ] Deprecation warning on unscoped guest upload paths
+**Also shipped:**
+- [x] Deprecation header on legacy unscoped guest upload paths
 
 ---
 

@@ -571,8 +571,9 @@ test_guest_uploads_list() {
         return
     fi
     local response=$(curl -s "$BASE_URL/guest/uploads" -H "X-Guest-Token: $GUEST_TOKEN")
-    if [[ "$response" == *'"files"'* ]]; then
+    if [[ "$response" == *'"files"'* ]] && [[ "$response" == *'"eventSlug"'* ]]; then
         GUEST_UPLOAD_FILENAME=$(echo "$response" | grep -o '"name":"[^"]*"' | head -1 | cut -d'"' -f4)
+        GUEST_UPLOAD_EVENT_SLUG=$(echo "$response" | grep -o '"eventSlug":"[^"]*"' | head -1 | cut -d'"' -f4)
         pass "Guest uploads list"
     else
         fail "Guest uploads list" '{"files":[...]}' "$response"
@@ -618,8 +619,10 @@ test_guest_upload_delete() {
         fail "Guest upload delete" "Needs uploaded file" "Missing token or filename"
         return
     fi
+    local slug="${GUEST_UPLOAD_EVENT_SLUG:-General}"
+    local encoded_slug=$(python3 -c "import urllib.parse; print(urllib.parse.quote('$slug'))")
     local encoded_name=$(python3 -c "import urllib.parse; print(urllib.parse.quote('$GUEST_UPLOAD_FILENAME'))")
-    local response=$(curl -s -X DELETE "$BASE_URL/guest/uploads/$encoded_name" \
+    local response=$(curl -s -X DELETE "$BASE_URL/guest/uploads/$encoded_slug/$encoded_name" \
         -H "X-Guest-Token: $GUEST_TOKEN")
     if [[ "$response" == *'"success":true'* ]]; then
         pass "Guest upload delete"
@@ -766,6 +769,179 @@ test_change_guest_type_permissions() {
         fail "Changing guest type updates effective permissions" "business type + uploadPhotos false" "$entry"
     fi
     admin_curl -X DELETE "$BASE_URL/admin-api/guest-sessions/$guest_id" > /dev/null
+}
+
+test_event_subfolder_upload() {
+    require_admin_creds "Event subfolder upload" || return
+    local response=$(curl -s -X POST "$BASE_URL/register" \
+        -H "Content-Type: application/json" \
+        -d '{"name":"Event Upload Guest","room":"Room 1","stayDays":3,"guestTypeId":"type_overnight"}')
+    local token=$(echo "$response" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
+    if [[ -z "$token" ]]; then
+        fail "Event subfolder upload" "registration token" "$response"
+        return
+    fi
+    printf '%s\n' '%PDF-1.4' '1 0 obj <<>> endobj' '%%EOF' > /tmp/test-event-upload.pdf
+    local http_code=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$BASE_URL/upload" \
+        -H "X-Guest-Token: $token" \
+        -F "eventName=Birthday Party" \
+        -F "photos=@/tmp/test-event-upload.pdf;type=application/pdf")
+    rm -f /tmp/test-event-upload.pdf
+    if [[ "$http_code" != "200" ]]; then
+        fail "Event subfolder upload" "200 upload" "$http_code"
+        return
+    fi
+    local admin_uploads=$(admin_curl "$BASE_URL/admin-api/uploads")
+    if [[ "$admin_uploads" == *"Birthday-Party"* ]] || [[ "$admin_uploads" == *'"event":"Birthday Party"'* ]]; then
+        pass "Event subfolder upload lands under event folder"
+    else
+        fail "Event subfolder upload lands under event folder" "Birthday Party event path" "$admin_uploads"
+    fi
+}
+
+test_legacy_session() {
+    require_admin_creds "Legacy session without guestTypeId" || return
+    admin_curl -X POST "$BASE_URL/admin-api/rooms" \
+        -H "Content-Type: application/json" \
+        -d '{"name":"Legacy Room","dashboardUrl":"http://example.com/legacy"}' > /dev/null
+    local reg=$(admin_curl -X POST "$BASE_URL/admin-api/guests" \
+        -H "Content-Type: application/json" \
+        -d '{"name":"Legacy Guest","room":"Legacy Room","stayDays":2}')
+    local guest_id=$(echo "$reg" | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4)
+    local token=$(echo "$reg" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
+    if [[ -z "$guest_id" || -z "$token" ]]; then
+        fail "Legacy session without guestTypeId" "guest id + token" "$reg"
+        return
+    fi
+    local patch=$(admin_curl -X PATCH "$BASE_URL/admin-api/guest-sessions/$guest_id" \
+        -H "Content-Type: application/json" \
+        -d '{"guestTypeId":null}')
+    if [[ "$patch" != *'"success":true'* ]]; then
+        fail "Legacy session without guestTypeId" "clear guestTypeId patch" "$patch"
+        return
+    fi
+    local validate=$(curl -s -X POST "$BASE_URL/guest/validate" \
+        -H "Content-Type: application/json" \
+        -d "{\"token\":\"$token\"}")
+    if [[ "$validate" == *'"uploadPhotos":true'* ]] && [[ "$validate" == *'"guestTypeId":"type_overnight"'* || "$validate" == *'"guestTypeName":"Overnight Guest"'* ]]; then
+        pass "Legacy session maps to overnight permissions"
+    else
+        fail "Legacy session maps to overnight permissions" "overnight uploadPhotos true" "$validate"
+    fi
+    printf '%s\n' '%PDF-1.4' '1 0 obj <<>> endobj' '%%EOF' > /tmp/test-legacy-upload.pdf
+    local upload_code=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$BASE_URL/upload" \
+        -H "X-Guest-Token: $token" \
+        -F "photos=@/tmp/test-legacy-upload.pdf;type=application/pdf")
+    rm -f /tmp/test-legacy-upload.pdf
+    if [[ "$upload_code" == "200" ]]; then
+        pass "Legacy session upload succeeds"
+    else
+        fail "Legacy session upload succeeds" "200" "$upload_code"
+    fi
+    admin_curl -X DELETE "$BASE_URL/admin-api/guest-sessions/$guest_id" > /dev/null
+}
+
+test_day_personal_registration() {
+    local response=$(curl -s -X POST "$BASE_URL/register" \
+        -H "Content-Type: application/json" \
+        -d '{"name":"Day Personal Guest","guestTypeId":"type_day_personal","eventName":"Family BBQ"}')
+    local token=$(echo "$response" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
+    if [[ -z "$token" ]]; then
+        fail "Day personal registration" "registration token" "$response"
+        return
+    fi
+    if [[ "$response" == *'"eventName":"Family BBQ"'* ]] && [[ "$response" == *'"visitMode":"day"'* ]]; then
+        pass "Day personal registration includes event"
+    else
+        fail "Day personal registration includes event" "eventName + day visitMode" "$response"
+        return
+    fi
+    local validate=$(curl -s -X POST "$BASE_URL/guest/validate" \
+        -H "Content-Type: application/json" \
+        -d "{\"token\":\"$token\"}")
+    local checkout_ms=$(echo "$validate" | python3 -c "
+import json, sys
+from datetime import datetime, timezone
+data = json.load(sys.stdin)
+checkout = datetime.fromisoformat(data['guest']['checkoutDate'].replace('Z', '+00:00'))
+now = datetime.now(timezone.utc)
+print(int((checkout - now).total_seconds() / 3600))
+")
+    if [[ "$checkout_ms" -ge 7 && "$checkout_ms" -le 9 ]]; then
+        pass "Day personal checkout is about 8 hours out"
+    else
+        fail "Day personal checkout is about 8 hours out" "7-9 hours" "${checkout_ms}h"
+    fi
+}
+
+test_delete_forbidden() {
+    require_admin_creds "Delete own photos forbidden" || return
+    admin_curl -X POST "$BASE_URL/admin-api/rooms" \
+        -H "Content-Type: application/json" \
+        -d '{"name":"Delete Forbidden Room","dashboardUrl":"http://example.com/delete-forbidden"}' > /dev/null
+    local reg=$(admin_curl -X POST "$BASE_URL/admin-api/guests" \
+        -H "Content-Type: application/json" \
+        -d '{"name":"Delete Forbidden Guest","room":"Delete Forbidden Room","stayDays":2}')
+    local guest_id=$(echo "$reg" | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4)
+    local token=$(echo "$reg" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
+    if [[ -z "$guest_id" || -z "$token" ]]; then
+        fail "Delete own photos forbidden" "guest id + token" "$reg"
+        return
+    fi
+    printf '%s\n' '%PDF-1.4' '1 0 obj <<>> endobj' '%%EOF' > /tmp/test-delete-forbidden.pdf
+    curl -s -X POST "$BASE_URL/upload" \
+        -H "X-Guest-Token: $token" \
+        -F "photos=@/tmp/test-delete-forbidden.pdf;type=application/pdf" > /dev/null
+    rm -f /tmp/test-delete-forbidden.pdf
+    local list=$(curl -s "$BASE_URL/guest/uploads" -H "X-Guest-Token: $token")
+    local filename=$(echo "$list" | grep -o '"name":"[^"]*"' | head -1 | cut -d'"' -f4)
+    local slug=$(echo "$list" | grep -o '"eventSlug":"[^"]*"' | head -1 | cut -d'"' -f4)
+    slug="${slug:-General}"
+    admin_curl -X PATCH "$BASE_URL/admin-api/guest-sessions/$guest_id" \
+        -H "Content-Type: application/json" \
+        -d '{"guestTypeId":"type_day_business"}' > /dev/null
+    local encoded_slug=$(python3 -c "import urllib.parse; print(urllib.parse.quote('$slug'))")
+    local encoded_name=$(python3 -c "import urllib.parse; print(urllib.parse.quote('$filename'))")
+    local http_code=$(curl -s -o /dev/null -w "%{http_code}" -X DELETE "$BASE_URL/guest/uploads/$encoded_slug/$encoded_name" \
+        -H "X-Guest-Token: $token")
+    if [[ "$http_code" == "403" ]]; then
+        pass "Delete own photos forbidden for business type (403)"
+    else
+        fail "Delete own photos forbidden for business type" "403" "$http_code"
+    fi
+    admin_curl -X DELETE "$BASE_URL/admin-api/guest-sessions/$guest_id" > /dev/null
+}
+
+test_scoped_delete() {
+    require_admin_creds "Scoped delete with duplicate basename" || return
+    local reg=$(curl -s -X POST "$BASE_URL/register" \
+        -H "Content-Type: application/json" \
+        -d '{"name":"Scoped Delete Guest","room":"Room 1","stayDays":2,"guestTypeId":"type_overnight"}')
+    local token=$(echo "$reg" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
+    local guest_id=$(echo "$reg" | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4)
+    if [[ -z "$token" || -z "$guest_id" ]]; then
+        fail "Scoped delete with duplicate basename" "token + guest id" "$reg"
+        return
+    fi
+    local folder=$(python3 -c "import datetime,re; name='Scoped Delete Guest'; slug=re.sub(r'\\s+','-',re.sub(r'[^\\w\\s-]','',name))[:100]; print(f'{slug}-$guest_id-{datetime.date.today().isoformat()}')")
+    python3 - <<'PY' "$folder"
+import os, pathlib, sys
+folder = sys.argv[1]
+root = pathlib.Path("uploads") / folder
+(root / "Event-A").mkdir(parents=True, exist_ok=True)
+(root / "Event-B").mkdir(parents=True, exist_ok=True)
+(root / "Event-A" / "duplicate-test.pdf").write_text("%PDF-1.4 duplicate A")
+(root / "Event-B" / "duplicate-test.pdf").write_text("%PDF-1.4 duplicate B")
+PY
+    local encoded_slug=$(python3 -c "import urllib.parse; print(urllib.parse.quote('Event-A'))")
+    local http_code=$(curl -s -o /dev/null -w "%{http_code}" -X DELETE "$BASE_URL/guest/uploads/$encoded_slug/duplicate-test.pdf" \
+        -H "X-Guest-Token: $token")
+    local remaining=$(curl -s "$BASE_URL/guest/uploads" -H "X-Guest-Token: $token")
+    if [[ "$http_code" == "200" ]] && [[ "$remaining" == *"duplicate-test.pdf"* ]] && [[ "$remaining" == *'"eventSlug":"Event-B"'* ]]; then
+        pass "Scoped delete removes only the targeted duplicate basename"
+    else
+        fail "Scoped delete removes only the targeted duplicate basename" "200 delete + Event-B file remains" "delete=$http_code list=$remaining"
+    fi
 }
 
 test_index_hero_markup() {
@@ -955,6 +1131,11 @@ test_validate_permissions
 test_business_day_upload_forbidden
 test_business_day_link_forbidden
 test_change_guest_type_permissions
+test_event_subfolder_upload
+test_legacy_session
+test_day_personal_registration
+test_delete_forbidden
+test_scoped_delete
 test_index_hero_markup
 
 test_index_html

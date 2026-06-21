@@ -74,12 +74,17 @@
       previewUrls.length = 0;
     }
 
-    async function fetchGuestFile(filename) {
-      const res = await fetch(`/guest/uploads/${encodeURIComponent(filename)}`, {
+    function guestUploadPath(file) {
+      const slug = file.eventSlug || 'General';
+      return `/guest/uploads/${encodeURIComponent(slug)}/${encodeURIComponent(file.name)}`;
+    }
+
+    async function fetchGuestFile(file) {
+      const res = await fetch(guestUploadPath(file), {
         headers: { 'X-Guest-Token': guestToken }
       });
       if (!res.ok) {
-        throw new Error(`Unable to load ${filename}`);
+        throw new Error(`Unable to load ${file.name}`);
       }
       return res.blob();
     }
@@ -125,7 +130,7 @@
 
           if (isImageFile(file.name)) {
             try {
-              const blob = await fetchGuestFile(file.name);
+              const blob = await fetchGuestFile(file);
               const url = URL.createObjectURL(blob);
               previewUrls.push(url);
               const img = document.createElement('img');
@@ -152,7 +157,7 @@
           downloadBtn.textContent = 'Download';
           downloadBtn.addEventListener('click', async () => {
             try {
-              const blob = await fetchGuestFile(file.name);
+              const blob = await fetchGuestFile(file);
               const url = URL.createObjectURL(blob);
               const link = document.createElement('a');
               link.href = url;
@@ -178,7 +183,7 @@
 
               deleteBtn.disabled = true;
               try {
-                const res = await fetch(`/guest/uploads/${encodeURIComponent(file.name)}`, {
+                const res = await fetch(guestUploadPath(file), {
                   method: 'DELETE',
                   headers: { 'X-Guest-Token': guestToken }
                 });

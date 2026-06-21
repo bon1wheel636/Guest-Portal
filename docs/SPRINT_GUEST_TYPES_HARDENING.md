@@ -1,6 +1,6 @@
 # Sprint: Guest types hardening and test coverage
 
-**Status:** Planned — handoff complete; implementation not started.
+**Status:** Complete.
 
 Use this document to continue work in a **new agent session** without relying on prior chat history.
 
@@ -187,10 +187,10 @@ Verify scoped gallery delete, restricted fallback (spot-check in admin after dis
 
 ## Sprint checklist (mirror ROADMAP)
 
-- [ ] Handoff doc and ROADMAP/AGENTS updates (planning)
-- [ ] Event-scoped guest upload download/delete paths (`eventSlug` + filename)
-- [ ] Guest gallery uses scoped paths; legacy flat-file route documented
-- [ ] Permission snapshot on session write; safe fallback when type missing
-- [ ] Remaining integration tests (event folder, legacy session, day personal, delete 403, scoped delete)
-- [ ] Admin type change checkout polish (day ↔ overnight)
-- [ ] Tests and documentation updates
+- [x] Handoff doc and ROADMAP/AGENTS updates (planning)
+- [x] Event-scoped guest upload download/delete paths (`eventSlug` + filename)
+- [x] Guest gallery uses scoped paths; legacy flat-file route documented
+- [x] Permission snapshot on session write; safe fallback when type missing
+- [x] Remaining integration tests (event folder, legacy session, day personal, delete 403, scoped delete)
+- [x] Admin type change checkout polish (day ↔ overnight)
+- [x] Tests and documentation updates
