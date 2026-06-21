@@ -187,9 +187,41 @@ function findGuestUploadFile(guestId, filename) {
 }
 
 function publicBaseUrl(req) {
+  if (config.portalPublicUrl) {
+    return config.portalPublicUrl;
+  }
   const proto = (req.get('X-Forwarded-Proto') || req.protocol || 'http').split(',')[0].trim();
   const host = (req.get('X-Forwarded-Host') || req.get('Host') || '').split(',')[0].trim();
   return `${proto}://${host}`;
+}
+
+function normalizePortalPublicUrl(rawUrl) {
+  if (!rawUrl || typeof rawUrl !== 'string' || rawUrl.trim() === '') {
+    return null;
+  }
+  if (rawUrl.length > 500) {
+    throw new Error('Portal URL is too long');
+  }
+
+  let parsed;
+  try {
+    parsed = new URL(rawUrl.trim());
+  } catch {
+    throw new Error('Invalid portal URL format');
+  }
+
+  if (!['http:', 'https:'].includes(parsed.protocol)) {
+    throw new Error('Portal URL must use http or https');
+  }
+
+  parsed.pathname = parsed.pathname.replace(/\/+$/, '');
+  if (parsed.pathname && parsed.pathname !== '/') {
+    throw new Error('Portal URL must be an origin only, such as https://guestportal.example.com');
+  }
+  parsed.pathname = '';
+  parsed.search = '';
+  parsed.hash = '';
+  return parsed.toString().replace(/\/$/, '');
 }
 
 function csvEscape(value) {
@@ -899,6 +931,9 @@ app.get('/admin-api/deployment-status', authMiddleware, async (req, res) => {
     admin: {
       username: config.adminUser || 'admin'
     },
+    portal: {
+      publicUrl: config.portalPublicUrl || null
+    },
     dashboards: {
       checked: checkUrls,
       rooms: dashboardChecks
@@ -1149,6 +1184,25 @@ app.delete('/admin-api/uploads', authMiddleware, (req, res) => {
 // M6: GET endpoint to retrieve current admin timeout setting
 app.get('/admin-api/admin-timeout', authMiddleware, (req, res) => {
   res.json({ minutes: getAdminTimeoutMinutes() });
+});
+
+app.get('/admin-api/portal-url', authMiddleware, (req, res) => {
+  res.json({ portalPublicUrl: config.portalPublicUrl || '' });
+});
+
+app.post('/admin-api/portal-url', authMiddleware, (req, res) => {
+  try {
+    const normalized = normalizePortalPublicUrl(req.body?.portalPublicUrl);
+    if (normalized) {
+      config.portalPublicUrl = normalized;
+    } else {
+      delete config.portalPublicUrl;
+    }
+    saveConfig();
+    res.json({ success: true, portalPublicUrl: config.portalPublicUrl || '' });
+  } catch (err) {
+    res.status(400).send(err.message);
+  }
 });
 
 app.post('/admin-api/background', authMiddleware, bgUpload.single('background'), (req, res) => {

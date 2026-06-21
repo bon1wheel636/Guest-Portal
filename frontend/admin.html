@@ -141,6 +141,13 @@
         <div id="adminAccountInfo" class="admin-card">
           <p class="admin-muted">Loading account details...</p>
         </div>
+        <h2>Portal URL</h2>
+        <form id="portalUrlForm" class="admin-card">
+          <label>Public Portal URL:</label>
+          <input type="text" id="portalPublicUrl" placeholder="https://guestportal.example.com" />
+          <small>Used for QR codes and guest handoff links. Leave blank to use the current request host.</small>
+          <button type="submit">Update Portal URL</button>
+        </form>
         <h2>Session Settings</h2>
         <form id="timeoutForm" class="admin-card">
           <label>Admin Auto-Logout Timeout (minutes):</label>
@@ -184,7 +191,7 @@
       rooms: () => { loadRooms(); loadBackground(); },
       guests: () => { loadGuestSessions(); loadGuests(); loadSessions(); },
       storage: () => { loadUploadPath(); loadPhotos(); },
-      settings: () => { loadAdminAccountInfo(); loadTimeout(); }
+      settings: () => { loadAdminAccountInfo(); loadPortalUrl(); loadTimeout(); }
     };
 
     function switchTab(tabId) {
@@ -333,6 +340,7 @@
       }
       html += `<p><strong>Reverse proxy:</strong> ${escapeHtml(proxyText)} `;
       html += `<small>host: ${escapeHtml(data.reverseProxy.forwardedHost || data.reverseProxy.host || 'unknown')}, proto: ${escapeHtml(data.reverseProxy.forwardedProto || 'none')}</small></p>`;
+      html += `<p><strong>Public portal URL:</strong> <code>${escapeHtml(data.portal?.publicUrl || 'Using current request host')}</code></p>`;
       html += `<p><strong>Admin login:</strong> <code>${escapeHtml(data.admin?.username || 'admin')}</code> <small>(HTTP Basic Auth username for /admin.html)</small></p>`;
       html += `<p><strong>Data:</strong> ${data.data.rooms} room(s), ${data.data.registrationHistory} registration history entr${data.data.registrationHistory === 1 ? 'y' : 'ies'}, ${data.data.activeGuestSessions} active guest session(s), ${data.data.expiredGuestSessions} expired session(s), ${data.data.pendingSessionCodes} pending code(s)</p>`;
       if (data.guestEntry) {
@@ -442,6 +450,33 @@
         }
       } catch {}
     }
+
+    async function loadPortalUrl() {
+      try {
+        const res = await authFetch('/admin-api/portal-url');
+        if (res.ok) {
+          const data = await res.json();
+          document.getElementById('portalPublicUrl').value = data.portalPublicUrl || '';
+        }
+      } catch {}
+    }
+
+    document.getElementById('portalUrlForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const res = await authFetch('/admin-api/portal-url', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ portalPublicUrl: document.getElementById('portalPublicUrl').value.trim() })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        document.getElementById('portalPublicUrl').value = data.portalPublicUrl || '';
+        alert(data.portalPublicUrl ? 'Portal URL updated.' : 'Portal URL cleared; request host will be used.');
+        if (activeTab === 'overview') loadDeploymentStatus(false);
+      } else {
+        alert('Failed: ' + await res.text());
+      }
+    });
 
     document.getElementById('timeoutForm').addEventListener('submit', async (e) => {
       e.preventDefault();

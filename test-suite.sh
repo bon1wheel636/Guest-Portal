@@ -285,6 +285,23 @@ test_deployment_status() {
     else
         fail "Deployment status includes guest entry health" '"guestEntry":{"roomCount":...}' "$response"
     fi
+    if [[ "$response" == *'"portal"'* ]] && [[ "$response" == *'"publicUrl"'* ]]; then
+        pass "Deployment status includes portal URL setting"
+    else
+        fail "Deployment status includes portal URL setting" '"portal":{"publicUrl":...}' "$response"
+    fi
+}
+
+test_portal_url_setting() {
+    require_admin_creds "Portal URL setting" || return
+    local response=$(admin_curl -X POST "$BASE_URL/admin-api/portal-url" \
+        -H "Content-Type: application/json" \
+        -d '{"portalPublicUrl":"https://guestportal.example.test/"}')
+    if [[ "$response" == *'"portalPublicUrl":"https://guestportal.example.test"'* ]]; then
+        pass "Portal URL setting updates"
+    else
+        fail "Portal URL setting updates" "normalized portal URL" "$response"
+    fi
 }
 
 section "5b. GUEST ADMIN MANAGEMENT"
@@ -355,10 +372,10 @@ test_admin_guest_link_code_qr() {
         return
     fi
     local response=$(admin_curl -X POST "$BASE_URL/admin-api/guest-sessions/$ADMIN_GUEST_ID/link-code")
-    if [[ "$response" == *'"code"'* ]] && [[ "$response" == *'"linkUrl"'* ]] && [[ "$response" == *'"qrSvg"'* ]] && [[ "$response" == *"<svg"* ]]; then
+    if [[ "$response" == *'"code"'* ]] && [[ "$response" == *'"linkUrl"'* ]] && [[ "$response" == *'"qrSvg"'* ]] && [[ "$response" == *"<svg"* ]] && [[ "$response" == *"https://guestportal.example.test"* ]]; then
         pass "Admin guest link code includes QR"
     else
-        fail "Admin guest link code includes QR" "code/linkUrl/qrSvg" "$response"
+        fail "Admin guest link code includes QR" "code/linkUrl/qrSvg with configured portal URL" "$response"
     fi
 }
 
@@ -754,6 +771,7 @@ test_revoke_session
 test_admin_setup_required
 test_admin_login_invalid
 test_deployment_status
+test_portal_url_setting
 test_list_guest_history
 test_admin_register_guest
 test_update_guest_room
