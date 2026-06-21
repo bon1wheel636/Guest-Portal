@@ -214,3 +214,18 @@ npm start
 ```
 
 Access the portal at `http://localhost:3000`
+
+---
+
+## License
+
+Guest Portal is **dual-licensed**:
+
+| Use | License |
+|-----|---------|
+| Personal, hobby, homelab, charity, education, and other **non-commercial** use | [PolyForm Noncommercial 1.0.0](LICENSE) — free |
+| **Commercial** use (paid hosting, resale, SaaS, revenue-generating hospitality deployments, etc.) | Separate agreement — see [COMMERCIAL-LICENSE.md](COMMERCIAL-LICENSE.md) |
+
+Commercial licenses may include fees and/or royalties. Without a signed commercial agreement, you may not monetize or commercially deploy this software.
+
+**Note:** Releases published under MIT before this change remain under MIT for those tagged versions.
