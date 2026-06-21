@@ -8,7 +8,22 @@ Use this document to continue work in a **new agent session** without relying on
 
 Improve how hosts and guests work with **event-tagged photos** after PR #40. Add a dedicated **Events** area in the admin panel for full event lifecycle management, and let guests re-tag uploads from the gallery when permitted.
 
-**Depends on:** [docs/SPRINT_GUEST_TYPES_HARDENING.md](SPRINT_GUEST_TYPES_HARDENING.md) — scoped `eventSlug` + filename upload paths should land first so rename/merge/delete can target the correct on-disk folders.
+**Depends on:** [docs/SPRINT_GUEST_TYPES_HARDENING.md](SPRINT_GUEST_TYPES_HARDENING.md) — scoped `eventSlug` + filename upload paths (merged in PR #44).
+
+## Responsive design (required)
+
+All Events UX surfaces must work well on **phones and desktops** (same breakpoints/patterns as existing guest and admin pages).
+
+| Surface | Mobile | Desktop |
+|---------|--------|---------|
+| Admin Events tab | Card/stacked list; full-width actions; touch-friendly buttons | Table or wide card grid; inline actions |
+| Guest gallery re-tag | Compact control per photo; native-friendly selects/dialogs | Same flows with hover-capable affordances where useful |
+| Destructive confirms | Full-width modals or `confirm()`; readable on narrow screens | Same dialogs centered with sensible max-width |
+
+**Implementation notes:**
+- Reuse `styles.css` conventions (existing `@media` blocks in guest gallery and admin layout).
+- No horizontal scroll on 320px-wide viewports for Events tab or re-tag UI.
+- Manual check: registration hero, admin Events tab, and `photo.html` re-tag at phone and laptop widths before merge.
 
 ## Current behavior (after PR #40)
 
@@ -57,6 +72,7 @@ All routes behind existing admin Basic Auth. Reuse `findEventByName`, `sanitizeE
 **UI notes:**
 - Confirm destructive actions (delete, merge).
 - After rename/merge, refresh guest registration datalists and any admin pickers that use event names.
+- **Responsive:** card/stack layout on narrow viewports; table or multi-column layout on desktop (see § Responsive design).
 
 ### 2. Re-tag upload to a different event (guest gallery)
 
@@ -65,6 +81,7 @@ When the guest type allows `tagPhotosToEvent`:
 - `photo.html` offers “Move to event…” (or similar) on each upload.
 - Server moves file between event subfolders under the **same stay folder** using scoped paths from the hardening sprint.
 - Target event must exist in the shared list or be creatable per guest permissions (`createEventNames`).
+- **Responsive:** control must remain usable on mobile (no overflow; tap targets ≥ ~44px where practical).
 
 **API (proposal):** `PATCH /guest/uploads/:eventSlug/:filename` with `{ eventName }` or `{ eventId }`.
 
@@ -96,4 +113,5 @@ Add integration tests for admin event CRUD (create, rename, delete rejection whe
 - [ ] Admin event create, rename, merge, and delete (UI + API)
 - [ ] On-disk subfolder behavior documented and implemented for rename/merge/delete
 - [ ] Guest gallery re-tag upload to a different event
+- [ ] Responsive layouts verified on mobile and desktop
 - [ ] Tests and documentation updates

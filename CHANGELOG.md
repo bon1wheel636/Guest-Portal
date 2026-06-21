@@ -21,6 +21,7 @@ All notable changes to this project will be documented here.
 - Tests for guest types, permission 403s, validate permissions, guest type changes, and hero markup.
 
 ### Changed
+- Hero landing **Register** button now scrolls to the registration form and focuses the first field so the next step is obvious on mobile and desktop.
 - `photo.html` gallery download/delete uses scoped upload URLs from the list response.
 - Admin `PATCH` guest session: clearing `guestTypeId` simulates legacy sessions; switching to overnight extends checkout when it would otherwise expire too soon.
 - Guest type hardening sprint marked complete in ROADMAP; Events UX is next in the sprint queue.

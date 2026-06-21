@@ -545,6 +545,7 @@ a:hover {
 
 body.has-hero-background .container:not(.registration-hidden) {
   margin-top: 2rem;
+  scroll-margin-top: 1rem;
 }
 
 .guest-gallery-group h2 {
