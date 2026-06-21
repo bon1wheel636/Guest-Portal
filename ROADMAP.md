@@ -112,30 +112,28 @@ This roadmap tracks shareable project work only. Keep private domains, NAS hostn
 - [x] **Tests and documentation updates**
   - Update `test-suite.sh`, README, DEPLOY/PROXY if needed, CHANGELOG, ROADMAP, and AGENTS.
 
-## In progress sprint: day visitors, events, and entry landing
+## In progress sprint: guest types, permissions, events, and entry landing
 
 **Handoff:** [docs/SPRINT_DAY_VISITORS.md](docs/SPRINT_DAY_VISITORS.md) — read this at the start of a new agent session (avoids relying on full chat context).
 
-- [ ] **Day visitor registration and types**
-  - Support same-day visitors separately from overnight registered guests.
-  - Visitor types at minimum: **Personal** (friends, family) and **Other** (business, sales, service, etc.).
-  - Admin can create day visitors and change visitor type after registration.
-  - **Personal** day visitors may upload photos; **Other** day visitors may not.
-  - Day visitors should have a shorter session model appropriate to a single visit (exact expiry/TTL TBD during design).
+- [ ] **Configurable guest types (admin)**
+  - Add a Guest Types section in the admin panel to create, edit, enable/disable, and reorder types.
+  - Each type defines visit mode (`overnight` or `day`), session defaults (stay days or day-visit hours), whether room is required, and a **permission checkbox matrix**.
+  - Seed defaults: Overnight Guest, Day Visitor — Personal, Day Visitor — Business (hosts can customize).
+  - Permissions include at minimum: upload photos, delete own photos, view photo gallery, Smart Home controls, link device, extend stay (future), select stay length, select event at registration, tag photos to event, create event names, view welcome hub, sign out.
+  - Gray out visit-mode-inapplicable permissions in the admin UI (e.g. stay length only for overnight).
+- [ ] **Permission enforcement (server + guest UI)**
+  - Resolve effective permissions from the guest's assigned type on every guest-scoped route.
+  - Return permission flags in `/guest/validate` and registration responses so `welcome.html` / `photo.html` hide disabled sections.
+  - Admin can change a guest's type on an active session; CSV and session lists show type and visit mode.
+  - Legacy sessions without a type id map to the default overnight type.
 - [ ] **Event names and photo grouping**
-  - Add an **event name** field (free text), e.g. "Birthday Party", "Graduation", "Retirement".
-  - Day visitors pick or enter an event during registration.
-  - Overnight registered guests can tag uploads to an event when uploading from the welcome hub or gallery.
-  - Allow guests to create a new event name when an existing one is not listed.
-  - Support grouping/tagging photos by event even when no preset event exists.
-  - Drive upload folder structure from visitor + event (e.g. event-scoped subfolders under each guest/visitor stay folder) so admin storage browsing matches portal organization.
-  - Admin and guests can add event names for now; no calendar integration in the first version.
+  - Event name field (free text) with guest/admin creation when permitted by type.
+  - Day types may require event at registration; overnight types tag at upload when allowed.
+  - Event-scoped upload subfolders under each stay folder; gallery groups by event.
 - [ ] **Background hero landing page**
-  - When an admin background image is set, show it prominently on the guest entry landing page (`/`, `index.html`).
-  - Replace the current full registration form-first layout with a **hero view**: background image visible, minimal chrome, and a **Register** button centered mid-to-low on the screen.
-  - Tapping the button opens registration (inline expand, modal, or navigate to the existing registration form).
-  - Preserve device link code entry for returning sessions; keep the hero usable on phones and tablets.
-  - Unregistered visitors should see the hero; registered guests continue to land on `welcome.html` as today.
+  - When a background image is set, `/` (`index.html`) shows a hero with a mid-to-low Register button; device link entry preserved.
+  - Registration from hero uses guest type picker and permission-driven fields.
 - [ ] **Tests and documentation updates**
   - Update `test-suite.sh`, README, CHANGELOG, ROADMAP, and AGENTS.
 
