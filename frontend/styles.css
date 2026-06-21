@@ -482,3 +482,98 @@ a:hover {
     flex-direction: row;
   }
 }
+
+/* Hero landing */
+.hero-view {
+  position: relative;
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.hero-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.35);
+}
+
+.hero-content {
+  position: relative;
+  z-index: 1;
+  text-align: center;
+  color: #fff;
+  padding: 2rem;
+  max-width: 420px;
+}
+
+.hero-title {
+  color: #fff;
+  font-size: 2.5rem;
+  margin-bottom: 2rem;
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.45);
+}
+
+.hero-register-btn {
+  min-width: 180px;
+  font-size: 1.1rem;
+  margin-top: 0;
+}
+
+.hero-secondary {
+  margin-top: 2.5rem;
+}
+
+.hero-code-form {
+  display: flex;
+  gap: 0.5rem;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.hero-code-form input {
+  min-width: 160px;
+}
+
+.hero-code-form button {
+  margin-top: 0;
+}
+
+.registration-hidden {
+  display: none !important;
+}
+
+body.has-hero-background .container:not(.registration-hidden) {
+  margin-top: 2rem;
+}
+
+.guest-gallery-group h2 {
+  font-size: 1.1rem;
+  margin: 1.5rem 0 0.5rem;
+  color: #444;
+}
+
+.admin-permissions-fieldset {
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  padding: 1rem;
+  margin-top: 1rem;
+}
+
+.admin-permissions-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 0.5rem 1rem;
+}
+
+.admin-permission-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.4rem;
+  font-weight: normal;
+}
+
+.admin-permission-disabled {
+  opacity: 0.55;
+}
+

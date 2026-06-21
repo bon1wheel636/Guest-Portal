@@ -7,42 +7,188 @@
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-  <div class="container">
+  <div id="heroView" class="hero-view" hidden>
+    <div class="hero-overlay"></div>
+    <div class="hero-content">
+      <h1 class="hero-title">Welcome</h1>
+      <button type="button" id="heroRegisterBtn" class="hero-register-btn">Register</button>
+      <div class="hero-secondary">
+        <p>Have a device link code?</p>
+        <form id="heroCodeForm" class="hero-code-form">
+          <input type="text" id="heroSessionCode" placeholder="Enter Code" required />
+          <button type="submit">Link Device</button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <div class="container" id="mainContainer">
     <h1>Welcome to the Guest Portal</h1>
     <form id="registrationForm">
+      <label for="guestType">Guest Type</label>
+      <select id="guestType" name="guestType" required>
+        <option value="" disabled selected>Loading guest types...</option>
+      </select>
+      <p id="guestTypeDescription" class="guest-muted"></p>
+
       <label for="name">Your Name</label>
       <input type="text" id="name" name="name" required />
-      <label for="room">Select Your Room</label>
-      <select id="room" name="room" required>
-        <option value="" disabled selected>Select a room</option>
-      </select>
-      <small id="roomLoadError" class="guest-error" hidden>Unable to load rooms. Please refresh the page or ask your host for help.</small>
-      <label for="stayDays">Length of Stay (days)</label>
-      <input type="number" id="stayDays" name="stayDays" min="1" max="30" value="7" required />
-      <small>How many days will you be staying? (1-30 days)</small>
+
+      <div id="roomField">
+        <label for="room">Select Your Room</label>
+        <select id="room" name="room">
+          <option value="" disabled selected>Select a room</option>
+        </select>
+        <small id="roomLoadError" class="guest-error" hidden>Unable to load rooms. Please refresh the page or ask your host for help.</small>
+      </div>
+
+      <div id="stayDaysField">
+        <label for="stayDays">Length of Stay (days)</label>
+        <input type="number" id="stayDays" name="stayDays" min="1" max="30" value="7" />
+        <small>How many days will you be staying? (1-30 days)</small>
+      </div>
+
+      <div id="eventField" hidden>
+        <label for="eventName">Event</label>
+        <input type="text" id="eventName" name="eventName" list="eventSuggestions" placeholder="Birthday Party, Reunion, etc." />
+        <datalist id="eventSuggestions"></datalist>
+        <small>Select an existing event or enter a new one if permitted.</small>
+      </div>
+
       <button type="submit">Register</button>
+      <button type="button" id="backToHeroBtn" class="btn-secondary" hidden>Back</button>
     </form>
 
-    <hr style="margin: 20px 0;" />
+    <hr style="margin: 20px 0;" id="codeDivider" />
 
-    <p>Have a device link code? Enter it to join an existing session:</p>
-    <form id="codeForm">
-      <input type="text" id="sessionCode" placeholder="Enter Code" required />
-      <button type="submit">Link Device</button>
-    </form>
+    <div id="linkCodeSection">
+      <p>Have a device link code? Enter it to join an existing session:</p>
+      <form id="codeForm">
+        <input type="text" id="sessionCode" placeholder="Enter Code" required />
+        <button type="submit">Link Device</button>
+      </form>
+    </div>
   </div>
 
   <script>
-    // Load background image if set
-    fetch('/guest/background').then(res => res.json()).then(data => {
+    let guestTypes = [];
+    let events = [];
+    let hasBackground = false;
+
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    function applyBackground(data) {
       if (data.backgroundImage) {
+        hasBackground = true;
+        document.body.classList.add('has-hero-background');
         document.body.style.backgroundImage = `url('${data.backgroundImage}')`;
         document.body.style.backgroundSize = 'cover';
         document.body.style.backgroundPosition = 'center';
         document.body.style.backgroundRepeat = 'no-repeat';
         document.body.style.backgroundAttachment = 'fixed';
+        document.getElementById('heroView').hidden = false;
+        document.getElementById('mainContainer').classList.add('registration-hidden');
+        document.getElementById('backToHeroBtn').hidden = false;
       }
-    }).catch(() => {});
+    }
+
+    fetch('/guest/background').then(res => res.json()).then(applyBackground).catch(() => {});
+
+    function showRegistrationForm() {
+      document.getElementById('heroView').hidden = true;
+      document.getElementById('mainContainer').classList.remove('registration-hidden');
+    }
+
+    function showHeroView() {
+      if (!hasBackground) return;
+      document.getElementById('heroView').hidden = false;
+      document.getElementById('mainContainer').classList.add('registration-hidden');
+    }
+
+    document.getElementById('heroRegisterBtn')?.addEventListener('click', showRegistrationForm);
+    document.getElementById('backToHeroBtn')?.addEventListener('click', showHeroView);
+
+    function getSelectedGuestType() {
+      const id = document.getElementById('guestType').value;
+      return guestTypes.find(type => type.id === id) || null;
+    }
+
+    function updateRegistrationFields() {
+      const type = getSelectedGuestType();
+      const roomField = document.getElementById('roomField');
+      const stayDaysField = document.getElementById('stayDaysField');
+      const eventField = document.getElementById('eventField');
+      const roomSelect = document.getElementById('room');
+      const stayDaysInput = document.getElementById('stayDays');
+      const eventInput = document.getElementById('eventName');
+      const description = document.getElementById('guestTypeDescription');
+
+      if (!type) {
+        description.textContent = '';
+        return;
+      }
+
+      description.textContent = type.description || '';
+
+      roomField.hidden = !type.requiresRoom;
+      roomSelect.required = Boolean(type.requiresRoom);
+
+      stayDaysField.hidden = !type.permissions.selectStayLength;
+      stayDaysInput.required = Boolean(type.permissions.selectStayLength);
+      if (type.defaultStayDays) {
+        stayDaysInput.value = type.defaultStayDays;
+      }
+
+      eventField.hidden = !type.permissions.selectEventAtRegistration;
+      eventInput.required = Boolean(type.permissions.selectEventAtRegistration);
+    }
+
+    async function loadGuestTypes() {
+      const select = document.getElementById('guestType');
+      try {
+        const res = await fetch('/guest/guest-types');
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        guestTypes = await res.json();
+        select.innerHTML = '';
+        if (guestTypes.length === 0) {
+          select.innerHTML = '<option value="" disabled selected>No guest types available</option>';
+          select.disabled = true;
+          return;
+        }
+        guestTypes.forEach(type => {
+          const opt = document.createElement('option');
+          opt.value = type.id;
+          opt.textContent = type.name;
+          select.appendChild(opt);
+        });
+        updateRegistrationFields();
+      } catch (err) {
+        console.error('Failed to load guest types:', err);
+        select.innerHTML = '<option value="" disabled selected>Unable to load guest types</option>';
+        select.disabled = true;
+      }
+    }
+
+    async function loadEvents() {
+      try {
+        const res = await fetch('/guest/events');
+        if (!res.ok) return;
+        events = await res.json();
+        const datalist = document.getElementById('eventSuggestions');
+        datalist.innerHTML = '';
+        events.forEach(event => {
+          const opt = document.createElement('option');
+          opt.value = event.name;
+          datalist.appendChild(opt);
+        });
+      } catch (err) {
+        console.error('Failed to load events:', err);
+      }
+    }
 
     async function loadRooms() {
       const roomSelect = document.getElementById('room');
@@ -50,14 +196,10 @@
 
       try {
         const res = await fetch('/guest/rooms');
-        if (!res.ok) {
-          throw new Error(`HTTP ${res.status}`);
-        }
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
         const rooms = await res.json();
-        if (!Array.isArray(rooms)) {
-          throw new Error('Invalid room list');
-        }
+        roomSelect.querySelectorAll('option:not([value=""])').forEach(opt => opt.remove());
 
         rooms.forEach(r => {
           const opt = document.createElement('option');
@@ -70,6 +212,9 @@
           roomLoadError.hidden = false;
           roomLoadError.textContent = 'No rooms are configured yet. Please ask your host to add rooms in the admin panel.';
           roomSelect.disabled = true;
+        } else {
+          roomLoadError.hidden = true;
+          roomSelect.disabled = false;
         }
       } catch (err) {
         console.error('Failed to load rooms:', err);
@@ -77,16 +222,23 @@
         roomSelect.disabled = true;
       }
     }
+
+    document.getElementById('guestType').addEventListener('change', updateRegistrationFields);
+    loadGuestTypes();
+    loadEvents();
     loadRooms();
 
     const linkCodeParam = new URLSearchParams(window.location.search).get('linkCode');
     if (linkCodeParam) {
-      const sessionCodeInput = document.getElementById('sessionCode');
-      sessionCodeInput.value = linkCodeParam.trim().toUpperCase();
-      sessionCodeInput.focus();
+      const code = linkCodeParam.trim().toUpperCase();
+      document.getElementById('sessionCode').value = code;
+      document.getElementById('heroSessionCode').value = code;
+      if (hasBackground) {
+        showRegistrationForm();
+      }
+      document.getElementById('sessionCode').focus();
     }
 
-    // Check for existing guest token and validate
     async function checkExistingSession() {
       const guestToken = localStorage.getItem('guestToken');
       if (guestToken) {
@@ -99,13 +251,11 @@
           if (res.ok) {
             const data = await res.json();
             if (data.valid) {
-              // Update local data and redirect
               localStorage.setItem('guestData', JSON.stringify(data.guest));
               window.location.href = 'welcome.html';
               return;
             }
           }
-          // Token invalid or expired, clear it
           localStorage.removeItem('guestToken');
           localStorage.removeItem('guestData');
         } catch (e) {
@@ -113,51 +263,14 @@
         }
       }
 
-      // Also check legacy guestData
       const guestData = JSON.parse(localStorage.getItem('guestData'));
-      if (guestData?.name && guestData?.room && !guestToken) {
-        // Legacy session without token - let them continue but they won't have persistence
+      if (guestData?.name && !guestToken) {
         window.location.href = 'welcome.html';
       }
     }
     checkExistingSession();
 
-    // Registration form
-    document.getElementById('registrationForm').addEventListener('submit', async function (e) {
-      e.preventDefault();
-      const name = document.getElementById('name').value.trim();
-      const room = document.getElementById('room').value;
-      const stayDays = parseInt(document.getElementById('stayDays').value) || 7;
-
-      try {
-        const res = await fetch('/register', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name, room, stayDays })
-        });
-
-        if (res.ok) {
-          const data = await res.json();
-          // Store token for persistent sessions
-          localStorage.setItem('guestToken', data.token);
-          localStorage.setItem('guestData', JSON.stringify(data.guest));
-          sessionStorage.setItem('guestArrival', 'new');
-          sessionStorage.setItem('showTutorial', '1');
-          window.location.href = 'welcome.html';
-        } else {
-          alert('Registration failed. Please try again.');
-        }
-      } catch (err) {
-        alert('Error: ' + err.message);
-      }
-    });
-
-    // Device link code form
-    document.getElementById('codeForm').addEventListener('submit', async function (e) {
-      e.preventDefault();
-      const code = document.getElementById('sessionCode').value.trim().toUpperCase();
-
-      // Try device link first
+    async function linkDeviceWithCode(code) {
       try {
         const res = await fetch('/guest/link-device', {
           method: 'POST',
@@ -171,22 +284,82 @@
           localStorage.setItem('guestData', JSON.stringify(data.guest));
           sessionStorage.setItem('guestArrival', 'linked');
           window.location.href = 'welcome.html';
-          return;
+          return true;
         }
       } catch (e) {}
 
-      // Fall back to legacy session code
       try {
         const res = await fetch(`/session/${code}`);
         if (res.ok) {
           const guest = await res.json();
           localStorage.setItem('guestData', JSON.stringify(guest));
           window.location.href = 'welcome.html';
-          return;
+          return true;
         }
       } catch (e) {}
 
-      alert("Invalid or expired code.");
+      alert('Invalid or expired code.');
+      return false;
+    }
+
+    document.getElementById('registrationForm').addEventListener('submit', async function (e) {
+      e.preventDefault();
+      const type = getSelectedGuestType();
+      if (!type) {
+        alert('Please select a guest type.');
+        return;
+      }
+
+      const payload = {
+        name: document.getElementById('name').value.trim(),
+        guestTypeId: type.id
+      };
+
+      if (type.requiresRoom) {
+        payload.room = document.getElementById('room').value;
+      } else {
+        const room = document.getElementById('room').value;
+        if (room) payload.room = room;
+      }
+
+      if (type.permissions.selectStayLength) {
+        payload.stayDays = parseInt(document.getElementById('stayDays').value, 10) || type.defaultStayDays || 7;
+      }
+
+      if (type.permissions.selectEventAtRegistration) {
+        payload.eventName = document.getElementById('eventName').value.trim();
+      }
+
+      try {
+        const res = await fetch('/register', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+
+        if (res.ok) {
+          const data = await res.json();
+          localStorage.setItem('guestToken', data.token);
+          localStorage.setItem('guestData', JSON.stringify(data.guest));
+          sessionStorage.setItem('guestArrival', 'new');
+          sessionStorage.setItem('showTutorial', '1');
+          window.location.href = 'welcome.html';
+        } else {
+          alert('Registration failed: ' + (await res.text()));
+        }
+      } catch (err) {
+        alert('Error: ' + err.message);
+      }
+    });
+
+    document.getElementById('codeForm').addEventListener('submit', async function (e) {
+      e.preventDefault();
+      await linkDeviceWithCode(document.getElementById('sessionCode').value.trim().toUpperCase());
+    });
+
+    document.getElementById('heroCodeForm')?.addEventListener('submit', async function (e) {
+      e.preventDefault();
+      await linkDeviceWithCode(document.getElementById('heroSessionCode').value.trim().toUpperCase());
     });
   </script>
 </body>

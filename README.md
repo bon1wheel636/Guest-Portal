@@ -8,11 +8,13 @@ A self-hosted, mobile-friendly landing portal for guest Wi-Fi networks. Provides
 
 ## ✨ Features
 
-- 🛏️ Guest registration with room selection and checkout date
+- 🛏️ Guest registration with configurable **guest types** (overnight and day visitors) and permission-driven fields
+- 🏷️ Event-scoped photo folders and gallery grouping by event name
 - 📸 Photo uploads saved per guest with separate folders
-- 🔁 Persistent guest sessions (1-30 days, default 7)
+- 🔁 Persistent guest sessions (overnight: 1–30 days; day visits: configurable hours)
 - 📱 Device linking - guests can add phones, tablets, and laptops to their session with text codes or QR codes
 - 🔐 Admin panel with:
+  - Guest type configuration (visit mode, permissions, defaults)
   - Room management
   - Guest session management (view devices, extend stays, check out)
   - Admin-generated guest link codes and QR codes
@@ -24,7 +26,7 @@ A self-hosted, mobile-friendly landing portal for guest Wi-Fi networks. Provides
   - Session settings (device link code expiration)
   - View & revoke session codes
 - 👥 Multiple guests per room support
-- 🖼️ Customizable landing page background
+- 🖼️ Customizable landing page background with optional hero entry view
 - 🔐 Secure uploads directory with Basic Auth
 - 💾 NAS storage support (NFS/SMB mount for guest photos)
 - 🧱 Proxmox LXC container deployment

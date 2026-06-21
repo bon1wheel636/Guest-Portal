@@ -19,7 +19,7 @@
 
     <section class="guest-section">
       <div id="galleryStatus" class="guest-muted">Loading your uploads...</div>
-      <ul id="photoList" class="guest-gallery"></ul>
+      <div id="galleryGroups"></div>
       <p><a href="welcome.html">Upload photos &amp; files on the Welcome page</a></p>
     </section>
 
@@ -37,13 +37,14 @@
       }
     }).catch(() => {});
 
-    const guestData = JSON.parse(localStorage.getItem('guestData')) || {};
+    let guestData = JSON.parse(localStorage.getItem('guestData')) || {};
     const guestToken = localStorage.getItem('guestToken');
+    let permissions = guestData.permissions || {};
     const guestNameSpan = document.getElementById('guestName');
     const greeting = document.getElementById('guestGreeting');
     const checkoutInfo = document.getElementById('checkoutInfo');
     const galleryStatus = document.getElementById('galleryStatus');
-    const photoList = document.getElementById('photoList');
+    const galleryGroups = document.getElementById('galleryGroups');
     const previewUrls = [];
 
     function escapeHtml(text) {
@@ -83,9 +84,21 @@
       return res.blob();
     }
 
+    function groupFilesByEvent(files) {
+      const groups = new Map();
+      files.forEach(file => {
+        const eventName = file.event || 'General';
+        if (!groups.has(eventName)) {
+          groups.set(eventName, []);
+        }
+        groups.get(eventName).push(file);
+      });
+      return groups;
+    }
+
     async function renderGallery(files) {
       revokePreviewUrls();
-      photoList.innerHTML = '';
+      galleryGroups.innerHTML = '';
 
       if (files.length === 0) {
         galleryStatus.textContent = 'No uploads yet. Add photos or files from the Welcome page.';
@@ -93,88 +106,102 @@
       }
 
       galleryStatus.textContent = `${files.length} file${files.length === 1 ? '' : 's'} uploaded during your stay.`;
+      const groups = groupFilesByEvent(files);
 
-      for (const file of files) {
-        const item = document.createElement('li');
-        item.className = 'guest-gallery-item';
-        item.dataset.filename = file.name;
+      for (const [eventName, eventFiles] of groups.entries()) {
+        const section = document.createElement('section');
+        section.className = 'guest-gallery-group';
+        section.innerHTML = `<h2>${escapeHtml(eventName)}</h2>`;
+        const list = document.createElement('ul');
+        list.className = 'guest-gallery';
 
-        const preview = document.createElement('div');
-        preview.className = 'guest-gallery-preview';
+        for (const file of eventFiles) {
+          const item = document.createElement('li');
+          item.className = 'guest-gallery-item';
+          item.dataset.filename = file.name;
 
-        if (isImageFile(file.name)) {
-          try {
-            const blob = await fetchGuestFile(file.name);
-            const url = URL.createObjectURL(blob);
-            previewUrls.push(url);
-            const img = document.createElement('img');
-            img.src = url;
-            img.alt = file.name;
-            preview.appendChild(img);
-          } catch (err) {
-            preview.textContent = 'Preview unavailable';
+          const preview = document.createElement('div');
+          preview.className = 'guest-gallery-preview';
+
+          if (isImageFile(file.name)) {
+            try {
+              const blob = await fetchGuestFile(file.name);
+              const url = URL.createObjectURL(blob);
+              previewUrls.push(url);
+              const img = document.createElement('img');
+              img.src = url;
+              img.alt = file.name;
+              preview.appendChild(img);
+            } catch (err) {
+              preview.textContent = 'Preview unavailable';
+            }
+          } else {
+            preview.textContent = fileExtension(file.name).toUpperCase().replace('.', '') || 'FILE';
           }
-        } else {
-          preview.textContent = fileExtension(file.name).toUpperCase().replace('.', '') || 'FILE';
+
+          const meta = document.createElement('div');
+          meta.className = 'guest-gallery-meta';
+          meta.innerHTML = `<strong>${escapeHtml(file.name)}</strong><br><span class="guest-muted">${formatBytes(file.size)}</span>`;
+
+          const actions = document.createElement('div');
+          actions.className = 'guest-gallery-actions';
+
+          const downloadBtn = document.createElement('button');
+          downloadBtn.type = 'button';
+          downloadBtn.className = 'btn-secondary';
+          downloadBtn.textContent = 'Download';
+          downloadBtn.addEventListener('click', async () => {
+            try {
+              const blob = await fetchGuestFile(file.name);
+              const url = URL.createObjectURL(blob);
+              const link = document.createElement('a');
+              link.href = url;
+              link.download = file.name;
+              link.click();
+              URL.revokeObjectURL(url);
+            } catch (err) {
+              alert(err.message);
+            }
+          });
+
+          actions.appendChild(downloadBtn);
+
+          if (permissions.deleteOwnPhotos) {
+            const deleteBtn = document.createElement('button');
+            deleteBtn.type = 'button';
+            deleteBtn.className = 'btn-danger-inline';
+            deleteBtn.textContent = 'Delete';
+            deleteBtn.addEventListener('click', async () => {
+              if (!confirm(`Delete ${file.name}? This cannot be undone.`)) {
+                return;
+              }
+
+              deleteBtn.disabled = true;
+              try {
+                const res = await fetch(`/guest/uploads/${encodeURIComponent(file.name)}`, {
+                  method: 'DELETE',
+                  headers: { 'X-Guest-Token': guestToken }
+                });
+                if (!res.ok) {
+                  throw new Error(await res.text() || `HTTP ${res.status}`);
+                }
+                await loadGallery();
+              } catch (err) {
+                alert('Delete failed: ' + err.message);
+                deleteBtn.disabled = false;
+              }
+            });
+            actions.appendChild(deleteBtn);
+          }
+
+          item.appendChild(preview);
+          item.appendChild(meta);
+          item.appendChild(actions);
+          list.appendChild(item);
         }
 
-        const meta = document.createElement('div');
-        meta.className = 'guest-gallery-meta';
-        meta.innerHTML = `<strong>${escapeHtml(file.name)}</strong><br><span class="guest-muted">${formatBytes(file.size)}</span>`;
-
-        const actions = document.createElement('div');
-        actions.className = 'guest-gallery-actions';
-
-        const downloadBtn = document.createElement('button');
-        downloadBtn.type = 'button';
-        downloadBtn.className = 'btn-secondary';
-        downloadBtn.textContent = 'Download';
-        downloadBtn.addEventListener('click', async () => {
-          try {
-            const blob = await fetchGuestFile(file.name);
-            const url = URL.createObjectURL(blob);
-            const link = document.createElement('a');
-            link.href = url;
-            link.download = file.name;
-            link.click();
-            URL.revokeObjectURL(url);
-          } catch (err) {
-            alert(err.message);
-          }
-        });
-
-        const deleteBtn = document.createElement('button');
-        deleteBtn.type = 'button';
-        deleteBtn.className = 'btn-danger-inline';
-        deleteBtn.textContent = 'Delete';
-        deleteBtn.addEventListener('click', async () => {
-          if (!confirm(`Delete ${file.name}? This cannot be undone.`)) {
-            return;
-          }
-
-          deleteBtn.disabled = true;
-          try {
-            const res = await fetch(`/guest/uploads/${encodeURIComponent(file.name)}`, {
-              method: 'DELETE',
-              headers: { 'X-Guest-Token': guestToken }
-            });
-            if (!res.ok) {
-              throw new Error(await res.text() || `HTTP ${res.status}`);
-            }
-            await loadGallery();
-          } catch (err) {
-            alert('Delete failed: ' + err.message);
-            deleteBtn.disabled = false;
-          }
-        });
-
-        actions.appendChild(downloadBtn);
-        actions.appendChild(deleteBtn);
-
-        item.appendChild(preview);
-        item.appendChild(meta);
-        item.appendChild(actions);
-        photoList.appendChild(item);
+        section.appendChild(list);
+        galleryGroups.appendChild(section);
       }
     }
 
@@ -189,6 +216,10 @@
         const res = await fetch('/guest/uploads', {
           headers: { 'X-Guest-Token': guestToken }
         });
+        if (res.status === 403) {
+          window.location.href = 'welcome.html';
+          return;
+        }
         if (!res.ok) {
           throw new Error(await res.text() || `HTTP ${res.status}`);
         }
@@ -199,19 +230,56 @@
       }
     }
 
-    if (guestData.name && guestData.room) {
-      greeting.innerHTML = `Photos for <strong>${escapeHtml(guestData.name)}</strong> — room <strong>${escapeHtml(guestData.room)}</strong>.`;
+    async function initPhotoPage() {
+      if (!guestData.name) {
+        window.location.href = 'index.html';
+        return;
+      }
+
+      if (guestToken) {
+        try {
+          const res = await fetch('/guest/validate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ token: guestToken })
+          });
+          if (res.ok) {
+            const data = await res.json();
+            if (data.valid) {
+              guestData = data.guest;
+              permissions = guestData.permissions || {};
+              localStorage.setItem('guestData', JSON.stringify(guestData));
+            }
+          }
+        } catch (err) {
+          console.error('Token validation failed:', err);
+        }
+      }
+
+      if (!permissions.viewPhotoGallery) {
+        window.location.href = 'welcome.html';
+        return;
+      }
+
+      greeting.innerHTML = guestData.room
+        ? `Photos for <strong>${escapeHtml(guestData.name)}</strong> — room <strong>${escapeHtml(guestData.room)}</strong>.`
+        : `Photos for <strong>${escapeHtml(guestData.name)}</strong>.`;
       guestNameSpan.textContent = guestData.name;
 
       if (guestData.checkoutDate) {
         const checkout = new Date(guestData.checkoutDate);
-        const daysLeft = Math.ceil((checkout - new Date()) / (1000 * 60 * 60 * 24));
-        checkoutInfo.innerHTML = `Your session is active until <strong>${checkout.toLocaleDateString()}</strong> (${daysLeft} days remaining)`;
+        const isDayVisit = guestData.visitMode === 'day';
+        const remainingMs = checkout - new Date();
+        if (isDayVisit) {
+          const hoursLeft = Math.max(1, Math.ceil(remainingMs / (1000 * 60 * 60)));
+          checkoutInfo.innerHTML = `Your session is active until <strong>${checkout.toLocaleString()}</strong> (${hoursLeft} hour${hoursLeft === 1 ? '' : 's'} remaining)`;
+        } else {
+          const daysLeft = Math.ceil(remainingMs / (1000 * 60 * 60 * 24));
+          checkoutInfo.innerHTML = `Your session is active until <strong>${checkout.toLocaleDateString()}</strong> (${daysLeft} days remaining)`;
+        }
       }
 
       loadGallery();
-    } else {
-      window.location.href = 'index.html';
     }
 
     document.getElementById('reset').addEventListener('click', function (e) {
@@ -227,6 +295,7 @@
     });
 
     window.addEventListener('pagehide', revokePreviewUrls);
+    initPhotoPage();
   </script>
 </body>
 </html>

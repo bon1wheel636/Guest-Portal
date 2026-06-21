@@ -26,11 +26,115 @@ const URL_CHECK_TIMEOUT_MS = 2500;
 
 // H2: Use JSON.parse(fs.readFileSync()) instead of require() to avoid module caching
 const config = fs.existsSync(configPath) ? JSON.parse(fs.readFileSync(configPath, 'utf8')) : {};
-const guestData = fs.existsSync(dbPath) ? JSON.parse(fs.readFileSync(dbPath, 'utf8')) : { rooms: [], guests: [] };
+const guestData = fs.existsSync(dbPath) ? JSON.parse(fs.readFileSync(dbPath, 'utf8')) : { rooms: [], guests: [], events: [], guestTypes: [] };
 let sessionCodes = fs.existsSync(sessionFile) ? JSON.parse(fs.readFileSync(sessionFile, 'utf8')) : {};
 let guestTokens = fs.existsSync(guestTokensFile) ? JSON.parse(fs.readFileSync(guestTokensFile, 'utf8')) : {};
 const packageJsonPath = path.join(__dirname, 'package.json');
 const packageInfo = fs.existsSync(packageJsonPath) ? JSON.parse(fs.readFileSync(packageJsonPath, 'utf8')) : {};
+
+const DEFAULT_GUEST_TYPES = [
+  {
+    id: 'type_overnight',
+    name: 'Overnight Guest',
+    description: 'Staying one or more nights',
+    visitMode: 'overnight',
+    defaultStayDays: 7,
+    requiresRoom: true,
+    enabled: true,
+    permissions: {
+      uploadPhotos: true,
+      deleteOwnPhotos: true,
+      viewPhotoGallery: true,
+      smartHomeControls: true,
+      linkDevice: true,
+      extendStay: false,
+      selectStayLength: true,
+      selectEventAtRegistration: false,
+      tagPhotosToEvent: true,
+      createEventNames: true,
+      viewWelcomeHub: true,
+      signOut: true
+    }
+  },
+  {
+    id: 'type_day_personal',
+    name: 'Day Visitor — Personal',
+    description: 'Friends and family visiting for the day',
+    visitMode: 'day',
+    defaultDayVisitHours: 8,
+    requiresRoom: false,
+    enabled: true,
+    permissions: {
+      uploadPhotos: true,
+      deleteOwnPhotos: true,
+      viewPhotoGallery: true,
+      smartHomeControls: false,
+      linkDevice: true,
+      extendStay: false,
+      selectStayLength: false,
+      selectEventAtRegistration: true,
+      tagPhotosToEvent: true,
+      createEventNames: true,
+      viewWelcomeHub: true,
+      signOut: true
+    }
+  },
+  {
+    id: 'type_day_business',
+    name: 'Day Visitor — Business',
+    description: 'Sales, service, or business appointments',
+    visitMode: 'day',
+    defaultDayVisitHours: 4,
+    requiresRoom: false,
+    enabled: true,
+    permissions: {
+      uploadPhotos: false,
+      deleteOwnPhotos: false,
+      viewPhotoGallery: false,
+      smartHomeControls: false,
+      linkDevice: false,
+      extendStay: false,
+      selectStayLength: false,
+      selectEventAtRegistration: false,
+      tagPhotosToEvent: false,
+      createEventNames: false,
+      viewWelcomeHub: true,
+      signOut: true
+    }
+  }
+];
+
+const PERMISSION_KEYS = [
+  'uploadPhotos',
+  'deleteOwnPhotos',
+  'viewPhotoGallery',
+  'smartHomeControls',
+  'linkDevice',
+  'extendStay',
+  'selectStayLength',
+  'selectEventAtRegistration',
+  'tagPhotosToEvent',
+  'createEventNames',
+  'viewWelcomeHub',
+  'signOut'
+];
+
+function ensureStorageDefaults() {
+  let changed = false;
+  if (!Array.isArray(guestData.events)) {
+    guestData.events = [];
+    changed = true;
+  }
+  if (!Array.isArray(guestData.guestTypes) || guestData.guestTypes.length === 0) {
+    guestData.guestTypes = JSON.parse(JSON.stringify(DEFAULT_GUEST_TYPES));
+    changed = true;
+  }
+  if (changed) {
+    saveGuestData();
+  }
+}
+
+ensureStorageDefaults();
 
 // ─── Utility Functions ──────────────────────────────────────────────────────
 
@@ -115,14 +219,198 @@ function getGuestSession(token) {
   return { guest };
 }
 
-function validateGuestNameAndRoom(name, room) {
-  if (!name || !room || typeof name !== 'string' || typeof room !== 'string') {
-    return 'Invalid name or room';
+function validateGuestName(name) {
+  if (!name || typeof name !== 'string') {
+    return 'Invalid name';
   }
-  if (/[^\w\s]/.test(name) || /[^\w\s]/.test(room)) {
-    return 'Invalid name or room';
+  if (/[^\w\s]/.test(name)) {
+    return 'Invalid name';
   }
   return null;
+}
+
+function validateGuestRoom(room) {
+  if (!room || typeof room !== 'string') {
+    return 'Invalid room';
+  }
+  if (/[^\w\s]/.test(room)) {
+    return 'Invalid room';
+  }
+  return null;
+}
+
+function validateGuestNameAndRoom(name, room) {
+  const nameError = validateGuestName(name);
+  if (nameError) return nameError;
+  const roomError = validateGuestRoom(room);
+  if (roomError) return roomError;
+  return null;
+}
+
+function getGuestTypeById(id) {
+  return (guestData.guestTypes || []).find(type => type.id === id) || null;
+}
+
+function getLegacyGuestType() {
+  return getGuestTypeById('type_overnight') || DEFAULT_GUEST_TYPES[0];
+}
+
+function resolveGuestType(guest) {
+  if (!guest) return getLegacyGuestType();
+  const type = guest.guestTypeId ? getGuestTypeById(guest.guestTypeId) : null;
+  return type || getLegacyGuestType();
+}
+
+function getGuestPermissions(guest) {
+  return { ...resolveGuestType(guest).permissions };
+}
+
+function getEnabledGuestTypeById(id) {
+  const type = getGuestTypeById(id);
+  if (!type || !type.enabled) return null;
+  return type;
+}
+
+function normalizeGuestTypePermissions(permissions = {}, visitMode = 'overnight') {
+  const normalized = {};
+  PERMISSION_KEYS.forEach(key => {
+    normalized[key] = Boolean(permissions[key]);
+  });
+  if (visitMode === 'day') {
+    normalized.selectStayLength = false;
+    normalized.extendStay = false;
+  }
+  return normalized;
+}
+
+function sanitizeGuestTypeInput(body, existing = null) {
+  const visitMode = body.visitMode === 'day' ? 'day' : 'overnight';
+  const type = {
+    id: existing ? existing.id : (typeof body.id === 'string' && body.id.trim() ? body.id.trim() : `type_${Date.now()}_${crypto.randomBytes(3).toString('hex')}`),
+    name: typeof body.name === 'string' ? body.name.trim().substring(0, 100) : '',
+    description: typeof body.description === 'string' ? body.description.trim().substring(0, 500) : '',
+    visitMode,
+    requiresRoom: Boolean(body.requiresRoom),
+    enabled: body.enabled !== false,
+    permissions: normalizeGuestTypePermissions(body.permissions || {}, visitMode)
+  };
+
+  if (!type.name) {
+    return { error: 'Guest type name is required' };
+  }
+
+  if (visitMode === 'overnight') {
+    type.defaultStayDays = Math.min(Math.max(parseInt(body.defaultStayDays, 10) || 7, 1), 30);
+  } else {
+    type.defaultDayVisitHours = Math.min(Math.max(parseInt(body.defaultDayVisitHours, 10) || 8, 1), 24);
+  }
+
+  return { type };
+}
+
+function formatGuestTypeForPublic(type) {
+  return {
+    id: type.id,
+    name: type.name,
+    description: type.description || '',
+    visitMode: type.visitMode,
+    defaultStayDays: type.defaultStayDays,
+    defaultDayVisitHours: type.defaultDayVisitHours,
+    requiresRoom: Boolean(type.requiresRoom),
+    permissions: {
+      selectStayLength: Boolean(type.permissions.selectStayLength),
+      selectEventAtRegistration: Boolean(type.permissions.selectEventAtRegistration),
+      tagPhotosToEvent: Boolean(type.permissions.tagPhotosToEvent),
+      createEventNames: Boolean(type.permissions.createEventNames)
+    }
+  };
+}
+
+function formatGuestResponse(guest) {
+  const guestType = resolveGuestType(guest);
+  const permissions = getGuestPermissions(guest);
+  return {
+    id: guest.id,
+    name: guest.name,
+    room: guest.room || '',
+    dashboardUrl: permissions.smartHomeControls ? (guest.dashboardUrl || null) : null,
+    checkoutDate: guest.checkoutDate,
+    guestTypeId: guest.guestTypeId || guestType.id,
+    guestTypeName: guestType.name,
+    visitMode: guest.visitMode || guestType.visitMode,
+    eventName: guest.eventName || null,
+    permissions
+  };
+}
+
+function sanitizeEventSlug(name) {
+  const slug = sanitizeName(name || 'General');
+  return slug || 'General';
+}
+
+function findEventByName(name) {
+  const trimmed = (name || '').trim();
+  if (!trimmed) return null;
+  return (guestData.events || []).find(event => event.name.toLowerCase() === trimmed.toLowerCase()) || null;
+}
+
+function getOrCreateEvent(eventName, createdBy, guestType) {
+  const trimmed = (eventName || '').trim().substring(0, 100);
+  if (!trimmed) return null;
+
+  const existing = findEventByName(trimmed);
+  if (existing) return existing;
+
+  if (!guestType.permissions.createEventNames) {
+    return null;
+  }
+
+  const event = {
+    id: `event_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`,
+    name: trimmed,
+    createdAt: new Date().toISOString(),
+    createdBy: createdBy || 'guest'
+  };
+  guestData.events.push(event);
+  saveGuestData();
+  return event;
+}
+
+function resolveUploadEventName(guest, requestedEventName) {
+  const guestType = resolveGuestType(guest);
+  if (!guestType.permissions.tagPhotosToEvent) {
+    return 'General';
+  }
+
+  const candidate = (requestedEventName || guest.eventName || '').trim();
+  if (!candidate) {
+    return 'General';
+  }
+
+  const event = getOrCreateEvent(candidate, guest.id, guestType);
+  if (!event) {
+    const existing = findEventByName(candidate);
+    if (existing) {
+      return sanitizeEventSlug(existing.name);
+    }
+    return 'General';
+  }
+
+  return sanitizeEventSlug(event.name);
+}
+
+function getGuestStayFolder(guest) {
+  const uploadsDir = getUploadsDir();
+  const name = sanitizeName(guest.name || guest.id);
+  const datePart = guest.createdAt
+    ? guest.createdAt.split('T')[0]
+    : new Date().toISOString().split('T')[0];
+  const folderName = `${name}-${guest.id}-${datePart}`;
+  const dir = path.join(uploadsDir, folderName);
+  if (!path.resolve(dir).startsWith(path.resolve(uploadsDir))) {
+    throw new Error('Invalid upload path');
+  }
+  return dir;
 }
 
 function resolveRoomDashboard(roomName) {
@@ -156,16 +444,34 @@ function listGuestUploadFiles(guestId) {
 
   getGuestUploadFolders(guestId).forEach(folderPath => {
     fs.readdirSync(folderPath).forEach(name => {
-      const filePath = path.join(folderPath, name);
-      const stat = fs.statSync(filePath);
-      if (!stat.isFile()) {
+      const entryPath = path.join(folderPath, name);
+      const stat = fs.statSync(entryPath);
+      if (stat.isFile()) {
+        files.push({
+          name,
+          size: stat.size,
+          uploadedAt: stat.mtime.toISOString(),
+          event: 'General'
+        });
         return;
       }
 
-      files.push({
-        name,
-        size: stat.size,
-        uploadedAt: stat.mtime.toISOString()
+      if (!stat.isDirectory()) {
+        return;
+      }
+
+      fs.readdirSync(entryPath).forEach(fileName => {
+        const filePath = path.join(entryPath, fileName);
+        const fileStat = fs.statSync(filePath);
+        if (!fileStat.isFile()) {
+          return;
+        }
+        files.push({
+          name: fileName,
+          size: fileStat.size,
+          uploadedAt: fileStat.mtime.toISOString(),
+          event: name.replace(/-/g, ' ')
+        });
       });
     });
   });
@@ -180,12 +486,17 @@ function findGuestUploadFile(guestId, filename) {
   }
 
   for (const folderPath of getGuestUploadFolders(guestId)) {
-    const filePath = path.resolve(path.join(folderPath, safeName));
-    if (!filePath.startsWith(path.resolve(folderPath))) {
-      continue;
+    const directPath = path.resolve(path.join(folderPath, safeName));
+    if (directPath.startsWith(path.resolve(folderPath)) && fs.existsSync(directPath) && fs.statSync(directPath).isFile()) {
+      return directPath;
     }
-    if (fs.existsSync(filePath) && fs.statSync(filePath).isFile()) {
-      return filePath;
+
+    const subdirs = fs.readdirSync(folderPath, { withFileTypes: true }).filter(entry => entry.isDirectory());
+    for (const subdir of subdirs) {
+      const nestedPath = path.resolve(path.join(folderPath, subdir.name, safeName));
+      if (nestedPath.startsWith(path.resolve(folderPath)) && fs.existsSync(nestedPath) && fs.statSync(nestedPath).isFile()) {
+        return nestedPath;
+      }
     }
   }
 
@@ -253,11 +564,15 @@ function getGuestSessionRows() {
   return Object.entries(guestTokens)
     .map(([token, guest]) => {
       const checkout = new Date(guest.checkoutDate);
+      const guestType = resolveGuestType(guest);
       return {
         token: token.substring(0, 8) + '...',
         guestId: guest.id,
         name: guest.name,
-        room: guest.room,
+        room: guest.room || '',
+        guestTypeId: guest.guestTypeId || guestType.id,
+        guestTypeName: guestType.name,
+        visitMode: guest.visitMode || guestType.visitMode,
         createdAt: guest.createdAt || '',
         checkoutDate: guest.checkoutDate || '',
         active: checkout >= now ? 'yes' : 'no',
@@ -277,13 +592,19 @@ function getRegistrationHistoryRows() {
   );
 
   return (guestData.guests || [])
-    .map(entry => ({
-      guestId: entry.guestId || '',
-      name: entry.name || '',
-      room: entry.room || '',
-      timestamp: entry.timestamp || '',
-      hasActiveSession: activeGuestIds.has(entry.guestId) ? 'yes' : 'no'
-    }))
+    .map(entry => {
+      const guestType = entry.guestTypeId ? getGuestTypeById(entry.guestTypeId) : getLegacyGuestType();
+      return {
+        guestId: entry.guestId || '',
+        name: entry.name || '',
+        room: entry.room || '',
+        guestTypeId: entry.guestTypeId || guestType.id,
+        guestTypeName: guestType.name,
+        visitMode: entry.visitMode || guestType.visitMode,
+        timestamp: entry.timestamp || '',
+        hasActiveSession: activeGuestIds.has(entry.guestId) ? 'yes' : 'no'
+      };
+    })
     .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
 }
 
@@ -301,40 +622,92 @@ function countGuestSessionsByExpiry() {
   return { active, expired };
 }
 
-function createGuestRegistration(name, room, stayDays, userAgent) {
-  const days = Math.min(Math.max(parseInt(stayDays, 10) || 7, 1), 30);
+function createGuestRegistration(name, guestTypeId, options = {}, userAgent) {
+  const guestType = guestTypeId
+    ? getEnabledGuestTypeById(guestTypeId)
+    : getEnabledGuestTypeById('type_overnight');
+
+  if (!guestType) {
+    return { error: 'Invalid or disabled guest type' };
+  }
+
+  const nameError = validateGuestName(name);
+  if (nameError) {
+    return { error: nameError };
+  }
+
+  const room = typeof options.room === 'string' ? options.room.trim() : '';
+  if (guestType.requiresRoom) {
+    const roomError = validateGuestRoom(room);
+    if (roomError) {
+      return { error: roomError };
+    }
+  } else if (room) {
+    const roomError = validateGuestRoom(room);
+    if (roomError) {
+      return { error: roomError };
+    }
+  }
+
   const checkoutDate = new Date();
-  checkoutDate.setDate(checkoutDate.getDate() + days);
+  if (guestType.visitMode === 'day') {
+    const hours = guestType.defaultDayVisitHours || 8;
+    checkoutDate.setTime(checkoutDate.getTime() + hours * 60 * 60 * 1000);
+  } else {
+    const defaultDays = guestType.defaultStayDays || 7;
+    const days = guestType.permissions.selectStayLength
+      ? Math.min(Math.max(parseInt(options.stayDays, 10) || defaultDays, 1), 30)
+      : defaultDays;
+    checkoutDate.setDate(checkoutDate.getDate() + days);
+  }
+
+  let eventName = null;
+  if (guestType.permissions.selectEventAtRegistration) {
+    const requestedEvent = (options.eventName || '').trim();
+    if (!requestedEvent) {
+      return { error: 'Event name is required for this guest type' };
+    }
+    const event = getOrCreateEvent(requestedEvent, 'registration', guestType);
+    if (!event) {
+      return { error: 'Event not found or creation not permitted' };
+    }
+    eventName = event.name;
+  }
 
   const token = generateToken();
   const guestId = `guest_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
-  const dashboardUrl = resolveRoomDashboard(room);
+  const dashboardUrl = room ? resolveRoomDashboard(room) : null;
   const createdAt = new Date().toISOString();
 
   guestTokens[token] = {
     id: guestId,
     name,
-    room,
+    room: room || '',
     dashboardUrl,
     checkoutDate: checkoutDate.toISOString(),
+    guestTypeId: guestType.id,
+    visitMode: guestType.visitMode,
+    eventName,
     createdAt,
     devices: [{ addedAt: createdAt, userAgent: userAgent || 'Unknown' }]
   };
   saveGuestTokens();
 
-  guestData.guests.push({ name, room, timestamp: createdAt, guestId });
+  guestData.guests.push({
+    name,
+    room: room || '',
+    guestTypeId: guestType.id,
+    visitMode: guestType.visitMode,
+    eventName,
+    timestamp: createdAt,
+    guestId
+  });
   saveGuestData();
 
   return {
     token,
     guestId,
-    guest: {
-      id: guestId,
-      name,
-      room,
-      dashboardUrl,
-      checkoutDate: checkoutDate.toISOString()
-    }
+    guest: formatGuestResponse(guestTokens[token])
   };
 }
 
@@ -496,6 +869,47 @@ async function checkUrlReachability(rawUrl) {
   }
 }
 
+function collectStayFolderFiles(stayFolderPath, stayFolderName, uploadsDir) {
+  const files = [];
+  const entries = fs.readdirSync(stayFolderPath, { withFileTypes: true });
+
+  entries.forEach(entry => {
+    const entryPath = path.join(stayFolderPath, entry.name);
+    if (entry.isFile()) {
+      const stat = fs.statSync(entryPath);
+      files.push({
+        name: entry.name,
+        size: stat.size,
+        uploadedAt: stat.mtime.toISOString(),
+        event: 'General',
+        url: `/admin/uploads/${encodeURIComponent(stayFolderName)}/${encodeURIComponent(entry.name)}`
+      });
+      return;
+    }
+
+    if (!entry.isDirectory()) {
+      return;
+    }
+
+    fs.readdirSync(entryPath, { withFileTypes: true }).forEach(fileEntry => {
+      if (!fileEntry.isFile()) {
+        return;
+      }
+      const filePath = path.join(entryPath, fileEntry.name);
+      const stat = fs.statSync(filePath);
+      files.push({
+        name: fileEntry.name,
+        size: stat.size,
+        uploadedAt: stat.mtime.toISOString(),
+        event: entry.name.replace(/-/g, ' '),
+        url: `/admin/uploads/${encodeURIComponent(stayFolderName)}/${encodeURIComponent(entry.name)}/${encodeURIComponent(fileEntry.name)}`
+      });
+    });
+  });
+
+  return files;
+}
+
 // ─── Middleware ──────────────────────────────────────────────────────────────
 
 app.use(cors());
@@ -504,7 +918,7 @@ app.use(express.json());
 // H1: Rate limiter BEFORE static files and routes
 const limiter = rateLimit({
   windowMs: 60 * 1000,
-  max: 60
+  max: 200
 });
 app.use(limiter);
 
@@ -551,16 +965,19 @@ app.use(express.static('frontend'));
 
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    const uploadsDir = getUploadsDir();
-    const guest = req.guestSession.guest;
-    const name = sanitizeName(guest.name || guest.id);
-    const folderName = `${name}-${guest.id}-${new Date().toISOString().split('T')[0]}`;
-    const dir = path.join(uploadsDir, folderName);
-    if (!path.resolve(dir).startsWith(path.resolve(uploadsDir))) {
-      return cb(new Error('Invalid upload path'));
+    try {
+      const guest = req.guestSession.guest;
+      const stayDir = getGuestStayFolder(guest);
+      const eventSlug = resolveUploadEventName(guest, req.body?.eventName);
+      const dir = path.join(stayDir, eventSlug);
+      if (!path.resolve(dir).startsWith(path.resolve(getUploadsDir()))) {
+        return cb(new Error('Invalid upload path'));
+      }
+      fs.mkdirSync(dir, { recursive: true });
+      cb(null, dir);
+    } catch (err) {
+      cb(err);
     }
-    fs.mkdirSync(dir, { recursive: true });
-    cb(null, dir);
   },
   filename: (req, file, cb) => {
     const safeName = sanitizeFilename(file.originalname);
@@ -605,6 +1022,16 @@ function validateGuestUploadToken(req, res, next) {
   }
   req.guestSession = { token, guest: session.guest };
   next();
+}
+
+function requireGuestPermission(permissionKey) {
+  return (req, res, next) => {
+    const permissions = getGuestPermissions(req.guestSession.guest);
+    if (!permissions[permissionKey]) {
+      return res.status(403).send('Not permitted for your guest type');
+    }
+    next();
+  };
 }
 
 function handleGuestUpload(req, res, next) {
@@ -718,14 +1145,61 @@ app.use('/uploads/backgrounds', (req, res, next) => {
   express.static(path.join(getUploadsDir(), 'backgrounds'))(req, res, next);
 });
 
-app.post('/register', (req, res) => {
-  const { name, room, stayDays } = req.body;
-  const validationError = validateGuestNameAndRoom(name, room);
-  if (validationError) {
-    return res.status(400).send(validationError);
+app.get('/guest/guest-types', (req, res) => {
+  const types = (guestData.guestTypes || [])
+    .filter(type => type.enabled)
+    .map(formatGuestTypeForPublic);
+  res.json(types);
+});
+
+app.get('/guest/events', (req, res) => {
+  res.json((guestData.events || []).map(event => ({
+    id: event.id,
+    name: event.name
+  })));
+});
+
+app.post('/guest/events', (req, res) => {
+  const token = req.body?.token || req.get('X-Guest-Token');
+  const session = getGuestSession(token);
+  if (!session.guest) {
+    return res.status(session.status).send(session.message);
   }
 
-  const registration = createGuestRegistration(name, room, stayDays, req.get('User-Agent') || 'Unknown');
+  const guestType = resolveGuestType(session.guest);
+  if (!guestType.permissions.createEventNames) {
+    return res.status(403).send('Not permitted to create event names');
+  }
+
+  const event = getOrCreateEvent(req.body?.name, session.guest.id, guestType);
+  if (!event) {
+    return res.status(400).send('Invalid event name');
+  }
+
+  res.json({ id: event.id, name: event.name });
+});
+
+app.post('/register', (req, res) => {
+  const { name, room, stayDays, guestTypeId, eventName } = req.body;
+
+  if (!guestTypeId) {
+    const validationError = validateGuestNameAndRoom(name, room);
+    if (validationError) {
+      return res.status(400).send(validationError);
+    }
+  }
+
+  const registration = createGuestRegistration(
+    name,
+    guestTypeId || 'type_overnight',
+    { room, stayDays, eventName },
+    req.get('User-Agent') || 'Unknown'
+  );
+
+  if (registration.error) {
+    return res.status(400).send(registration.error);
+  }
+
   res.json({
     token: registration.token,
     guest: registration.guest,
@@ -744,16 +1218,15 @@ app.post('/guest/validate', (req, res) => {
   }
 
   const guest = session.guest;
+  const guestPayload = formatGuestResponse(guest);
+  if (!guestPayload.permissions.viewWelcomeHub) {
+    return res.status(403).json({ valid: false, error: 'Welcome hub not available for your guest type' });
+  }
+
   res.json({
     valid: true,
     returningDevice: isReturningDevice(guest, req.get('User-Agent')),
-    guest: {
-      id: guest.id,
-      name: guest.name,
-      room: guest.room,
-      dashboardUrl: guest.dashboardUrl,
-      checkoutDate: guest.checkoutDate
-    }
+    guest: guestPayload
   });
 });
 
@@ -764,6 +1237,9 @@ app.post('/guest/link-code', async (req, res) => {
   }
 
   const guest = guestTokens[token];
+  if (!getGuestPermissions(guest).linkDevice) {
+    return res.status(403).send('Not permitted for your guest type');
+  }
   const linkCode = generateCode();
   const expirationMinutes = getExpirationMinutes();
   const expires = Date.now() + getLinkCodeExpirationMs();
@@ -817,18 +1293,12 @@ app.post('/guest/link-device', (req, res) => {
   res.json({
     token: entry.guestToken,
     returningDevice: false,
-    guest: {
-      id: guest.id,
-      name: guest.name,
-      room: guest.room,
-      dashboardUrl: guest.dashboardUrl,
-      checkoutDate: guest.checkoutDate
-    }
+    guest: formatGuestResponse(guest)
   });
 });
 
 // H4: Validate guest token on upload
-app.post('/upload', validateGuestUploadToken, handleGuestUpload, (req, res) => {
+app.post('/upload', validateGuestUploadToken, requireGuestPermission('uploadPhotos'), handleGuestUpload, (req, res) => {
   if (!req.files || req.files.length === 0) {
     return res.status(400).send('At least one file is required');
   }
@@ -840,12 +1310,12 @@ app.post('/upload', validateGuestUploadToken, handleGuestUpload, (req, res) => {
   res.sendStatus(200);
 });
 
-app.get('/guest/uploads', validateGuestUploadToken, (req, res) => {
+app.get('/guest/uploads', validateGuestUploadToken, requireGuestPermission('viewPhotoGallery'), (req, res) => {
   const files = listGuestUploadFiles(req.guestSession.guest.id);
   res.json({ files });
 });
 
-app.get('/guest/uploads/:filename', validateGuestUploadToken, (req, res) => {
+app.get('/guest/uploads/:filename', validateGuestUploadToken, requireGuestPermission('viewPhotoGallery'), (req, res) => {
   const filePath = findGuestUploadFile(req.guestSession.guest.id, req.params.filename);
   if (!filePath) {
     return res.status(404).send('File not found');
@@ -853,7 +1323,7 @@ app.get('/guest/uploads/:filename', validateGuestUploadToken, (req, res) => {
   res.sendFile(filePath);
 });
 
-app.delete('/guest/uploads/:filename', validateGuestUploadToken, (req, res) => {
+app.delete('/guest/uploads/:filename', validateGuestUploadToken, requireGuestPermission('deleteOwnPhotos'), (req, res) => {
   const filePath = findGuestUploadFile(req.guestSession.guest.id, req.params.filename);
   if (!filePath) {
     return res.status(404).send('File not found');
@@ -1042,27 +1512,13 @@ app.get('/admin-api/uploads', authMiddleware, (req, res) => {
       .filter(e => e.isDirectory() && e.name !== 'backgrounds')
       .map(e => {
         const folderPath = path.join(uploadsDir, e.name);
-        const files = fs.readdirSync(folderPath).filter(f => {
-          const stat = fs.statSync(path.join(folderPath, f));
-          return stat.isFile();
-        });
-        const totalSize = files.reduce((sum, f) => {
-          return sum + fs.statSync(path.join(folderPath, f)).size;
-        }, 0);
+        const files = collectStayFolderFiles(folderPath, e.name, uploadsDir);
+        const totalSize = files.reduce((sum, file) => sum + file.size, 0);
         return {
           name: e.name,
           fileCount: files.length,
           totalSize,
-          files: files.map(f => {
-            const filePath = path.join(folderPath, f);
-            const stat = fs.statSync(filePath);
-            return {
-              name: f,
-              size: stat.size,
-              uploadedAt: stat.mtime.toISOString(),
-              url: `/admin/uploads/${encodeURIComponent(e.name)}/${encodeURIComponent(f)}`
-            };
-          })
+          files
         };
       })
       .filter(f => f.fileCount > 0)
@@ -1240,17 +1696,25 @@ app.post('/admin-api/session-expiration', authMiddleware, (req, res) => {
 
 // C4: Remove fullToken from response
 app.get('/admin-api/guest-sessions', authMiddleware, (req, res) => {
-  const sessions = getGuestSessionRows().map(row => ({
-    token: row.token,
-    id: row.guestId,
-    name: row.name,
-    room: row.room,
-    createdAt: row.createdAt,
-    checkoutDate: row.checkoutDate,
-    devices: (findGuestTokenEntryByGuestId(row.guestId)?.[1].devices) || [],
-    isExpired: row.active !== 'yes',
-    daysRemaining: row.daysRemaining
-  }));
+  const sessions = getGuestSessionRows().map(row => {
+    const guestEntry = findGuestTokenEntryByGuestId(row.guestId)?.[1];
+    const guestType = resolveGuestType(guestEntry);
+    return {
+      token: row.token,
+      id: row.guestId,
+      name: row.name,
+      room: row.room,
+      guestTypeId: row.guestTypeId,
+      guestTypeName: row.guestTypeName,
+      visitMode: row.visitMode,
+      createdAt: row.createdAt,
+      checkoutDate: row.checkoutDate,
+      devices: guestEntry?.devices || [],
+      isExpired: row.active !== 'yes',
+      daysRemaining: row.daysRemaining,
+      permissions: guestEntry ? getGuestPermissions(guestEntry) : guestType.permissions
+    };
+  });
   res.json(sessions);
 });
 
@@ -1259,6 +1723,9 @@ app.get('/admin-api/guest-sessions.csv', authMiddleware, (req, res) => {
     { key: 'guestId', header: 'Guest ID' },
     { key: 'name', header: 'Name' },
     { key: 'room', header: 'Room' },
+    { key: 'guestTypeId', header: 'Guest Type ID' },
+    { key: 'guestTypeName', header: 'Guest Type' },
+    { key: 'visitMode', header: 'Visit Mode' },
     { key: 'createdAt', header: 'Created At' },
     { key: 'checkoutDate', header: 'Checkout Date' },
     { key: 'active', header: 'Active' },
@@ -1324,15 +1791,7 @@ app.post('/admin-api/guest-sessions/:guestId/extend', authMiddleware, (req, res)
 
 app.patch('/admin-api/guest-sessions/:guestId', authMiddleware, (req, res) => {
   const { guestId } = req.params;
-  const { room } = req.body;
-
-  const validationError = validateGuestNameAndRoom('Guest', room);
-  if (validationError) {
-    return res.status(400).send('Invalid room');
-  }
-  if (!guestData.rooms.some(r => r.name === room)) {
-    return res.status(400).send('Room not found');
-  }
+  const { room, guestTypeId } = req.body;
 
   const entry = findGuestTokenEntryByGuestId(guestId);
   if (!entry) {
@@ -1340,25 +1799,49 @@ app.patch('/admin-api/guest-sessions/:guestId', authMiddleware, (req, res) => {
   }
 
   const [, guest] = entry;
-  guest.room = room;
-  guest.dashboardUrl = resolveRoomDashboard(room);
+
+  if (guestTypeId !== undefined) {
+    const guestType = getGuestTypeById(guestTypeId);
+    if (!guestType) {
+      return res.status(400).send('Guest type not found');
+    }
+    guest.guestTypeId = guestType.id;
+    guest.visitMode = guestType.visitMode;
+
+    if (guestType.visitMode === 'day') {
+      const checkoutDate = new Date();
+      checkoutDate.setTime(checkoutDate.getTime() + (guestType.defaultDayVisitHours || 8) * 60 * 60 * 1000);
+      guest.checkoutDate = checkoutDate.toISOString();
+    }
+  }
+
+  if (room !== undefined) {
+    const validationError = validateGuestRoom(room);
+    if (validationError) {
+      return res.status(400).send('Invalid room');
+    }
+    if (!guestData.rooms.some(r => r.name === room)) {
+      return res.status(400).send('Room not found');
+    }
+    guest.room = room;
+    guest.dashboardUrl = resolveRoomDashboard(room);
+  }
+
   saveGuestTokens();
 
   const historyEntry = (guestData.guests || []).find(g => g.guestId === guestId);
   if (historyEntry) {
-    historyEntry.room = room;
+    if (room !== undefined) historyEntry.room = room;
+    if (guestTypeId !== undefined) {
+      historyEntry.guestTypeId = guest.guestTypeId;
+      historyEntry.visitMode = guest.visitMode;
+    }
     saveGuestData();
   }
 
   res.json({
     success: true,
-    guest: {
-      id: guest.id,
-      name: guest.name,
-      room: guest.room,
-      dashboardUrl: guest.dashboardUrl,
-      checkoutDate: guest.checkoutDate
-    }
+    guest: formatGuestResponse(guest)
   });
 });
 
@@ -1411,6 +1894,9 @@ app.get('/admin-api/guests', authMiddleware, (req, res) => {
     guestId: row.guestId,
     name: row.name,
     room: row.room,
+    guestTypeId: row.guestTypeId,
+    guestTypeName: row.guestTypeName,
+    visitMode: row.visitMode,
     timestamp: row.timestamp,
     hasActiveSession: row.hasActiveSession === 'yes'
   }));
@@ -1423,22 +1909,94 @@ app.get('/admin-api/guests.csv', authMiddleware, (req, res) => {
     { key: 'guestId', header: 'Guest ID' },
     { key: 'name', header: 'Name' },
     { key: 'room', header: 'Room' },
+    { key: 'guestTypeId', header: 'Guest Type ID' },
+    { key: 'guestTypeName', header: 'Guest Type' },
+    { key: 'visitMode', header: 'Visit Mode' },
     { key: 'timestamp', header: 'Registered At' },
     { key: 'hasActiveSession', header: 'Has Active Session' }
   ], getRegistrationHistoryRows());
 });
 
-app.post('/admin-api/guests', authMiddleware, (req, res) => {
-  const { name, room, stayDays } = req.body;
-  const validationError = validateGuestNameAndRoom(name, room);
-  if (validationError) {
-    return res.status(400).send(validationError);
+app.get('/admin-api/guest-types', authMiddleware, (req, res) => {
+  res.json(guestData.guestTypes || []);
+});
+
+app.post('/admin-api/guest-types', authMiddleware, (req, res) => {
+  const parsed = sanitizeGuestTypeInput(req.body);
+  if (parsed.error) {
+    return res.status(400).send(parsed.error);
   }
-  if (!guestData.rooms.some(r => r.name === room)) {
-    return res.status(400).send('Room not found');
+  if ((guestData.guestTypes || []).some(type => type.id === parsed.type.id)) {
+    return res.status(400).send('Guest type ID already exists');
+  }
+  guestData.guestTypes.push(parsed.type);
+  saveGuestData();
+  res.json({ success: true, guestType: parsed.type });
+});
+
+app.patch('/admin-api/guest-types/:id', authMiddleware, (req, res) => {
+  const index = (guestData.guestTypes || []).findIndex(type => type.id === req.params.id);
+  if (index < 0) {
+    return res.status(404).send('Guest type not found');
+  }
+  const parsed = sanitizeGuestTypeInput(req.body, guestData.guestTypes[index]);
+  if (parsed.error) {
+    return res.status(400).send(parsed.error);
+  }
+  guestData.guestTypes[index] = parsed.type;
+  saveGuestData();
+  res.json({ success: true, guestType: parsed.type });
+});
+
+app.delete('/admin-api/guest-types/:id', authMiddleware, (req, res) => {
+  const index = (guestData.guestTypes || []).findIndex(type => type.id === req.params.id);
+  if (index < 0) {
+    return res.status(404).send('Guest type not found');
+  }
+  guestData.guestTypes[index].enabled = false;
+  saveGuestData();
+  res.json({ success: true });
+});
+
+app.post('/admin-api/guest-types/reorder', authMiddleware, (req, res) => {
+  const { order } = req.body || {};
+  if (!Array.isArray(order)) {
+    return res.status(400).send('Order must be an array of guest type IDs');
+  }
+  const typeMap = new Map((guestData.guestTypes || []).map(type => [type.id, type]));
+  const reordered = order.map(id => typeMap.get(id)).filter(Boolean);
+  if (reordered.length !== (guestData.guestTypes || []).length) {
+    return res.status(400).send('Order must include every guest type ID exactly once');
+  }
+  guestData.guestTypes = reordered;
+  saveGuestData();
+  res.json({ success: true, guestTypes: guestData.guestTypes });
+});
+
+app.post('/admin-api/guests', authMiddleware, (req, res) => {
+  const { name, room, stayDays, guestTypeId, eventName } = req.body;
+
+  if (!guestTypeId) {
+    const validationError = validateGuestNameAndRoom(name, room);
+    if (validationError) {
+      return res.status(400).send(validationError);
+    }
+    if (!guestData.rooms.some(r => r.name === room)) {
+      return res.status(400).send('Room not found');
+    }
   }
 
-  const registration = createGuestRegistration(name, room, stayDays, 'Admin registration');
+  const registration = createGuestRegistration(
+    name,
+    guestTypeId || 'type_overnight',
+    { room, stayDays, eventName },
+    'Admin registration'
+  );
+
+  if (registration.error) {
+    return res.status(400).send(registration.error);
+  }
+
   res.json({
     success: true,
     token: registration.token,

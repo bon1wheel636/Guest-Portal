@@ -36,6 +36,7 @@
         <button type="button" class="admin-tab active" data-tab="overview" role="tab" aria-selected="true">Overview</button>
         <button type="button" class="admin-tab" data-tab="rooms" role="tab" aria-selected="false">Rooms &amp; Portal</button>
         <button type="button" class="admin-tab" data-tab="guests" role="tab" aria-selected="false">Guests</button>
+        <button type="button" class="admin-tab" data-tab="guesttypes" role="tab" aria-selected="false">Guest Types</button>
         <button type="button" class="admin-tab" data-tab="storage" role="tab" aria-selected="false">Photos &amp; Storage</button>
         <button type="button" class="admin-tab" data-tab="settings" role="tab" aria-selected="false">Settings</button>
       </nav>
@@ -81,12 +82,23 @@
         <h2>Register Guest</h2>
         <p class="admin-help">Create a guest session on behalf of a visitor. Share the returned token securely.</p>
         <form id="adminRegisterForm" class="admin-card">
+          <label>Guest Type:</label>
+          <select id="adminGuestType" required></select>
           <label>Guest Name:</label>
           <input type="text" id="adminGuestName" required />
-          <label>Room:</label>
-          <select id="adminGuestRoom" required></select>
-          <label>Stay (days):</label>
-          <input type="number" id="adminGuestStayDays" min="1" max="30" value="7" required />
+          <div id="adminRoomField">
+            <label>Room:</label>
+            <select id="adminGuestRoom"></select>
+          </div>
+          <div id="adminStayDaysField">
+            <label>Stay (days):</label>
+            <input type="number" id="adminGuestStayDays" min="1" max="30" value="7" />
+          </div>
+          <div id="adminEventField" hidden>
+            <label>Event:</label>
+            <input type="text" id="adminGuestEvent" list="adminEventSuggestions" />
+            <datalist id="adminEventSuggestions"></datalist>
+          </div>
           <button type="submit">Register Guest</button>
         </form>
         <div id="adminRegisterResult"></div>
@@ -112,6 +124,47 @@
         <h2>Active Session Codes</h2>
         <p class="admin-help">Legacy one-time device link codes awaiting use.</p>
         <ul id="sessionList" class="admin-list"></ul>
+      </section>
+
+      <section class="admin-panel" data-panel="guesttypes" role="tabpanel">
+        <h2>Guest Types</h2>
+        <p class="admin-help">Configure visit modes and permission checkboxes for each guest category.</p>
+        <div id="guestTypeList"></div>
+
+        <h3 id="guestTypeFormTitle">Add Guest Type</h3>
+        <form id="guestTypeForm" class="admin-card">
+          <input type="hidden" id="guestTypeEditId" value="" />
+          <label for="guestTypeName">Name</label>
+          <input type="text" id="guestTypeName" required />
+          <label for="guestTypeDescription">Description</label>
+          <input type="text" id="guestTypeDescription" />
+          <label for="guestTypeVisitMode">Visit Mode</label>
+          <select id="guestTypeVisitMode">
+            <option value="overnight">Overnight</option>
+            <option value="day">Day visitor</option>
+          </select>
+          <div id="guestTypeOvernightFields">
+            <label for="guestTypeDefaultStayDays">Default Stay Days</label>
+            <input type="number" id="guestTypeDefaultStayDays" min="1" max="30" value="7" />
+          </div>
+          <div id="guestTypeDayFields" hidden>
+            <label for="guestTypeDefaultDayHours">Default Day Visit Hours</label>
+            <input type="number" id="guestTypeDefaultDayHours" min="1" max="24" value="8" />
+          </div>
+          <label><input type="checkbox" id="guestTypeRequiresRoom" checked /> Requires room assignment</label>
+          <label><input type="checkbox" id="guestTypeEnabled" checked /> Enabled for registration</label>
+
+          <fieldset class="admin-permissions-fieldset">
+            <legend>Permissions</legend>
+            <div id="guestTypePermissions" class="admin-permissions-grid"></div>
+            <p class="admin-muted">Smart Home requires room assignment and a room dashboard URL.</p>
+          </fieldset>
+
+          <div class="admin-actions">
+            <button type="submit" id="guestTypeSaveBtn">Save Guest Type</button>
+            <button type="button" id="guestTypeCancelBtn" class="btn-secondary">Cancel Edit</button>
+          </div>
+        </form>
       </section>
 
       <section class="admin-panel" data-panel="storage" role="tabpanel">
@@ -167,7 +220,26 @@
     const setupBox = document.getElementById('adminSetupForm');
     const adminContent = document.getElementById('adminContent');
     let cachedRooms = [];
+    let cachedGuestTypes = [];
     let activeTab = 'overview';
+
+    const PERMISSION_LABELS = {
+      uploadPhotos: 'Upload photos',
+      deleteOwnPhotos: 'Delete own photos',
+      viewPhotoGallery: 'View photo gallery',
+      smartHomeControls: 'Smart Home controls',
+      linkDevice: 'Link device',
+      extendStay: 'Extend stay (future guest self-service)',
+      selectStayLength: 'Select stay length at registration',
+      selectEventAtRegistration: 'Select event at registration',
+      tagPhotosToEvent: 'Tag photos to event on upload',
+      createEventNames: 'Create new event names',
+      viewWelcomeHub: 'View welcome hub',
+      signOut: 'Show sign-out control'
+    };
+
+    const OVERNIGHT_ONLY_PERMISSIONS = new Set(['selectStayLength', 'extendStay']);
+    const DAY_ONLY_SETTINGS = ['guestTypeDefaultDayHours'];
 
     function authFetch(url, options = {}) {
       return fetch(url, { credentials: 'same-origin', ...options });
@@ -188,7 +260,8 @@
     const TAB_LOADERS = {
       overview: () => loadDeploymentStatus(false),
       rooms: () => { loadRooms(); loadBackground(); },
-      guests: () => { loadGuestSessions(); loadGuests(); loadSessions(); },
+      guests: () => { loadGuestTypesForAdmin(); loadGuestSessions(); loadGuests(); loadSessions(); },
+      guesttypes: () => loadGuestTypesAdmin(),
       storage: () => { loadUploadPath(); loadPhotos(); },
       settings: () => { loadAdminAccountInfo(); loadPortalUrl(); loadExpiration(); }
     };
@@ -257,6 +330,241 @@
         }
       } catch (err) {
         alert('Setup failed: ' + err.message);
+      }
+    });
+
+    async function loadGuestTypesForAdmin() {
+      try {
+        const res = await authFetch('/admin-api/guest-types');
+        if (!res.ok) return;
+        cachedGuestTypes = await res.json();
+        const select = document.getElementById('adminGuestType');
+        if (!select) return;
+        select.innerHTML = '';
+        const enabledTypes = cachedGuestTypes.filter(type => type.enabled);
+        enabledTypes.forEach(type => {
+          const option = document.createElement('option');
+          option.value = type.id;
+          option.textContent = type.name;
+          select.appendChild(option);
+        });
+        updateAdminRegistrationFields();
+        const eventRes = await authFetch('/guest/events');
+        if (eventRes.ok) {
+          const events = await eventRes.json();
+          const datalist = document.getElementById('adminEventSuggestions');
+          if (datalist) {
+            datalist.innerHTML = '';
+            events.forEach(event => {
+              const opt = document.createElement('option');
+              opt.value = event.name;
+              datalist.appendChild(opt);
+            });
+          }
+        }
+      } catch (err) {
+        console.error('Failed to load guest types:', err);
+      }
+    }
+
+    function getSelectedAdminGuestType() {
+      const id = document.getElementById('adminGuestType')?.value;
+      return cachedGuestTypes.find(type => type.id === id) || null;
+    }
+
+    function updateAdminRegistrationFields() {
+      const type = getSelectedAdminGuestType();
+      const roomField = document.getElementById('adminRoomField');
+      const stayField = document.getElementById('adminStayDaysField');
+      const eventField = document.getElementById('adminEventField');
+      const roomSelect = document.getElementById('adminGuestRoom');
+      const stayInput = document.getElementById('adminGuestStayDays');
+      const eventInput = document.getElementById('adminGuestEvent');
+      if (!type) return;
+
+      roomField.hidden = !type.requiresRoom;
+      roomSelect.required = Boolean(type.requiresRoom);
+      stayField.hidden = !type.permissions?.selectStayLength;
+      stayInput.required = Boolean(type.permissions?.selectStayLength);
+      if (type.defaultStayDays) stayInput.value = type.defaultStayDays;
+      eventField.hidden = !type.permissions?.selectEventAtRegistration;
+      eventInput.required = Boolean(type.permissions?.selectEventAtRegistration);
+    }
+
+    function renderPermissionCheckboxes(selected = {}, visitMode = 'overnight') {
+      const container = document.getElementById('guestTypePermissions');
+      if (!container) return;
+      container.innerHTML = '';
+      Object.entries(PERMISSION_LABELS).forEach(([key, label]) => {
+        const wrapper = document.createElement('label');
+        wrapper.className = 'admin-permission-item';
+        const overnightOnly = OVERNIGHT_ONLY_PERMISSIONS.has(key);
+        if (visitMode === 'day' && overnightOnly) {
+          wrapper.classList.add('admin-permission-disabled');
+        }
+        const input = document.createElement('input');
+        input.type = 'checkbox';
+        input.dataset.permission = key;
+        input.checked = visitMode === 'day' && overnightOnly ? false : Boolean(selected[key]);
+        input.disabled = visitMode === 'day' && overnightOnly;
+        wrapper.appendChild(input);
+        wrapper.appendChild(document.createTextNode(' ' + label));
+        container.appendChild(wrapper);
+      });
+    }
+
+    function readPermissionCheckboxes() {
+      const permissions = {};
+      document.querySelectorAll('#guestTypePermissions input[data-permission]').forEach(input => {
+        permissions[input.dataset.permission] = input.checked;
+      });
+      return permissions;
+    }
+
+    function resetGuestTypeForm() {
+      document.getElementById('guestTypeEditId').value = '';
+      document.getElementById('guestTypeFormTitle').textContent = 'Add Guest Type';
+      document.getElementById('guestTypeForm').reset();
+      document.getElementById('guestTypeVisitMode').value = 'overnight';
+      document.getElementById('guestTypeRequiresRoom').checked = true;
+      document.getElementById('guestTypeEnabled').checked = true;
+      document.getElementById('guestTypeOvernightFields').hidden = false;
+      document.getElementById('guestTypeDayFields').hidden = true;
+      renderPermissionCheckboxes({}, 'overnight');
+    }
+
+    function updateGuestTypeFormMode() {
+      const visitMode = document.getElementById('guestTypeVisitMode').value;
+      document.getElementById('guestTypeOvernightFields').hidden = visitMode !== 'overnight';
+      document.getElementById('guestTypeDayFields').hidden = visitMode !== 'day';
+      renderPermissionCheckboxes(readPermissionCheckboxes(), visitMode);
+    }
+
+    async function loadGuestTypesAdmin() {
+      try {
+        const res = await authFetch('/admin-api/guest-types');
+        if (!res.ok) return;
+        const types = await res.json();
+        cachedGuestTypes = types;
+        const container = document.getElementById('guestTypeList');
+        container.innerHTML = '';
+        if (types.length === 0) {
+          container.innerHTML = '<p class="admin-muted">No guest types configured.</p>';
+          return;
+        }
+        types.forEach((type, index) => {
+          const div = document.createElement('div');
+          div.className = 'admin-item';
+          const status = type.enabled ? 'Enabled' : 'Disabled';
+          div.innerHTML = `<strong>${escapeHtml(type.name)}</strong> <span class="admin-muted">(${escapeHtml(type.visitMode)}, ${status})</span><br><small>${escapeHtml(type.description || '')}</small>`;
+
+          const upBtn = document.createElement('button');
+          upBtn.textContent = 'Move Up';
+          upBtn.className = 'btn-secondary';
+          upBtn.disabled = index === 0;
+          upBtn.onclick = () => reorderGuestType(index, -1);
+
+          const downBtn = document.createElement('button');
+          downBtn.textContent = 'Move Down';
+          downBtn.className = 'btn-secondary';
+          downBtn.disabled = index === types.length - 1;
+          downBtn.onclick = () => reorderGuestType(index, 1);
+
+          const editBtn = document.createElement('button');
+          editBtn.textContent = 'Edit';
+          editBtn.onclick = () => editGuestType(type);
+
+          const disableBtn = document.createElement('button');
+          disableBtn.textContent = type.enabled ? 'Disable' : 'Enable';
+          disableBtn.className = 'btn-danger-inline';
+          disableBtn.onclick = async () => {
+            const res = await authFetch(`/admin-api/guest-types/${encodeURIComponent(type.id)}`, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ ...type, enabled: !type.enabled })
+            });
+            if (res.ok) loadGuestTypesAdmin();
+            else alert('Failed: ' + await res.text());
+          };
+
+          div.appendChild(upBtn);
+          div.appendChild(downBtn);
+          div.appendChild(editBtn);
+          div.appendChild(disableBtn);
+          container.appendChild(div);
+        });
+        if (!document.getElementById('guestTypeEditId').value) {
+          resetGuestTypeForm();
+        }
+      } catch (err) {
+        console.error('Failed to load guest types:', err);
+      }
+    }
+
+    async function reorderGuestType(index, direction) {
+      const res = await authFetch('/admin-api/guest-types');
+      if (!res.ok) return;
+      const types = await res.json();
+      const target = index + direction;
+      if (target < 0 || target >= types.length) return;
+      const order = types.map(type => type.id);
+      [order[index], order[target]] = [order[target], order[index]];
+      const reorderRes = await authFetch('/admin-api/guest-types/reorder', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ order })
+      });
+      if (reorderRes.ok) loadGuestTypesAdmin();
+    }
+
+    function editGuestType(type) {
+      document.getElementById('guestTypeEditId').value = type.id;
+      document.getElementById('guestTypeFormTitle').textContent = 'Edit Guest Type';
+      document.getElementById('guestTypeName').value = type.name;
+      document.getElementById('guestTypeDescription').value = type.description || '';
+      document.getElementById('guestTypeVisitMode').value = type.visitMode;
+      document.getElementById('guestTypeDefaultStayDays').value = type.defaultStayDays || 7;
+      document.getElementById('guestTypeDefaultDayHours').value = type.defaultDayVisitHours || 8;
+      document.getElementById('guestTypeRequiresRoom').checked = Boolean(type.requiresRoom);
+      document.getElementById('guestTypeEnabled').checked = Boolean(type.enabled);
+      updateGuestTypeFormMode();
+      renderPermissionCheckboxes(type.permissions || {}, type.visitMode);
+    }
+
+    document.getElementById('guestTypeVisitMode')?.addEventListener('change', updateGuestTypeFormMode);
+    document.getElementById('guestTypeCancelBtn')?.addEventListener('click', resetGuestTypeForm);
+    document.getElementById('adminGuestType')?.addEventListener('change', updateAdminRegistrationFields);
+
+    document.getElementById('guestTypeForm')?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const editId = document.getElementById('guestTypeEditId').value;
+      const visitMode = document.getElementById('guestTypeVisitMode').value;
+      const payload = {
+        name: document.getElementById('guestTypeName').value.trim(),
+        description: document.getElementById('guestTypeDescription').value.trim(),
+        visitMode,
+        requiresRoom: document.getElementById('guestTypeRequiresRoom').checked,
+        enabled: document.getElementById('guestTypeEnabled').checked,
+        permissions: readPermissionCheckboxes()
+      };
+      if (visitMode === 'overnight') {
+        payload.defaultStayDays = parseInt(document.getElementById('guestTypeDefaultStayDays').value, 10) || 7;
+      } else {
+        payload.defaultDayVisitHours = parseInt(document.getElementById('guestTypeDefaultDayHours').value, 10) || 8;
+      }
+
+      const url = editId ? `/admin-api/guest-types/${encodeURIComponent(editId)}` : '/admin-api/guest-types';
+      const method = editId ? 'PATCH' : 'POST';
+      const res = await authFetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      if (res.ok) {
+        resetGuestTypeForm();
+        loadGuestTypesAdmin();
+      } else {
+        alert('Failed to save guest type: ' + await res.text());
       }
     });
 
@@ -500,7 +808,7 @@
           const status = g.hasActiveSession
             ? '<span class="admin-ok">Active session</span>'
             : '<span class="admin-muted">No active session</span>';
-          div.innerHTML = `<strong>${escapeHtml(g.name)}</strong> - Room: ${escapeHtml(g.room)}<br><small>Registered ${new Date(g.timestamp).toLocaleString()} | ${status}</small>`;
+          div.innerHTML = `<strong>${escapeHtml(g.name)}</strong> - ${escapeHtml(g.guestTypeName || 'Guest')} (${escapeHtml(g.visitMode || '')}) - Room: ${escapeHtml(g.room || '—')}<br><small>Registered ${new Date(g.timestamp).toLocaleString()} | ${status}</small>`;
           const removeBtn = document.createElement('button');
           removeBtn.textContent = 'Remove';
           removeBtn.className = 'btn-danger-inline';
@@ -561,15 +869,32 @@
     document.getElementById('adminRegisterForm')?.addEventListener('submit', async (e) => {
       e.preventDefault();
       const resultBox = document.getElementById('adminRegisterResult');
+      const type = getSelectedAdminGuestType();
+      if (!type) {
+        resultBox.innerHTML = '<p class="admin-error-text">Select a guest type.</p>';
+        return;
+      }
       try {
+        const payload = {
+          name: document.getElementById('adminGuestName').value.trim(),
+          guestTypeId: type.id
+        };
+        if (type.requiresRoom) {
+          payload.room = document.getElementById('adminGuestRoom').value;
+        } else {
+          const room = document.getElementById('adminGuestRoom').value;
+          if (room) payload.room = room;
+        }
+        if (type.permissions?.selectStayLength) {
+          payload.stayDays = parseInt(document.getElementById('adminGuestStayDays').value, 10) || type.defaultStayDays || 7;
+        }
+        if (type.permissions?.selectEventAtRegistration) {
+          payload.eventName = document.getElementById('adminGuestEvent').value.trim();
+        }
         const res = await authFetch('/admin-api/guests', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            name: document.getElementById('adminGuestName').value.trim(),
-            room: document.getElementById('adminGuestRoom').value,
-            stayDays: parseInt(document.getElementById('adminGuestStayDays').value, 10) || 7
-          })
+          body: JSON.stringify(payload)
         });
         if (!res.ok) {
           resultBox.innerHTML = '<p class="admin-error-text">Registration failed: ' + escapeHtml(await res.text()) + '</p>';
@@ -578,7 +903,7 @@
         const data = await res.json();
         resultBox.innerHTML = `
           <div class="admin-card admin-ok-block">
-            <p><strong>Guest registered.</strong> ${escapeHtml(data.guest.name)} in ${escapeHtml(data.guest.room)}.</p>
+            <p><strong>Guest registered.</strong> ${escapeHtml(data.guest.name)} (${escapeHtml(data.guest.guestTypeName || 'Guest')}).</p>
             <p><small>Checkout: ${escapeHtml(new Date(data.guest.checkoutDate).toLocaleString())}</small></p>
             <p class="admin-mono">Token: ${escapeHtml(data.token)}</p>
           </div>`;
@@ -813,6 +1138,10 @@
           const roomsRes = await authFetch('/admin-api/rooms');
           cachedRooms = roomsRes.ok ? await roomsRes.json() : [];
         }
+        if (cachedGuestTypes.length === 0) {
+          const typesRes = await authFetch('/admin-api/guest-types');
+          cachedGuestTypes = typesRes.ok ? await typesRes.json() : [];
+        }
         const res = await authFetch('/admin-api/guest-sessions');
         if (!res.ok) return;
         const sessions = await res.json();
@@ -827,8 +1156,8 @@
           div.className = 'admin-item';
           const daysLeft = Math.ceil((new Date(guest.checkoutDate) - new Date()) / (1000 * 60 * 60 * 24));
           const expiredLabel = guest.isExpired ? ' <span class="admin-error-text">(expired)</span>' : '';
-          let html = `<strong>${escapeHtml(guest.name)}</strong> - Room: ${escapeHtml(guest.room)}${expiredLabel}<br>`;
-          html += `<small>Checkout: ${new Date(guest.checkoutDate).toLocaleDateString()} (${daysLeft} days remaining)</small><br>`;
+          let html = `<strong>${escapeHtml(guest.name)}</strong> - ${escapeHtml(guest.guestTypeName || 'Guest')} (${escapeHtml(guest.visitMode || 'overnight')})${guest.room ? ' - Room: ' + escapeHtml(guest.room) : ''}${expiredLabel}<br>`;
+          html += `<small>Checkout: ${new Date(guest.checkoutDate).toLocaleString()} (${daysLeft} days remaining)</small><br>`;
           html += `<small>Devices (${guest.devices.length}):</small><ul class="admin-device-list">`;
           guest.devices.forEach(device => {
             const ua = device.userAgent || 'Unknown device';
@@ -860,6 +1189,30 @@
           };
           div.appendChild(roomSelect);
           div.appendChild(changeRoomBtn);
+
+          const typeSelect = document.createElement('select');
+          cachedGuestTypes.filter(type => type.enabled || type.id === guest.guestTypeId).forEach(type => {
+            const option = document.createElement('option');
+            option.value = type.id;
+            option.textContent = type.name;
+            if (type.id === guest.guestTypeId) option.selected = true;
+            typeSelect.appendChild(option);
+          });
+          const changeTypeBtn = document.createElement('button');
+          changeTypeBtn.textContent = 'Change Type';
+          changeTypeBtn.onclick = async () => {
+            const guestTypeId = typeSelect.value;
+            if (!guestTypeId || guestTypeId === guest.guestTypeId) return;
+            const patchRes = await authFetch(`/admin-api/guest-sessions/${guest.id}`, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ guestTypeId })
+            });
+            if (patchRes.ok) { loadGuestSessions(); loadGuests(); }
+            else alert('Failed to change guest type: ' + await patchRes.text());
+          };
+          div.appendChild(typeSelect);
+          div.appendChild(changeTypeBtn);
 
           const linkCodeBox = document.createElement('div');
           linkCodeBox.className = 'admin-link-code-box';

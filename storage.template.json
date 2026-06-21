@@ -1,4 +1,6 @@
 {
   "rooms": [],
-  "guests": []
+  "guests": [],
+  "events": [],
+  "guestTypes": []
 }

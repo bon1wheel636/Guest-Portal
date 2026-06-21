@@ -414,17 +414,17 @@ test_admin_guest_link_code_qr() {
 test_csv_exports() {
     require_admin_creds "CSV exports" || return
     local sessions_csv=$(admin_curl "$BASE_URL/admin-api/guest-sessions.csv")
-    if [[ "$sessions_csv" == *"Guest ID,Name,Room,Created At,Checkout Date,Active,Days Remaining,Device Count,Token Prefix"* ]]; then
+    if [[ "$sessions_csv" == *"Guest Type ID"* ]] && [[ "$sessions_csv" == *"Visit Mode"* ]]; then
         pass "Active sessions CSV export"
     else
-        fail "Active sessions CSV export" "CSV header" "$sessions_csv"
+        fail "Active sessions CSV export" "Guest Type columns" "$sessions_csv"
     fi
 
     local history_csv=$(admin_curl "$BASE_URL/admin-api/guests.csv")
-    if [[ "$history_csv" == *"Guest ID,Name,Room,Registered At,Has Active Session"* ]]; then
+    if [[ "$history_csv" == *"Guest Type"* ]] && [[ "$history_csv" == *"Visit Mode"* ]]; then
         pass "Registration history CSV export"
     else
-        fail "Registration history CSV export" "CSV header" "$history_csv"
+        fail "Registration history CSV export" "Guest Type columns" "$history_csv"
     fi
 }
 
@@ -655,6 +655,128 @@ test_rate_limiting() {
     fi
 }
 
+section "7b. GUEST TYPES AND PERMISSIONS"
+
+test_guest_types_seeded() {
+    require_admin_creds "Guest types seeded" || return
+    local response=$(admin_curl "$BASE_URL/admin-api/guest-types")
+    if [[ "$response" == *"type_overnight"* ]] && [[ "$response" == *"type_day_personal"* ]] && [[ "$response" == *"type_day_business"* ]]; then
+        pass "Default guest types seeded"
+    else
+        fail "Default guest types seeded" "overnight/personal/business types" "$response"
+    fi
+}
+
+test_guest_types_public() {
+    local response=$(curl -s "$BASE_URL/guest/guest-types")
+    if [[ "$response" == *"type_overnight"* ]] && [[ "$response" == *'"visitMode":"day"'* ]]; then
+        pass "Public guest types endpoint"
+    else
+        fail "Public guest types endpoint" "enabled guest types" "$response"
+    fi
+}
+
+test_validate_permissions() {
+    local response=$(curl -s -X POST "$BASE_URL/register" \
+        -H "Content-Type: application/json" \
+        -d '{"name":"Perm Test","room":"Room 1","stayDays":2}')
+    local token=$(echo "$response" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
+    if [[ -z "$token" ]]; then
+        fail "Validate permissions" "registration token" "$response"
+        return
+    fi
+    local validate=$(curl -s -X POST "$BASE_URL/guest/validate" \
+        -H "Content-Type: application/json" \
+        -d "{\"token\":\"$token\"}")
+    if [[ "$validate" == *'"permissions"'* ]] && [[ "$validate" == *'"uploadPhotos":true'* ]] && [[ "$validate" == *'"guestTypeId"'* ]]; then
+        pass "Validate returns guest permissions"
+    else
+        fail "Validate returns guest permissions" 'permissions + guestTypeId' "$validate"
+    fi
+}
+
+test_business_day_upload_forbidden() {
+    require_admin_creds "Business day upload forbidden" || return
+    admin_curl -X POST "$BASE_URL/admin-api/rooms" \
+        -H "Content-Type: application/json" \
+        -d '{"name":"Business Room","dashboardUrl":"http://example.com/business"}' > /dev/null
+    local response=$(curl -s -X POST "$BASE_URL/register" \
+        -H "Content-Type: application/json" \
+        -d '{"name":"Biz Visitor","guestTypeId":"type_day_business"}')
+    local token=$(echo "$response" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
+    if [[ -z "$token" ]]; then
+        fail "Business day upload forbidden" "business registration token" "$response"
+        return
+    fi
+    printf '%s\n' '%PDF-1.4' '1 0 obj <<>> endobj' '%%EOF' > /tmp/test-business-upload.pdf
+    local http_code=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$BASE_URL/upload" \
+        -H "X-Guest-Token: $token" \
+        -F "photos=@/tmp/test-business-upload.pdf;type=application/pdf")
+    rm -f /tmp/test-business-upload.pdf
+    if [[ "$http_code" == "403" ]]; then
+        pass "Business day visitor upload forbidden (403)"
+    else
+        fail "Business day visitor upload forbidden" "403" "$http_code"
+    fi
+}
+
+test_business_day_link_forbidden() {
+    local response=$(curl -s -X POST "$BASE_URL/register" \
+        -H "Content-Type: application/json" \
+        -d '{"name":"Biz Link Test","guestTypeId":"type_day_business"}')
+    local token=$(echo "$response" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
+    if [[ -z "$token" ]]; then
+        fail "Business day link forbidden" "business registration token" "$response"
+        return
+    fi
+    local http_code=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$BASE_URL/guest/link-code" \
+        -H "Content-Type: application/json" \
+        -d "{\"token\":\"$token\"}")
+    if [[ "$http_code" == "403" ]]; then
+        pass "Business day visitor link code forbidden (403)"
+    else
+        fail "Business day visitor link code forbidden" "403" "$http_code"
+    fi
+}
+
+test_change_guest_type_permissions() {
+    require_admin_creds "Change guest type permissions" || return
+    admin_curl -X POST "$BASE_URL/admin-api/rooms" \
+        -H "Content-Type: application/json" \
+        -d '{"name":"Type Change Room","dashboardUrl":"http://example.com/type-change"}' > /dev/null
+    local reg=$(admin_curl -X POST "$BASE_URL/admin-api/guests" \
+        -H "Content-Type: application/json" \
+        -d '{"name":"Type Change Guest","room":"Type Change Room","stayDays":2}')
+    local guest_id=$(echo "$reg" | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4)
+    if [[ -z "$guest_id" ]]; then
+        fail "Change guest type permissions" "admin guest id" "$reg"
+        return
+    fi
+    local patch=$(admin_curl -X PATCH "$BASE_URL/admin-api/guest-sessions/$guest_id" \
+        -H "Content-Type: application/json" \
+        -d '{"guestTypeId":"type_day_business"}')
+    if [[ "$patch" != *'"success":true'* ]]; then
+        fail "Change guest type permissions" "successful patch" "$patch"
+        return
+    fi
+    local entry=$(admin_curl "$BASE_URL/admin-api/guest-sessions")
+    if [[ "$entry" == *'"guestTypeId":"type_day_business"'* ]] && [[ "$entry" == *'"uploadPhotos":false'* ]]; then
+        pass "Changing guest type updates effective permissions"
+    else
+        fail "Changing guest type updates effective permissions" "business type + uploadPhotos false" "$entry"
+    fi
+    admin_curl -X DELETE "$BASE_URL/admin-api/guest-sessions/$guest_id" > /dev/null
+}
+
+test_index_hero_markup() {
+    local response=$(curl -s "$BASE_URL/")
+    if [[ "$response" == *"hero-view"* ]] && [[ "$response" == *"heroRegisterBtn"* ]]; then
+        pass "Index page includes hero landing markup"
+    else
+        fail "Index page includes hero landing markup" "hero-view + heroRegisterBtn" "Missing hero markup"
+    fi
+}
+
 section "8. STATIC FILES"
 
 test_index_html() {
@@ -826,6 +948,14 @@ test_admin_uploads_metadata
 test_guest_uploads_requires_token
 test_guest_upload_delete
 test_guest_upload_delete_requires_token
+
+test_guest_types_seeded
+test_guest_types_public
+test_validate_permissions
+test_business_day_upload_forbidden
+test_business_day_link_forbidden
+test_change_guest_type_permissions
+test_index_hero_markup
 
 test_index_html
 test_admin_html
