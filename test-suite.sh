@@ -304,6 +304,38 @@ test_portal_url_setting() {
     fi
 }
 
+test_link_code_expiration_setting() {
+    require_admin_creds "Link code expiration setting" || return
+    local set_response=$(admin_curl -X POST "$BASE_URL/admin-api/session-expiration" \
+        -H "Content-Type: application/json" \
+        -d '{"minutes":7}')
+    if [[ "$set_response" != *'"minutes":7'* ]]; then
+        fail "Link code expiration setting" '{"minutes":7}' "$set_response"
+        return
+    fi
+    pass "Link code expiration setting updates"
+
+    local get_response=$(admin_curl "$BASE_URL/admin-api/session-expiration")
+    if [[ "$get_response" == *'"minutes":7'* ]]; then
+        pass "Link code expiration setting reads back"
+    else
+        fail "Link code expiration setting reads back" '{"minutes":7}' "$get_response"
+    fi
+
+    if [[ -z "$GUEST_TOKEN" ]]; then
+        fail "Guest link code uses configured expiration" "Needs guest token" "No token available"
+        return
+    fi
+    local link_response=$(curl -s -X POST "$BASE_URL/guest/link-code" \
+        -H "Content-Type: application/json" \
+        -d "{\"token\":\"$GUEST_TOKEN\"}")
+    if [[ "$link_response" == *'"expiresIn":"7 minutes"'* ]]; then
+        pass "Guest link code uses configured expiration"
+    else
+        fail "Guest link code uses configured expiration" '"expiresIn":"7 minutes"' "$link_response"
+    fi
+}
+
 section "5b. GUEST ADMIN MANAGEMENT"
 
 test_list_guest_history() {
@@ -772,6 +804,7 @@ test_admin_setup_required
 test_admin_login_invalid
 test_deployment_status
 test_portal_url_setting
+test_link_code_expiration_setting
 test_list_guest_history
 test_admin_register_guest
 test_update_guest_room

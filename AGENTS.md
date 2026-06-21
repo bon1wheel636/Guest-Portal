@@ -6,9 +6,7 @@ See [README.md](README.md) for product features, deployment, and local developme
 
 ## Active sprint
 
-**Admin operations and confidence sprint (planned/in progress):** read [docs/SPRINT_ADMIN_OPS.md](docs/SPRINT_ADMIN_OPS.md) first in a new session. It contains current vs target admin/guest-health flows, implementation order, key files, and checklist — so you do not need prior chat context.
-
-Track high-level items in [ROADMAP.md](ROADMAP.md) under **In progress sprint: admin operations and confidence**.
+No sprint is currently in progress. See [ROADMAP.md](ROADMAP.md) for the backlog and completed sprints. The most recent completed handoff is [docs/SPRINT_ADMIN_OPS.md](docs/SPRINT_ADMIN_OPS.md).
 
 ## Cursor Cloud specific instructions
 

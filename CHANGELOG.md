@@ -12,6 +12,7 @@ All notable changes to this project will be documented here.
 - CSV exports for active guest sessions and registration history.
 - Device link code responses now include a same-origin link URL and QR SVG for easier second-device setup, including admin-generated codes for active guest sessions.
 - Admin Settings now includes a public portal URL so generated QR/link handoff URLs use the configured FQDN instead of localhost or an IP.
+- Device link code expiration is configurable in Admin Settings and applies to guest- and admin-generated QR/link codes.
 - Guest welcome hub at `/welcome.html` with Smart Home link, inline upload, device linking, and Welcome | My Photos navigation.
 - First-stay tutorial modal on the welcome hub after registration.
 - Returning-device recognition via `/guest/validate` and registration responses (`returningDevice` flag).
@@ -30,7 +31,9 @@ All notable changes to this project will be documented here.
 ### Changed
 - Post-registration and return visits now land on `/welcome.html` instead of `/photo.html`.
 - Guest greeting copy distinguishes first visits ("We're glad you're here") from recognized return devices ("Welcome back").
-- Admin panel now uses browser HTTP Basic Auth only; removed duplicate HTML login form and sessionStorage credentials.
+- Device link codes and QR codes now honor the configured expiration time instead of a hardcoded 30-minute window.
+- Admin Settings no longer shows a non-functional auto-logout timeout; signing out is documented for HTTP Basic Auth.
+- Device link code expiration setting renamed and clarified in the admin panel.
 - Admin panel reorganized into tabs: Overview, Rooms & Portal, Guests, Photos & Storage, and Settings.
 - `updateguest` now runs git and npm as the `guestportal` service user to avoid dubious ownership errors when invoked as root.
 - Guest upload UI now documents that phone photos, videos, HEIC/HEIF images, and PDF letters are allowed while code, scripts, archives, and macro documents are blocked.

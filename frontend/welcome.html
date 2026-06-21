@@ -44,7 +44,7 @@
         <strong>Share this code:</strong> <span id="linkCode" class="guest-code"></span>
         <div id="linkCodeQr" class="guest-link-qr" aria-label="Device link QR code"></div>
         <p id="linkCodeUrl" class="guest-muted"></p>
-        <p class="guest-muted">Enter this code on your other device to link it. Code expires in 30 minutes.</p>
+        <p id="linkCodeExpiry" class="guest-muted" hidden></p>
       </div>
     </section>
 
@@ -345,6 +345,11 @@
           document.getElementById('linkCodeUrl').innerHTML = result.linkUrl
             ? `Or open <a href="${escapeHtml(result.linkUrl)}">${escapeHtml(result.linkUrl)}</a> on another device.`
             : '';
+          const expiryEl = document.getElementById('linkCodeExpiry');
+          expiryEl.textContent = result.expiresIn
+            ? `Enter this code on your other device to link it. Code expires in ${result.expiresIn}.`
+            : 'Enter this code on your other device to link it.';
+          expiryEl.hidden = false;
           document.getElementById('linkCodeDisplay').style.display = 'block';
         } else {
           alert('Unable to generate link code. Please try again.');

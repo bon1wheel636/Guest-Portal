@@ -1,6 +1,6 @@
 # Sprint: Admin operations and confidence
 
-**Status:** Complete (PR in progress on `cursor/guest-entry-health-0c5d`).
+**Status:** Complete.
 
 Use this document to continue work in a **new agent session** without relying on prior chat history.
 
