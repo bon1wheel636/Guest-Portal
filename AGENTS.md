@@ -6,9 +6,9 @@ See [README.md](README.md) for product features, deployment, and local developme
 
 ## Active sprint
 
-**Day visitors, events, and entry landing (planned):** read [docs/SPRINT_DAY_VISITORS.md](docs/SPRINT_DAY_VISITORS.md) first in a new session. It contains current vs target visitor/event flows, folder structure, implementation order, key files, and checklist — so you do not need prior chat context.
+**Guest types, permissions, events, and entry landing (planned):** read [docs/SPRINT_DAY_VISITORS.md](docs/SPRINT_DAY_VISITORS.md) first in a new session. It covers configurable guest types with admin permission checkboxes, day vs overnight visit modes, event-scoped uploads, and the hero entry landing — so you do not need prior chat context.
 
-Track high-level items in [ROADMAP.md](ROADMAP.md) under **In progress sprint: day visitors, events, and entry landing**.
+Track high-level items in [ROADMAP.md](ROADMAP.md) under **In progress sprint: guest types, permissions, events, and entry landing**.
 
 ## Cursor Cloud specific instructions
 
