@@ -144,8 +144,8 @@ Planned order after PR #40. Each sprint should get its own handoff doc (`docs/SP
 | Order | Sprint | Handoff | Status |
 |-------|--------|---------|--------|
 | 1 | Guest types hardening and test coverage | [docs/SPRINT_GUEST_TYPES_HARDENING.md](docs/SPRINT_GUEST_TYPES_HARDENING.md) | Complete |
-| 2 | Events UX | [docs/SPRINT_EVENTS_UX.md](docs/SPRINT_EVENTS_UX.md) | In progress |
-| 3 | Admin quality-of-life | _(planned — create `docs/SPRINT_ADMIN_QOL.md`)_ | Planned |
+| 2 | Events UX | [docs/SPRINT_EVENTS_UX.md](docs/SPRINT_EVENTS_UX.md) | In progress (re-tag + merge UI) |
+| 3 | Admin quality-of-life | [docs/SPRINT_ADMIN_QOL.md](docs/SPRINT_ADMIN_QOL.md) | Planned |
 | 4 | UniFi external portal | _(planned — create `docs/SPRINT_UNIFI_PORTAL.md`)_ | Planned (needs controller details) |
 
 ---
@@ -192,21 +192,24 @@ Guest- and admin-facing improvements for event-tagged photos. **All new UI must 
 - [ ] **Re-tag upload to a different event from gallery**
   - Move file on disk between event subfolders under the same stay folder.
   - Respect `tagPhotosToEvent` and event creation permissions.
-- [ ] **Admin event merge** (optional follow-up)
-- [ ] **Handoff doc, tests, and documentation updates**
+- [ ] **Admin event merge UI**
+  - Events tab merge action using existing `PATCH /admin-api/events/:id` with `mergeIntoId`.
+- [ ] **Tests and documentation updates**
 
 ---
 
 ## Planned sprint: admin quality-of-life
 
-**Depends on:** none (can run in parallel with Events UX if desired, but queue it after hardening to limit concurrent API/UI churn).
+**Handoff:** [docs/SPRINT_ADMIN_QOL.md](docs/SPRINT_ADMIN_QOL.md) — read this at the start of a new agent session.
 
-Admin panel polish without guest permission or upload path changes.
+**Depends on:** Events UX completion (gallery re-tag and admin merge UI). Do not bundle with remaining Events UX work in the same PR unless finishing Events UX first.
+
+Admin panel polish without guest permission or upload path changes. **Responsive on mobile and desktop.**
 
 - [ ] **Dark mode toggle**
-  - Admin panel theme preference (CSS variables or class on `admin.html`).
-  - Sensible contrast for existing cards, tabs, and forms.
-- [ ] **Handoff doc and documentation updates**
+  - Admin panel theme preference via CSS variables; persist in `localStorage` (v1).
+  - Sensible contrast for cards, tabs, forms, deployment status, and photo grid.
+- [ ] **Handoff doc, tests, and documentation updates**
 
 ---
 

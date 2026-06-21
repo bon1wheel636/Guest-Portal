@@ -6,13 +6,19 @@ See [README.md](README.md) for product features, deployment, and local developme
 
 ## Active sprint
 
-**Events UX (in progress):** read [docs/SPRINT_EVENTS_UX.md](docs/SPRINT_EVENTS_UX.md) first in a new session. Admin Events tab and registration event picker are shipped; gallery re-tag remains.
+**Events UX (in progress — finish remaining items):** read [docs/SPRINT_EVENTS_UX.md](docs/SPRINT_EVENTS_UX.md) first in a new session.
 
-**Sprint queue (see [ROADMAP.md](ROADMAP.md)):** ~~hardening~~ → Events UX → Admin QoL → UniFi external portal. Before starting the UniFi sprint, **ask the project owner** for the controller details listed in [UNIFI.md](UNIFI.md); the owner has this information available.
+**Remaining:** guest gallery re-tag (`PATCH /guest/uploads/:eventSlug/:filename`), admin Events tab merge UI, tests.
+
+**Sprint queue (see [ROADMAP.md](ROADMAP.md)):** ~~hardening~~ → Events UX (finishing) → [Admin QoL](docs/SPRINT_ADMIN_QOL.md) → UniFi external portal.
+
+Before starting the **UniFi** sprint, **ask the project owner** for the controller details listed in [UNIFI.md](UNIFI.md); the owner has this information available.
+
+**Next planned sprint after Events UX:** [docs/SPRINT_ADMIN_QOL.md](docs/SPRINT_ADMIN_QOL.md) — admin dark mode toggle (mobile + desktop).
 
 Previous sprint (completed): [docs/SPRINT_GUEST_TYPES_HARDENING.md](docs/SPRINT_GUEST_TYPES_HARDENING.md) — scoped upload paths, permission snapshot/fallback, integration tests.
 
-Earlier sprint (completed): [docs/SPRINT_DAY_VISITORS.md](docs/SPRINT_DAY_VISITORS.md) — guest types, permissions, events, hero landing (PR #40).
+Shipped in Events UX so far (PR #45–#46): admin Events tab, registration event picker, hero registration modal.
 
 Track high-level items in [ROADMAP.md](ROADMAP.md) under **Sprint queue**.
 
