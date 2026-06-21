@@ -116,13 +116,13 @@ Document chosen rule in README or sprint doc; implement if low effort.
 4. **Integration tests** — add five tests above; fix any regressions.
 5. **Docs** — CHANGELOG, ROADMAP checklist, optional README note on upload URL shape.
 
-**Defer (stay in backlog):**
-- Event calendar integration.
-- Re-tag upload to different event from gallery.
-- Admin merge/rename events.
-- UniFi external portal, dark mode.
+**Defer (see ROADMAP sprint queue):**
+- **Events UX sprint** — admin Events tab (list, create, rename, merge, delete), re-tag upload to different event.
+- **Admin QoL sprint** — dark mode.
+- **UniFi external portal sprint** — Network Application API integration (ask project owner for details in [UNIFI.md](../UNIFI.md)).
+- **Backlog** — event calendar integration.
 
-**Optional stretch:**
+**Optional stretch (this sprint only):**
 - Deprecation header or log warning on unscoped `/:filename` routes.
 - Admin Photos UI: show event subfolder in file cards.
 
@@ -183,7 +183,7 @@ Verify scoped gallery delete, restricted fallback (spot-check in admin after dis
 
 - Guest types sprint merged in **PR #40** ([docs/SPRINT_DAY_VISITORS.md](SPRINT_DAY_VISITORS.md)).
 - Post-merge review identified duplicate filename risk, missing-type privilege escalation, and four missing integration tests.
-- ROADMAP tracks these under “Follow-ups from day visitors sprint (PR #40 review)” until this sprint starts.
+- ROADMAP **Sprint queue** tracks hardening (in progress) and planned Events UX, Admin QoL, and UniFi sprints.
 
 ## Sprint checklist (mirror ROADMAP)
 
