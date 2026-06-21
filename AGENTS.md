@@ -6,7 +6,9 @@ See [README.md](README.md) for product features, deployment, and local developme
 
 ## Active sprint
 
-No sprint is currently in progress. See [ROADMAP.md](ROADMAP.md) for the backlog and completed sprints. The most recent completed handoff is [docs/SPRINT_ADMIN_OPS.md](docs/SPRINT_ADMIN_OPS.md).
+**Day visitors, events, and entry landing (planned):** read [docs/SPRINT_DAY_VISITORS.md](docs/SPRINT_DAY_VISITORS.md) first in a new session. It contains current vs target visitor/event flows, folder structure, implementation order, key files, and checklist — so you do not need prior chat context.
+
+Track high-level items in [ROADMAP.md](ROADMAP.md) under **In progress sprint: day visitors, events, and entry landing**.
 
 ## Cursor Cloud specific instructions
 

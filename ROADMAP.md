@@ -112,9 +112,9 @@ This roadmap tracks shareable project work only. Keep private domains, NAS hostn
 - [x] **Tests and documentation updates**
   - Update `test-suite.sh`, README, DEPLOY/PROXY if needed, CHANGELOG, ROADMAP, and AGENTS.
 
-## Backlog
+## In progress sprint: day visitors, events, and entry landing
 
-### Day visitors, visitor types, and event tagging
+**Handoff:** [docs/SPRINT_DAY_VISITORS.md](docs/SPRINT_DAY_VISITORS.md) — read this at the start of a new agent session (avoids relying on full chat context).
 
 - [ ] **Day visitor registration and types**
   - Support same-day visitors separately from overnight registered guests.
@@ -130,17 +130,21 @@ This roadmap tracks shareable project work only. Keep private domains, NAS hostn
   - Support grouping/tagging photos by event even when no preset event exists.
   - Drive upload folder structure from visitor + event (e.g. event-scoped subfolders under each guest/visitor stay folder) so admin storage browsing matches portal organization.
   - Admin and guests can add event names for now; no calendar integration in the first version.
-- [ ] **Low priority / future**
-  - Optional sync with a family or household calendar for suggested event names and dates.
-
-### Background hero landing page
-
-- [ ] **Hero landing when a background image is configured**
-  - When an admin background image is set, show it prominently on the guest entry landing page.
-  - Replace the current full registration form-first layout with a **hero view**: background image visible, minimal chrome, and a **Register** (or equivalent) button centered mid-to-low on the screen.
+- [ ] **Background hero landing page**
+  - When an admin background image is set, show it prominently on the guest entry landing page (`/`, `index.html`).
+  - Replace the current full registration form-first layout with a **hero view**: background image visible, minimal chrome, and a **Register** button centered mid-to-low on the screen.
   - Tapping the button opens registration (inline expand, modal, or navigate to the existing registration form).
   - Preserve device link code entry for returning sessions; keep the hero usable on phones and tablets.
   - Unregistered visitors should see the hero; registered guests continue to land on `welcome.html` as today.
+- [ ] **Tests and documentation updates**
+  - Update `test-suite.sh`, README, CHANGELOG, ROADMAP, and AGENTS.
+
+## Backlog
+
+### Deferred from day visitors sprint
+
+- [ ] **Event calendar integration (low priority)**
+  - Optional sync with a family or household calendar for suggested event names and dates.
 
 ### Other backlog
 
