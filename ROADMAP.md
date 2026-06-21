@@ -112,9 +112,9 @@ This roadmap tracks shareable project work only. Keep private domains, NAS hostn
 - [x] **Tests and documentation updates**
   - Update `test-suite.sh`, README, DEPLOY/PROXY if needed, CHANGELOG, ROADMAP, and AGENTS.
 
-## In progress sprint: guest types, permissions, events, and entry landing
+## Completed sprint: guest types, permissions, events, and entry landing
 
-**Handoff:** [docs/SPRINT_DAY_VISITORS.md](docs/SPRINT_DAY_VISITORS.md) — read this at the start of a new agent session (avoids relying on full chat context).
+**Handoff:** [docs/SPRINT_DAY_VISITORS.md](docs/SPRINT_DAY_VISITORS.md) — merged in PR #40.
 
 - [x] **Configurable guest types (admin)**
   - Add a Guest Types section in the admin panel to create, edit, enable/disable, and reorder types.
@@ -138,6 +138,20 @@ This roadmap tracks shareable project work only. Keep private domains, NAS hostn
   - Update `test-suite.sh`, README, CHANGELOG, ROADMAP, and AGENTS.
 
 ## Backlog
+
+### Follow-ups from day visitors sprint (PR #40 review)
+
+- [ ] **Duplicate filename handling across event subfolders**
+  - Guest gallery download/delete APIs key files by filename only; the same name in `General/` and an event folder can resolve to the wrong file.
+  - Include event (or a composite file id) in guest upload list/download/delete paths.
+- [ ] **Safe fallback when a guest type is missing**
+  - Sessions whose `guestTypeId` no longer exists currently fall back to the default overnight type with full legacy permissions.
+  - Use a minimal restricted fallback (or snapshot permissions on the session) when the assigned type is deleted or unavailable.
+- [ ] **Remaining sprint integration tests**
+  - Upload with `tagPhotosToEvent` lands in the correct event subfolder.
+  - Legacy session without `guestTypeId` still uploads and validates as overnight.
+  - Registration with `selectEventAtRegistration` (day personal flow).
+  - `deleteOwnPhotos: false` returns 403 on guest delete.
 
 ### Deferred from day visitors sprint
 
