@@ -120,7 +120,7 @@
       [...groups.entries()]
         .sort((a, b) => a[0].localeCompare(b[0]))
         .forEach(([eventName, eventFiles]) => {
-          tabDefs.push({ key: eventName, label: eventName, count: eventFiles.length });
+          tabDefs.push({ key: eventName, label: formatEventLabel(eventName), count: eventFiles.length });
         });
 
       tabDefs.forEach(tab => {
@@ -165,8 +165,19 @@
       }
     }
 
+    function formatEventLabel(eventName) {
+      return eventName === 'General' ? 'No event' : eventName;
+    }
+
+    function isGeneralEvent(eventName) {
+      return (eventName || 'General') === 'General';
+    }
+
     function buildRetagOptions(currentEventName) {
       const options = [];
+      if (!isGeneralEvent(currentEventName)) {
+        options.push({ value: '__general__', label: 'No event (remove tag)' });
+      }
       availableEvents.forEach(event => {
         if (event.name !== currentEventName) {
           options.push({ value: event.id, label: event.name });
@@ -179,9 +190,14 @@
     }
 
     async function retagUpload(file, targetEventId, newEventName) {
-      const body = targetEventId === '__new__'
-        ? { eventName: newEventName }
-        : { eventId: targetEventId };
+      let body;
+      if (targetEventId === '__general__') {
+        body = { clearEvent: true };
+      } else if (targetEventId === '__new__') {
+        body = { eventName: newEventName };
+      } else {
+        body = { eventId: targetEventId };
+      }
       const res = await fetch(guestUploadPath(file), {
         method: 'PATCH',
         headers: {
@@ -208,7 +224,7 @@
 
       renderEventTabs(files);
       const visibleFiles = filesForActiveFilter(files);
-      const filterLabel = activeEventFilter === 'all' ? '' : ` in ${activeEventFilter}`;
+      const filterLabel = activeEventFilter === 'all' ? '' : ` in ${formatEventLabel(activeEventFilter)}`;
       galleryStatus.textContent = `${visibleFiles.length} file${visibleFiles.length === 1 ? '' : 's'}${filterLabel} uploaded during your stay.`;
 
       if (visibleFiles.length === 0) {
@@ -223,7 +239,7 @@
         const section = document.createElement('section');
         section.className = 'guest-gallery-group';
         if (showGroupHeadings) {
-          section.innerHTML = `<h2>${escapeHtml(eventName)}</h2>`;
+          section.innerHTML = `<h2>${escapeHtml(formatEventLabel(eventName))}</h2>`;
         }
         const list = document.createElement('ul');
         list.className = 'guest-gallery';
@@ -257,7 +273,7 @@
           meta.className = 'guest-gallery-meta';
           const eventBadge = showGroupHeadings
             ? ''
-            : `<span class="guest-event-badge">${escapeHtml(file.event || 'General')}</span><br>`;
+            : `<span class="guest-event-badge">${escapeHtml(formatEventLabel(file.event || 'General'))}</span><br>`;
           meta.innerHTML = `${eventBadge}<strong>${escapeHtml(file.name)}</strong><br><span class="guest-muted">${formatBytes(file.size)}</span>`;
 
           const actions = document.createElement('div');

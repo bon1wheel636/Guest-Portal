@@ -27,6 +27,7 @@ All notable changes to this project will be documented here.
 
 ### Changed
 - Photo gallery **event tabs** filter uploads by event; move-to-event controls use labeled fieldsets.
+- Guests can **clear an event tag** by moving a file to **No event** (`clearEvent: true` / General folder).
 - Admin guest sessions and Storage photo browser show registered and per-file event names.
 - Hero landing **Register** opens a modal dialog instead of scrolling to a form below the fold.
 - `photo.html` gallery download/delete uses scoped upload URLs from the list response.

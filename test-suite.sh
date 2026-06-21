@@ -1113,6 +1113,54 @@ print(events[0]['id'] if events else '')
     admin_curl -X DELETE "$BASE_URL/admin-api/guest-sessions/$guest_id" > /dev/null
 }
 
+test_guest_upload_clear_event_tag() {
+    require_admin_creds "Guest upload clear event tag" || return
+    admin_curl -X POST "$BASE_URL/admin-api/events" \
+        -H "Content-Type: application/json" \
+        -d '{"name":"Clear Tag Event"}' > /dev/null
+    local response=$(curl -s -X POST "$BASE_URL/register" \
+        -H "Content-Type: application/json" \
+        -d '{"name":"Clear Tag Guest","room":"Room 1","stayDays":2,"guestTypeId":"type_overnight"}')
+    local token=$(echo "$response" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
+    if [[ -z "$token" ]]; then
+        fail "Guest upload clear event tag" "registration token" "$response"
+        return
+    fi
+    printf '%s\n' '%PDF-1.4' '1 0 obj <<>> endobj' '%%EOF' > /tmp/test-clear-tag-upload.pdf
+    local upload_code=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$BASE_URL/upload" \
+        -H "X-Guest-Token: $token" \
+        -F "eventName=Clear Tag Event" \
+        -F "photos=@/tmp/test-clear-tag-upload.pdf;type=application/pdf")
+    rm -f /tmp/test-clear-tag-upload.pdf
+    if [[ "$upload_code" != "200" ]]; then
+        fail "Guest upload clear event tag" "200 upload" "$upload_code"
+        return
+    fi
+    local list=$(curl -s "$BASE_URL/guest/uploads" -H "X-Guest-Token: $token")
+    local filename=$(echo "$list" | grep -o '"name":"[^"]*"' | head -1 | cut -d'"' -f4)
+    local source_slug=$(echo "$list" | grep -o '"eventSlug":"[^"]*"' | head -1 | cut -d'"' -f4)
+    if [[ -z "$filename" || -z "$source_slug" || "$source_slug" == "General" ]]; then
+        fail "Guest upload clear event tag" "upload in event folder" "$list"
+        return
+    fi
+    local encoded_slug=$(python3 -c "import urllib.parse; print(urllib.parse.quote('$source_slug'))")
+    local encoded_name=$(python3 -c "import urllib.parse; print(urllib.parse.quote('$filename'))")
+    local patch=$(curl -s -X PATCH "$BASE_URL/guest/uploads/$encoded_slug/$encoded_name" \
+        -H "Content-Type: application/json" \
+        -H "X-Guest-Token: $token" \
+        -d '{"clearEvent":true}')
+    if [[ "$patch" != *'"event":"General"'* ]] || [[ "$patch" != *'"eventSlug":"General"'* ]]; then
+        fail "Guest upload clear event tag" 'General event response' "$patch"
+        return
+    fi
+    local after=$(curl -s "$BASE_URL/guest/uploads" -H "X-Guest-Token: $token")
+    if [[ "$after" == *'"eventSlug":"General"'* ]] && [[ "$after" != *'"eventSlug":"Clear-Tag-Event"'* && "$after" != *'"eventSlug":"Clear Tag Event"'* ]]; then
+        pass "Guest upload clear event tag moves file to General"
+    else
+        fail "Guest upload clear event tag moves file to General" "General slug only" "$after"
+    fi
+}
+
 test_index_hero_markup() {
     local response=$(curl -s "$BASE_URL/")
     if [[ "$response" == *"hero-view"* ]] && [[ "$response" == *"heroRegisterBtn"* ]] && [[ "$response" == *"registrationModal"* ]]; then
@@ -1160,10 +1208,10 @@ test_photo_html() {
         fail "Photo gallery page loads" "HTML with gallery nav" "Empty or error"
         return
     fi
-    if [[ "$response" == *"galleryEventTabs"* && "$response" == *"guest-event-tab"* && "$response" == *"Move to event"* ]]; then
+    if [[ "$response" == *"galleryEventTabs"* && "$response" == *"guest-event-tab"* && "$response" == *"Move to event"* && "$response" == *"No event (remove tag)"* ]]; then
         pass "Photo gallery includes labeled event tabs and move controls"
     else
-        fail "Photo gallery includes labeled event tabs and move controls" "galleryEventTabs + guest-event-tab + Move to event" "Missing markup"
+        fail "Photo gallery includes labeled event tabs and move controls" "galleryEventTabs + guest-event-tab + Move to event + No event (remove tag)" "Missing markup"
     fi
 }
 
@@ -1337,6 +1385,7 @@ test_admin_events_crud
 test_admin_event_merge
 test_guest_upload_retag
 test_guest_upload_retag_forbidden
+test_guest_upload_clear_event_tag
 test_index_hero_markup
 
 test_index_html

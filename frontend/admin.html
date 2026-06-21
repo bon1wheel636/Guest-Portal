@@ -1251,6 +1251,10 @@
       return ['.jpg', '.jpeg', '.png', '.gif', '.webp'].includes(fileExtension(name));
     }
 
+    function formatEventLabel(name) {
+      return name === 'General' ? 'No event' : name;
+    }
+
     async function loadPhotos() {
       try {
         const res = await authFetch('/admin-api/uploads');
@@ -1282,7 +1286,7 @@
               if (filesByEvent.size > 1) {
                 const eventHeading = document.createElement('h4');
                 eventHeading.className = 'admin-photo-event-heading';
-                eventHeading.textContent = `Event: ${eventName} (${eventFiles.length})`;
+                eventHeading.textContent = `Event: ${formatEventLabel(eventName)} (${eventFiles.length})`;
                 div.appendChild(eventHeading);
               }
 
@@ -1310,7 +1314,7 @@
                 meta.className = 'admin-photo-meta';
                 const eventLine = filesByEvent.size > 1
                   ? ''
-                  : `<span class="admin-photo-event-label">Event: ${escapeHtml(eventName)}</span><br>`;
+                  : `<span class="admin-photo-event-label">Event: ${escapeHtml(formatEventLabel(eventName))}</span><br>`;
                 meta.innerHTML = `${eventLine}<strong>${escapeHtml(file.name)}</strong><br><span>${formatBytes(file.size)}</span><br><small>${escapeHtml(file.uploadedAt ? new Date(file.uploadedAt).toLocaleString() : 'Upload time unavailable')}</small>`;
 
                 fileCard.appendChild(preview);

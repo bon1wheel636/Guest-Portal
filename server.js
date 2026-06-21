@@ -703,6 +703,11 @@ function getStayFolderFromUploadPath(filePath, guestId) {
 
 function resolveRetagTargetEvent(guest, body) {
   const guestType = resolveGuestType(guest);
+
+  if (body?.clearEvent === true) {
+    return { event: { name: 'General' } };
+  }
+
   let event = null;
 
   if (body?.eventId) {
@@ -716,6 +721,10 @@ function resolveRetagTargetEvent(guest, body) {
   const trimmed = typeof body?.eventName === 'string' ? body.eventName.trim() : '';
   if (!trimmed) {
     return { error: 'Target event is required', status: 400 };
+  }
+
+  if (trimmed.toLowerCase() === 'general') {
+    return { event: { name: 'General' } };
   }
 
   event = findEventByName(trimmed);
