@@ -179,7 +179,7 @@ If no admin password is configured, visiting `/admin.html` will show an **Initia
 
 Guest photos are stored locally by default in `/opt/guest-portal/uploads/` in production. You can change the storage path from the admin panel under **Upload Storage Path** to point to an NFS or SMB mount on a NAS.
 
-Guest uploads are intentionally limited to photos, videos, HEIC/HEIF phone images, and PDFs. If a guest wants to leave a letter, ask them to upload a PDF or a photo of the note rather than a Word/Pages document or script-capable file.
+Guest uploads are intentionally limited to photos, videos, HEIC/HEIF phone images, and PDFs. Guests can also **leave a typed note for hosts** on the Welcome page (thank-yous, memories, etc.) without uploading a file. For handwritten notes, they can upload a photo or PDF rather than a Word/Pages document or script-capable file.
 
 ### NAS Setup
 - **During install:** The setup script offers to configure an NFS or SMB mount automatically

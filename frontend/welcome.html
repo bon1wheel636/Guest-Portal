@@ -23,6 +23,18 @@
       <p><a id="smartHomeLink" href="#">Go to your Smart Home Controls</a></p>
     </section>
 
+    <section class="guest-section" id="noteSection">
+      <h2>Leave a Note for Your Hosts</h2>
+      <p class="guest-muted">Share a thank-you, a favorite memory, or anything else you'd like your hosts to read.</p>
+      <label for="guestNoteText" class="guest-visually-hidden">Your message</label>
+      <textarea id="guestNoteText" rows="5" maxlength="5000" placeholder="Write your message here..."></textarea>
+      <div id="noteStatus" class="guest-status"></div>
+      <div class="guest-actions">
+        <button type="button" id="saveGuestNote">Save note</button>
+        <button type="button" id="deleteGuestNote" class="btn-secondary" hidden>Delete note</button>
+      </div>
+    </section>
+
     <section class="guest-section" id="uploadSection">
       <h2>Upload Photos &amp; Files</h2>
       <form id="uploadForm" enctype="multipart/form-data">
@@ -33,7 +45,7 @@
         </div>
         <label for="photo">Choose files to upload</label>
         <input type="file" name="photo" id="photo" accept="image/jpeg,image/png,image/gif,image/webp,image/heic,image/heif,video/mp4,video/quicktime,video/webm,application/pdf,.heic,.heif" multiple required />
-        <small>Allowed: phone photos, videos, HEIC/HEIF images, and PDF letters. For handwritten notes, upload a photo or a PDF. Code, scripts, archives, executables, and macro documents are blocked.</small>
+        <small>Allowed: phone photos, videos, HEIC/HEIF images, and PDF letters. You can also type a note on this page instead of uploading a PDF. For handwritten notes, upload a photo or a PDF. Code, scripts, archives, executables, and macro documents are blocked.</small>
         <div id="fileValidation" class="guest-validation"></div>
         <progress id="uploadProgress" value="0" max="100" class="guest-progress"></progress>
         <div id="uploadStatus" class="guest-status"></div>
@@ -64,6 +76,7 @@
       <ul class="guest-tutorial-list" id="tutorialList">
         <li><strong>Smart Home</strong> — open your room dashboard for lights, climate, and other controls.</li>
         <li><strong>Upload photos &amp; files</strong> — share vacation photos, videos, or PDF notes with your hosts.</li>
+        <li><strong>Leave a note</strong> — type a thank-you or memory for your hosts without uploading a file.</li>
         <li><strong>My Photos</strong> — review what you have uploaded and remove any mistakes.</li>
         <li><strong>Link another device</strong> — generate a code so a second phone or tablet can join this stay.</li>
         <li><strong>Bookmark this page</strong> — save the portal to your home screen or bookmarks so it is easy to find again.</li>
@@ -96,6 +109,10 @@
     const uploadProgress = document.getElementById('uploadProgress');
     const uploadStatus = document.getElementById('uploadStatus');
     const uploadButton = document.querySelector('#uploadForm button[type="submit"]');
+    const noteText = document.getElementById('guestNoteText');
+    const noteStatus = document.getElementById('noteStatus');
+    const saveGuestNoteBtn = document.getElementById('saveGuestNote');
+    const deleteGuestNoteBtn = document.getElementById('deleteGuestNote');
     const tutorialModal = document.getElementById('tutorialModal');
     const MAX_UPLOAD_BYTES = 50 * 1024 * 1024;
     const MAX_UPLOAD_FILES = 10;
@@ -215,6 +232,7 @@
 
     function applyPermissions() {
       document.getElementById('uploadSection').hidden = !permissions.uploadPhotos;
+      document.getElementById('noteSection').hidden = !permissions.leaveGuestNote;
       document.getElementById('photosNavLink').hidden = !permissions.viewPhotoGallery;
       document.getElementById('galleryHint').hidden = !permissions.viewPhotoGallery;
       document.getElementById('linkDeviceSection').hidden = !permissions.linkDevice;
@@ -271,6 +289,9 @@
       }
       if (permissions.uploadPhotos) {
         items.push('<li><strong>Upload photos &amp; files</strong> — share vacation photos, videos, or PDF notes with your hosts.</li>');
+      }
+      if (permissions.leaveGuestNote) {
+        items.push('<li><strong>Leave a note</strong> — type a thank-you or memory for your hosts without uploading a file.</li>');
       }
       if (permissions.viewPhotoGallery) {
         items.push('<li><strong>My Photos</strong> — review what you have uploaded and remove any mistakes.</li>');
@@ -337,7 +358,101 @@
       const arrival = sessionStorage.getItem('guestArrival');
       applyGreeting(returningDevice, arrival);
       maybeShowTutorial(returningDevice, arrival);
+      if (permissions.leaveGuestNote) {
+        await loadGuestNote();
+      }
     }
+
+    function setNoteStatus(message, isError = false) {
+      noteStatus.textContent = message;
+      noteStatus.style.color = isError ? '#c0392b' : '#27ae60';
+    }
+
+    function updateNoteActions(hasNote) {
+      deleteGuestNoteBtn.hidden = !hasNote;
+    }
+
+    async function loadGuestNote() {
+      if (!guestToken || !permissions.leaveGuestNote) return;
+      try {
+        const res = await fetch('/guest/note', {
+          headers: { 'X-Guest-Token': guestToken }
+        });
+        if (!res.ok) {
+          setNoteStatus('Unable to load your note.', true);
+          return;
+        }
+        const data = await res.json();
+        noteText.value = data.note?.text || '';
+        updateNoteActions(Boolean(data.note));
+      } catch (err) {
+        console.error('Failed to load guest note:', err);
+        setNoteStatus('Unable to load your note.', true);
+      }
+    }
+
+    saveGuestNoteBtn.addEventListener('click', async () => {
+      if (!guestToken) {
+        setNoteStatus('Please register again before saving a note.', true);
+        window.location.href = 'index.html';
+        return;
+      }
+      const text = noteText.value.trim();
+      if (!text) {
+        setNoteStatus('Please enter a message before saving.', true);
+        return;
+      }
+      saveGuestNoteBtn.disabled = true;
+      deleteGuestNoteBtn.disabled = true;
+      setNoteStatus('Saving...');
+      try {
+        const res = await fetch('/guest/note', {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Guest-Token': guestToken
+          },
+          body: JSON.stringify({ text })
+        });
+        if (res.ok) {
+          setNoteStatus('Your note was saved for your hosts.');
+          updateNoteActions(true);
+        } else {
+          setNoteStatus('Save failed: ' + (await res.text()), true);
+        }
+      } catch (err) {
+        setNoteStatus('Save failed: ' + err.message, true);
+      } finally {
+        saveGuestNoteBtn.disabled = false;
+        deleteGuestNoteBtn.disabled = false;
+      }
+    });
+
+    deleteGuestNoteBtn.addEventListener('click', async () => {
+      if (!guestToken) return;
+      if (!confirm('Delete your note for your hosts?')) return;
+      saveGuestNoteBtn.disabled = true;
+      deleteGuestNoteBtn.disabled = true;
+      setNoteStatus('Deleting...');
+      try {
+        const res = await fetch('/guest/note', {
+          method: 'DELETE',
+          headers: { 'X-Guest-Token': guestToken }
+        });
+        if (res.ok) {
+          noteText.value = '';
+          updateNoteActions(false);
+          setNoteStatus('Your note was deleted.');
+        } else {
+          setNoteStatus('Delete failed: ' + (await res.text()), true);
+        }
+      } catch (err) {
+        setNoteStatus('Delete failed: ' + err.message, true);
+      } finally {
+        saveGuestNoteBtn.disabled = false;
+        deleteGuestNoteBtn.disabled = false;
+      }
+    });
 
     document.getElementById('dismissTutorial').addEventListener('click', () => {
       tutorialModal.hidden = true;

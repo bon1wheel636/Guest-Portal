@@ -7,6 +7,7 @@ All notable changes to this project will be documented here.
 ## [Unreleased]
 
 ### Added
+- Guest **text notes for hosts** — `GET/PUT/DELETE /guest/note` with `leaveGuestNote` permission; one editable note per stay stored in `storage.json`; admin list/delete via `/admin-api/guest-notes`; Welcome hub textarea UI and Guests tab in admin.
 - Guest gallery **re-tag** — `PATCH /guest/uploads/:eventSlug/:filename` moves uploads between event folders; UI on `photo.html` when `tagPhotosToEvent` is allowed.
 - Admin Events tab **merge** action with confirmation dialog; uses existing `mergeIntoId` API.
 - Integration tests for guest re-tag, re-tag 403 for business type, and admin event merge.

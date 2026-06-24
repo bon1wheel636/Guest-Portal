@@ -23,10 +23,11 @@ const guestTokensFile = '/etc/guest-portal/guest-tokens.json';
 const MAX_GUEST_UPLOAD_SIZE_BYTES = 50 * 1024 * 1024;
 const MAX_GUEST_UPLOAD_FILES = 10;
 const URL_CHECK_TIMEOUT_MS = 2500;
+const MAX_GUEST_NOTE_LENGTH = 5000;
 
 // H2: Use JSON.parse(fs.readFileSync()) instead of require() to avoid module caching
 const config = fs.existsSync(configPath) ? JSON.parse(fs.readFileSync(configPath, 'utf8')) : {};
-const guestData = fs.existsSync(dbPath) ? JSON.parse(fs.readFileSync(dbPath, 'utf8')) : { rooms: [], guests: [], events: [], guestTypes: [] };
+const guestData = fs.existsSync(dbPath) ? JSON.parse(fs.readFileSync(dbPath, 'utf8')) : { rooms: [], guests: [], events: [], guestTypes: [], guestNotes: [] };
 let sessionCodes = fs.existsSync(sessionFile) ? JSON.parse(fs.readFileSync(sessionFile, 'utf8')) : {};
 let guestTokens = fs.existsSync(guestTokensFile) ? JSON.parse(fs.readFileSync(guestTokensFile, 'utf8')) : {};
 const packageJsonPath = path.join(__dirname, 'package.json');
@@ -53,7 +54,8 @@ const DEFAULT_GUEST_TYPES = [
       tagPhotosToEvent: true,
       createEventNames: true,
       viewWelcomeHub: true,
-      signOut: true
+      signOut: true,
+      leaveGuestNote: true
     }
   },
   {
@@ -76,7 +78,8 @@ const DEFAULT_GUEST_TYPES = [
       tagPhotosToEvent: true,
       createEventNames: true,
       viewWelcomeHub: true,
-      signOut: true
+      signOut: true,
+      leaveGuestNote: true
     }
   },
   {
@@ -99,7 +102,8 @@ const DEFAULT_GUEST_TYPES = [
       tagPhotosToEvent: false,
       createEventNames: false,
       viewWelcomeHub: true,
-      signOut: true
+      signOut: true,
+      leaveGuestNote: true
     }
   }
 ];
@@ -116,7 +120,8 @@ const PERMISSION_KEYS = [
   'tagPhotosToEvent',
   'createEventNames',
   'viewWelcomeHub',
-  'signOut'
+  'signOut',
+  'leaveGuestNote'
 ];
 
 const RESTRICTED_FALLBACK_PERMISSIONS = {
@@ -131,7 +136,8 @@ const RESTRICTED_FALLBACK_PERMISSIONS = {
   tagPhotosToEvent: false,
   createEventNames: false,
   viewWelcomeHub: true,
-  signOut: true
+  signOut: true,
+  leaveGuestNote: false
 };
 
 function ensureStorageDefaults() {
@@ -140,9 +146,20 @@ function ensureStorageDefaults() {
     guestData.events = [];
     changed = true;
   }
+  if (!Array.isArray(guestData.guestNotes)) {
+    guestData.guestNotes = [];
+    changed = true;
+  }
   if (!Array.isArray(guestData.guestTypes) || guestData.guestTypes.length === 0) {
     guestData.guestTypes = JSON.parse(JSON.stringify(DEFAULT_GUEST_TYPES));
     changed = true;
+  } else {
+    guestData.guestTypes.forEach(type => {
+      if (type.permissions && !Object.prototype.hasOwnProperty.call(type.permissions, 'leaveGuestNote')) {
+        type.permissions.leaveGuestNote = true;
+        changed = true;
+      }
+    });
   }
   if (changed) {
     saveGuestData();
@@ -260,6 +277,97 @@ function validateGuestNameAndRoom(name, room) {
   const roomError = validateGuestRoom(room);
   if (roomError) return roomError;
   return null;
+}
+
+function validateGuestNoteText(text) {
+  if (typeof text !== 'string') {
+    return { error: 'Note text is required', status: 400 };
+  }
+  const trimmed = text.trim();
+  if (!trimmed) {
+    return { error: 'Note text cannot be empty', status: 400 };
+  }
+  if (trimmed.length > MAX_GUEST_NOTE_LENGTH) {
+    return { error: `Note text must be ${MAX_GUEST_NOTE_LENGTH} characters or fewer`, status: 400 };
+  }
+  return { text: trimmed };
+}
+
+function formatGuestNoteForResponse(note) {
+  return {
+    id: note.id,
+    guestId: note.guestId,
+    guestName: note.guestName,
+    room: note.room || '',
+    guestTypeId: note.guestTypeId || '',
+    eventName: note.eventName || '',
+    text: note.text,
+    createdAt: note.createdAt,
+    updatedAt: note.updatedAt
+  };
+}
+
+function getGuestNoteByGuestId(guestId) {
+  return (guestData.guestNotes || []).find(note => note.guestId === guestId) || null;
+}
+
+function getGuestNoteById(id) {
+  return (guestData.guestNotes || []).find(note => note.id === id) || null;
+}
+
+function upsertGuestNote(guest, text) {
+  if (!Array.isArray(guestData.guestNotes)) {
+    guestData.guestNotes = [];
+  }
+  const now = new Date().toISOString();
+  const existing = getGuestNoteByGuestId(guest.id);
+  if (existing) {
+    existing.text = text;
+    existing.updatedAt = now;
+    existing.guestName = guest.name || existing.guestName;
+    existing.room = guest.room || '';
+    existing.guestTypeId = guest.guestTypeId || existing.guestTypeId || '';
+    existing.eventName = guest.eventName || '';
+    saveGuestData();
+    return existing;
+  }
+
+  const note = {
+    id: `note_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`,
+    guestId: guest.id,
+    guestName: guest.name || '',
+    room: guest.room || '',
+    guestTypeId: guest.guestTypeId || '',
+    eventName: guest.eventName || '',
+    text,
+    createdAt: now,
+    updatedAt: now
+  };
+  guestData.guestNotes.push(note);
+  saveGuestData();
+  return note;
+}
+
+function deleteGuestNoteByGuestId(guestId) {
+  const notes = guestData.guestNotes || [];
+  const index = notes.findIndex(note => note.guestId === guestId);
+  if (index < 0) {
+    return false;
+  }
+  notes.splice(index, 1);
+  saveGuestData();
+  return true;
+}
+
+function deleteGuestNoteById(id) {
+  const notes = guestData.guestNotes || [];
+  const index = notes.findIndex(note => note.id === id);
+  if (index < 0) {
+    return false;
+  }
+  notes.splice(index, 1);
+  saveGuestData();
+  return true;
 }
 
 function getGuestTypeById(id) {
@@ -1756,6 +1864,28 @@ app.delete('/guest/uploads/:filename', validateGuestUploadToken, requireGuestPer
   }
 });
 
+app.get('/guest/note', validateGuestUploadToken, requireGuestPermission('leaveGuestNote'), (req, res) => {
+  const note = getGuestNoteByGuestId(req.guestSession.guest.id);
+  res.json({ note: note ? formatGuestNoteForResponse(note) : null });
+});
+
+app.put('/guest/note', validateGuestUploadToken, requireGuestPermission('leaveGuestNote'), (req, res) => {
+  const validation = validateGuestNoteText(req.body?.text);
+  if (validation.error) {
+    return res.status(validation.status || 400).send(validation.error);
+  }
+  const note = upsertGuestNote(req.guestSession.guest, validation.text);
+  res.json({ note: formatGuestNoteForResponse(note) });
+});
+
+app.delete('/guest/note', validateGuestUploadToken, requireGuestPermission('leaveGuestNote'), (req, res) => {
+  const deleted = deleteGuestNoteByGuestId(req.guestSession.guest.id);
+  if (!deleted) {
+    return res.status(404).send('Note not found');
+  }
+  res.json({ success: true });
+});
+
 // Legacy session routes (public)
 app.post('/session', (req, res) => {
   const { name, room } = req.body;
@@ -1812,6 +1942,7 @@ app.get('/admin-api/deployment-status', authMiddleware, async (req, res) => {
     data: {
       rooms: rooms.length,
       registrationHistory: (guestData.guests || []).length,
+      guestNotes: (guestData.guestNotes || []).length,
       activeGuestSessions: sessionCounts.active,
       expiredGuestSessions: sessionCounts.expired,
       pendingSessionCodes: Object.values(sessionCodes).filter(entry => entry.expires > Date.now()).length
@@ -2347,6 +2478,23 @@ app.get('/admin-api/guests.csv', authMiddleware, (req, res) => {
     { key: 'timestamp', header: 'Registered At' },
     { key: 'hasActiveSession', header: 'Has Active Session' }
   ], getRegistrationHistoryRows());
+});
+
+app.get('/admin-api/guest-notes', authMiddleware, (req, res) => {
+  const notes = (guestData.guestNotes || [])
+    .slice()
+    .sort((a, b) => new Date(b.updatedAt || b.createdAt) - new Date(a.updatedAt || a.createdAt))
+    .map(formatGuestNoteForResponse);
+  res.json({ notes });
+});
+
+app.delete('/admin-api/guest-notes/:id', authMiddleware, (req, res) => {
+  const note = getGuestNoteById(req.params.id);
+  if (!note) {
+    return res.status(404).send('Note not found');
+  }
+  deleteGuestNoteById(req.params.id);
+  res.json({ success: true });
 });
 
 app.get('/admin-api/guest-types', authMiddleware, (req, res) => {

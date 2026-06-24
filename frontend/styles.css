@@ -143,6 +143,15 @@ a:hover {
   background: #fff;
 }
 
+.admin-guest-note-body {
+  margin-top: 0.75rem;
+  padding: 0.75rem;
+  background: #f8f8f8;
+  border-radius: 6px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 .admin-item-meta {
   float: right;
   color: #666;
@@ -423,6 +432,38 @@ a:hover {
 .guest-status {
   margin-top: 8px;
   font-size: 0.9em;
+}
+
+.guest-note-textarea,
+#guestNoteText {
+  width: 100%;
+  box-sizing: border-box;
+  margin-top: 0.5rem;
+  padding: 0.75rem;
+  font: inherit;
+  line-height: 1.4;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  resize: vertical;
+}
+
+.guest-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+
+.guest-visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 .guest-link-code {
