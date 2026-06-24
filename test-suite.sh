@@ -691,7 +691,7 @@ test_validate_permissions() {
     local validate=$(curl -s -X POST "$BASE_URL/guest/validate" \
         -H "Content-Type: application/json" \
         -d "{\"token\":\"$token\"}")
-    if [[ "$validate" == *'"permissions"'* ]] && [[ "$validate" == *'"uploadPhotos":true'* ]] && [[ "$validate" == *'"guestTypeId"'* ]]; then
+    if [[ "$validate" == *'"permissions"'* ]] && [[ "$validate" == *'"uploadPhotos":true'* ]] && [[ "$validate" == *'"leaveGuestNote":true'* ]] && [[ "$validate" == *'"guestTypeId"'* ]]; then
         pass "Validate returns guest permissions"
     else
         fail "Validate returns guest permissions" 'permissions + guestTypeId' "$validate"
@@ -1197,6 +1197,12 @@ test_welcome_html() {
         pass "Welcome hub page loads"
     else
         fail "Welcome hub page loads" "HTML with upload and nav" "Empty or error"
+        return
+    fi
+    if [[ "$response" == *"noteSection"* && "$response" == *"Leave a Note for Your Hosts"* && "$response" == *"saveGuestNote"* ]]; then
+        pass "Welcome hub includes guest note section"
+    else
+        fail "Welcome hub includes guest note section" "noteSection + Leave a Note markup" "Missing markup"
     fi
 }
 
@@ -1212,6 +1218,181 @@ test_photo_html() {
         pass "Photo gallery includes labeled event tabs and move controls"
     else
         fail "Photo gallery includes labeled event tabs and move controls" "galleryEventTabs + guest-event-tab + Move to event + No event (remove tag)" "Missing markup"
+    fi
+}
+
+section "7c. GUEST TEXT NOTES"
+
+test_guest_note_crud() {
+    local response=$(curl -s -X POST "$BASE_URL/register" \
+        -H "Content-Type: application/json" \
+        -d '{"name":"Note Test Guest","room":"Room 1","stayDays":3}')
+    local token=$(echo "$response" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
+    if [[ -z "$token" ]]; then
+        fail "Guest note CRUD" "registration token" "$response"
+        return
+    fi
+    local put=$(curl -s -X PUT "$BASE_URL/guest/note" \
+        -H "Content-Type: application/json" \
+        -H "X-Guest-Token: $token" \
+        -d '{"text":"Thank you for a wonderful stay!"}')
+    if [[ "$put" != *'"text":"Thank you for a wonderful stay!"'* ]] || [[ "$put" != *'"id":"note_'* ]]; then
+        fail "Guest note save" "saved note payload" "$put"
+        return
+    fi
+    local note_id=$(echo "$put" | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4)
+    local get=$(curl -s "$BASE_URL/guest/note" -H "X-Guest-Token: $token")
+    if [[ "$get" != *'"text":"Thank you for a wonderful stay!"'* ]]; then
+        fail "Guest note get" "saved note text" "$get"
+        return
+    fi
+    local update=$(curl -s -X PUT "$BASE_URL/guest/note" \
+        -H "Content-Type: application/json" \
+        -H "X-Guest-Token: $token" \
+        -d '{"text":"Updated thank-you note"}')
+    if [[ "$update" != *'"text":"Updated thank-you note"'* ]] || [[ "$update" != *"\"id\":\"$note_id\""* ]]; then
+        fail "Guest note update keeps same id" "same id + updated text" "$update"
+        return
+    fi
+    local del=$(curl -s -X DELETE "$BASE_URL/guest/note" -H "X-Guest-Token: $token")
+    if [[ "$del" != *'"success":true'* ]]; then
+        fail "Guest note delete" '{"success":true}' "$del"
+        return
+    fi
+    local after=$(curl -s "$BASE_URL/guest/note" -H "X-Guest-Token: $token")
+    if [[ "$after" == *'"note":null'* ]]; then
+        pass "Guest note CRUD (save, get, update, delete)"
+    else
+        fail "Guest note delete clears note" '"note":null' "$after"
+    fi
+}
+
+test_business_day_can_leave_note() {
+    local response=$(curl -s -X POST "$BASE_URL/register" \
+        -H "Content-Type: application/json" \
+        -d '{"name":"Biz Note Guest","guestTypeId":"type_day_business"}')
+    local token=$(echo "$response" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
+    if [[ -z "$token" ]]; then
+        fail "Business visitor can leave note" "registration token" "$response"
+        return
+    fi
+    local validate=$(curl -s -X POST "$BASE_URL/guest/validate" \
+        -H "Content-Type: application/json" \
+        -d "{\"token\":\"$token\"}")
+    if [[ "$validate" != *'"leaveGuestNote":true'* ]] || [[ "$validate" != *'"uploadPhotos":false'* ]]; then
+        fail "Business visitor note permissions" "leaveGuestNote true + uploadPhotos false" "$validate"
+        return
+    fi
+    local http_code=$(curl -s -o /dev/null -w "%{http_code}" -X PUT "$BASE_URL/guest/note" \
+        -H "Content-Type: application/json" \
+        -H "X-Guest-Token: $token" \
+        -d '{"text":"Thanks for hosting our meeting."}')
+    if [[ "$http_code" == "200" ]]; then
+        pass "Business visitor can leave text note without upload permission"
+    else
+        fail "Business visitor can leave text note" "200" "$http_code"
+    fi
+}
+
+test_guest_note_forbidden_without_permission() {
+    require_admin_creds "Guest note forbidden without permission" || return
+    local types=$(admin_curl "$BASE_URL/admin-api/guest-types")
+    if [[ "$types" != *"type_day_business"* ]]; then
+        fail "Guest note forbidden without permission" "business guest type" "$types"
+        return
+    fi
+    local disable_body=$(echo "$types" | python3 -c "
+import json, sys
+types = json.load(sys.stdin)
+t = next(x for x in types if x['id'] == 'type_day_business')
+t['permissions']['leaveGuestNote'] = False
+print(json.dumps({
+    'name': t['name'],
+    'description': t.get('description', ''),
+    'visitMode': t['visitMode'],
+    'defaultDayVisitHours': t.get('defaultDayVisitHours', 4),
+    'requiresRoom': t.get('requiresRoom', False),
+    'enabled': t.get('enabled', True),
+    'permissions': t['permissions']
+}))
+")
+    local restore_body=$(echo "$types" | python3 -c "
+import json, sys
+types = json.load(sys.stdin)
+t = next(x for x in types if x['id'] == 'type_day_business')
+t['permissions']['leaveGuestNote'] = True
+print(json.dumps({
+    'name': t['name'],
+    'description': t.get('description', ''),
+    'visitMode': t['visitMode'],
+    'defaultDayVisitHours': t.get('defaultDayVisitHours', 4),
+    'requiresRoom': t.get('requiresRoom', False),
+    'enabled': t.get('enabled', True),
+    'permissions': t['permissions']
+}))
+")
+    admin_curl -X PATCH "$BASE_URL/admin-api/guest-types/type_day_business" \
+        -H "Content-Type: application/json" \
+        -d "$disable_body" > /dev/null
+    local response=$(curl -s -X POST "$BASE_URL/register" \
+        -H "Content-Type: application/json" \
+        -d '{"name":"Note Forbidden Guest","guestTypeId":"type_day_business"}')
+    local token=$(echo "$response" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
+    if [[ -z "$token" ]]; then
+        admin_curl -X PATCH "$BASE_URL/admin-api/guest-types/type_day_business" \
+            -H "Content-Type: application/json" \
+            -d "$restore_body" > /dev/null
+        fail "Guest note forbidden without permission" "registration token" "$response"
+        return
+    fi
+    local http_code=$(curl -s -o /dev/null -w "%{http_code}" -X PUT "$BASE_URL/guest/note" \
+        -H "Content-Type: application/json" \
+        -H "X-Guest-Token: $token" \
+        -d '{"text":"Should be blocked"}')
+    admin_curl -X PATCH "$BASE_URL/admin-api/guest-types/type_day_business" \
+        -H "Content-Type: application/json" \
+        -d "$restore_body" > /dev/null
+    if [[ "$http_code" == "403" ]]; then
+        pass "Guest note forbidden when leaveGuestNote is disabled (403)"
+    else
+        fail "Guest note forbidden without permission" "403" "$http_code"
+    fi
+}
+
+test_admin_guest_notes_list_and_delete() {
+    require_admin_creds "Admin guest notes list and delete" || return
+    local response=$(curl -s -X POST "$BASE_URL/register" \
+        -H "Content-Type: application/json" \
+        -d '{"name":"Admin Note Guest","room":"Room 2","stayDays":2}')
+    local token=$(echo "$response" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
+    if [[ -z "$token" ]]; then
+        fail "Admin guest notes list and delete" "registration token" "$response"
+        return
+    fi
+    local put=$(curl -s -X PUT "$BASE_URL/guest/note" \
+        -H "Content-Type: application/json" \
+        -H "X-Guest-Token: $token" \
+        -d '{"text":"Admin list test note"}')
+    local note_id=$(echo "$put" | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4)
+    if [[ -z "$note_id" ]]; then
+        fail "Admin guest notes list and delete" "note id" "$put"
+        return
+    fi
+    local list=$(admin_curl "$BASE_URL/admin-api/guest-notes")
+    if [[ "$list" != *'"text":"Admin list test note"'* ]] || [[ "$list" != *"\"id\":\"$note_id\""* ]]; then
+        fail "Admin guest notes list" "saved note in list" "$list"
+        return
+    fi
+    local del=$(admin_curl -X DELETE "$BASE_URL/admin-api/guest-notes/$note_id")
+    if [[ "$del" != *'"success":true'* ]]; then
+        fail "Admin guest note delete" '{"success":true}' "$del"
+        return
+    fi
+    local after=$(admin_curl "$BASE_URL/admin-api/guest-notes")
+    if [[ "$after" != *"\"id\":\"$note_id\""* ]]; then
+        pass "Admin guest notes list and delete"
+    else
+        fail "Admin guest note delete removes note" "note absent from list" "$after"
     fi
 }
 
@@ -1386,6 +1567,10 @@ test_admin_event_merge
 test_guest_upload_retag
 test_guest_upload_retag_forbidden
 test_guest_upload_clear_event_tag
+test_guest_note_crud
+test_business_day_can_leave_note
+test_guest_note_forbidden_without_permission
+test_admin_guest_notes_list_and_delete
 test_index_hero_markup
 
 test_index_html

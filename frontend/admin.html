@@ -118,6 +118,13 @@
         </div>
         <div id="guestSessionList"></div>
 
+        <h2>Guest Notes</h2>
+        <p class="admin-help">Messages guests left for you during their stay.</p>
+        <div class="admin-actions">
+          <button id="refreshGuestNotes" class="btn-secondary">Refresh</button>
+        </div>
+        <div id="guestNoteList"></div>
+
         <h2>Registration History</h2>
         <p class="admin-help">Audit log of registrations. Repeated registrations add new rows.</p>
         <div class="admin-actions">
@@ -271,7 +278,8 @@
       tagPhotosToEvent: 'Tag photos to event on upload',
       createEventNames: 'Create new event names',
       viewWelcomeHub: 'View welcome hub',
-      signOut: 'Show sign-out control'
+      signOut: 'Show sign-out control',
+      leaveGuestNote: 'Leave a text note for hosts'
     };
 
     const OVERNIGHT_ONLY_PERMISSIONS = new Set(['selectStayLength', 'extendStay']);
@@ -296,7 +304,7 @@
     const TAB_LOADERS = {
       overview: () => loadDeploymentStatus(false),
       rooms: () => { loadRooms(); loadBackground(); },
-      guests: () => { loadGuestTypesForAdmin(); loadGuestSessions(); loadGuests(); loadSessions(); },
+      guests: () => { loadGuestTypesForAdmin(); loadGuestSessions(); loadGuestNotes(); loadGuests(); loadSessions(); },
       guesttypes: () => loadGuestTypesAdmin(),
       events: () => loadEventsAdmin(),
       storage: () => { loadUploadPath(); loadPhotos(); },
@@ -865,7 +873,7 @@
       html += `<small>host: ${escapeHtml(data.reverseProxy.forwardedHost || data.reverseProxy.host || 'unknown')}, proto: ${escapeHtml(data.reverseProxy.forwardedProto || 'none')}</small></p>`;
       html += `<p><strong>Public portal URL:</strong> <code>${escapeHtml(data.portal?.publicUrl || 'Using current request host')}</code></p>`;
       html += `<p><strong>Admin login:</strong> <code>${escapeHtml(data.admin?.username || 'admin')}</code> <small>(HTTP Basic Auth username for /admin.html)</small></p>`;
-      html += `<p><strong>Data:</strong> ${data.data.rooms} room(s), ${data.data.registrationHistory} registration history entr${data.data.registrationHistory === 1 ? 'y' : 'ies'}, ${data.data.activeGuestSessions} active guest session(s), ${data.data.expiredGuestSessions} expired session(s), ${data.data.pendingSessionCodes} pending code(s)</p>`;
+      html += `<p><strong>Data:</strong> ${data.data.rooms} room(s), ${data.data.registrationHistory} registration history entr${data.data.registrationHistory === 1 ? 'y' : 'ies'}, ${data.data.guestNotes ?? 0} guest note(s), ${data.data.activeGuestSessions} active guest session(s), ${data.data.expiredGuestSessions} expired session(s), ${data.data.pendingSessionCodes} pending code(s)</p>`;
       if (data.guestEntry) {
         html += '<div class="admin-card">';
         html += `<h3>Guest Entry Health</h3>`;
@@ -1562,6 +1570,66 @@
     });
 
     document.getElementById('refreshGuestSessions')?.addEventListener('click', loadGuestSessions);
+
+    async function loadGuestNotes() {
+      const container = document.getElementById('guestNoteList');
+      if (!container) return;
+      try {
+        const res = await authFetch('/admin-api/guest-notes');
+        if (!res.ok) {
+          container.innerHTML = '<p class="admin-error-text">Failed to load guest notes.</p>';
+          return;
+        }
+        const data = await res.json();
+        const notes = data.notes || [];
+        container.innerHTML = '';
+        if (notes.length === 0) {
+          container.innerHTML = '<p class="admin-muted">No guest notes yet</p>';
+          return;
+        }
+        notes.forEach(note => {
+          const div = document.createElement('div');
+          div.className = 'admin-item admin-guest-note';
+          const updated = note.updatedAt || note.createdAt;
+          let html = `<strong>${escapeHtml(note.guestName || 'Guest')}</strong>`;
+          if (note.room) html += ` — Room: ${escapeHtml(note.room)}`;
+          html += '<br>';
+          if (note.eventName) {
+            html += `<small>Event: <strong>${escapeHtml(note.eventName)}</strong></small><br>`;
+          }
+          html += `<small>Saved: ${new Date(updated).toLocaleString()}</small>`;
+          if (note.createdAt && note.updatedAt && note.updatedAt !== note.createdAt) {
+            html += `<small> · Updated: ${new Date(note.updatedAt).toLocaleString()}</small>`;
+          }
+          html += `<div class="admin-guest-note-body">${escapeHtml(note.text)}</div>`;
+          div.innerHTML = html;
+
+          const deleteBtn = document.createElement('button');
+          deleteBtn.textContent = 'Delete';
+          deleteBtn.className = 'btn-danger';
+          deleteBtn.onclick = async () => {
+            if (!confirm('Delete this guest note?')) return;
+            const delRes = await authFetch(`/admin-api/guest-notes/${encodeURIComponent(note.id)}`, {
+              method: 'DELETE'
+            });
+            if (delRes.ok) {
+              loadGuestNotes();
+              if (activeTab === 'overview') loadDeploymentStatus(false);
+            } else {
+              alert('Delete failed: ' + await delRes.text());
+            }
+          };
+          div.appendChild(deleteBtn);
+          container.appendChild(div);
+        });
+      } catch (err) {
+        container.innerHTML = '<p class="admin-error-text">Failed to load guest notes.</p>';
+        console.error('Failed to load guest notes:', err);
+      }
+    }
+
+    document.getElementById('refreshGuestNotes')?.addEventListener('click', loadGuestNotes);
+
     initAdmin();
   </script>
 </body>

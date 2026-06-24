@@ -194,6 +194,13 @@ Guest- and admin-facing improvements for event-tagged photos. **All new UI is re
   - Events tab merge action using `PATCH /admin-api/events/:id` with `mergeIntoId`.
 - [x] **Tests and documentation updates**
 
+## Completed feature: guest text notes
+
+- [x] **Guest text notes for hosts**
+  - Guests leave one editable note per stay from `welcome.html` (thank-yous, memories, etc.) without uploading a PDF.
+  - New `leaveGuestNote` permission (enabled by default for all seeded guest types, including business visitors).
+  - Notes stored in `storage.json` (`guestNotes[]`); admin list/delete in Guests tab.
+
 ---
 
 ## Planned sprint: admin quality-of-life

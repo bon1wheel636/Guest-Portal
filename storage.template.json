@@ -2,5 +2,6 @@
   "rooms": [],
   "guests": [],
   "events": [],
-  "guestTypes": []
+  "guestTypes": [],
+  "guestNotes": []
 }
