@@ -1013,6 +1013,115 @@ test_admin_event_merge() {
     admin_curl -X DELETE "$BASE_URL/admin-api/events/$target_id" > /dev/null
 }
 
+test_admin_event_merge_preserves_filename_conflicts() {
+    require_admin_creds "Admin event merge preserves conflicts" || return
+    local create_a=$(admin_curl -X POST "$BASE_URL/admin-api/events" \
+        -H "Content-Type: application/json" \
+        -d '{"name":"Merge Conflict Source"}')
+    local create_b=$(admin_curl -X POST "$BASE_URL/admin-api/events" \
+        -H "Content-Type: application/json" \
+        -d '{"name":"Merge Conflict Target"}')
+    local source_id=$(echo "$create_a" | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4)
+    local target_id=$(echo "$create_b" | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4)
+    if [[ -z "$source_id" || -z "$target_id" ]]; then
+        fail "Admin event merge preserves conflicts" "source and target ids" "source=$create_a target=$create_b"
+        return
+    fi
+
+    local response=$(curl -s -X POST "$BASE_URL/register" \
+        -H "Content-Type: application/json" \
+        -d '{"name":"Merge Conflict Guest","room":"Room 1","stayDays":2,"guestTypeId":"type_overnight"}')
+    local token=$(echo "$response" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
+    if [[ -z "$token" ]]; then
+        fail "Admin event merge preserves conflicts" "registration token" "$response"
+        return
+    fi
+
+    printf '%s\n' '%PDF-1.4' '1 0 obj << /source true >> endobj' '%%EOF' > /tmp/test-merge-conflict-a.pdf
+    printf '%s\n' '%PDF-1.4' '1 0 obj << /target true >> endobj' '%%EOF' > /tmp/test-merge-conflict-b.pdf
+    curl -s -X POST "$BASE_URL/upload" \
+        -H "X-Guest-Token: $token" \
+        -F "eventName=Merge Conflict Source" \
+        -F "photos=@/tmp/test-merge-conflict-a.pdf;type=application/pdf" > /dev/null
+    curl -s -X POST "$BASE_URL/upload" \
+        -H "X-Guest-Token: $token" \
+        -F "eventName=Merge Conflict Target" \
+        -F "photos=@/tmp/test-merge-conflict-b.pdf;type=application/pdf" > /dev/null
+    rm -f /tmp/test-merge-conflict-a.pdf /tmp/test-merge-conflict-b.pdf
+
+    local list=$(curl -s "$BASE_URL/guest/uploads" -H "X-Guest-Token: $token")
+    local source_name=$(echo "$list" | python3 -c "
+import json, sys
+payload = json.load(sys.stdin)
+files = payload.get('files', payload if isinstance(payload, list) else [])
+print(next((f['name'] for f in files if f.get('eventSlug') == 'Merge-Conflict-Source'), ''))
+")
+    if [[ -z "$source_name" ]]; then
+        fail "Admin event merge preserves conflicts" "source filename" "$list"
+        return
+    fi
+
+    # Force a basename collision in the same stay folder (merge previously deleted these).
+    local uploads_root
+    uploads_root=$(python3 -c "
+import json, os
+cfg_path='/etc/guest-portal/config.json'
+upload=''
+if os.path.exists(cfg_path):
+    upload=json.load(open(cfg_path)).get('uploadDir') or ''
+print(upload)
+" 2>/dev/null)
+    if [[ -z "$uploads_root" ]]; then
+        uploads_root="$(pwd)/uploads"
+    fi
+    local stay_dir
+    stay_dir=$(find "$uploads_root" -maxdepth 2 -type d -name 'Merge-Conflict-Source' 2>/dev/null | head -1)
+    stay_dir=$(dirname "$stay_dir")
+    if [[ -z "$stay_dir" || ! -d "$stay_dir/Merge-Conflict-Source" || ! -d "$stay_dir/Merge-Conflict-Target" ]]; then
+        fail "Admin event merge preserves conflicts" "stay folder with both event dirs" "uploads_root=$uploads_root"
+        return
+    fi
+
+    cp "$stay_dir/Merge-Conflict-Source/$source_name" "$stay_dir/Merge-Conflict-Target/$source_name"
+    printf '%s\n' 'source-unique-marker' > "$stay_dir/Merge-Conflict-Source/$source_name"
+
+    local merge=$(admin_curl -X PATCH "$BASE_URL/admin-api/events/$source_id" \
+        -H "Content-Type: application/json" \
+        -d "{\"mergeIntoId\":\"$target_id\"}")
+    if [[ "$merge" != *'"success":true'* ]]; then
+        fail "Admin event merge preserves conflicts" "merge success" "$merge"
+        return
+    fi
+
+    local after=$(curl -s "$BASE_URL/guest/uploads" -H "X-Guest-Token: $token")
+    local target_count=$(echo "$after" | python3 -c "
+import json, sys
+payload = json.load(sys.stdin)
+files = payload.get('files', payload if isinstance(payload, list) else [])
+target_files = [f['name'] for f in files if f.get('eventSlug') == 'Merge-Conflict-Target']
+source_files = [f['name'] for f in files if f.get('eventSlug') == 'Merge-Conflict-Source']
+print(len(target_files))
+print(len(source_files))
+print(','.join(target_files))
+")
+    local target_count_n=$(echo "$target_count" | sed -n '1p')
+    local source_count_n=$(echo "$target_count" | sed -n '2p')
+    local target_names=$(echo "$target_count" | sed -n '3p')
+    local marker_found=0
+    if grep -rq "source-unique-marker" "$stay_dir/Merge-Conflict-Target" 2>/dev/null; then
+        marker_found=1
+    fi
+    if [[ "$target_count_n" -ge 2 && "$source_count_n" == "0" && "$marker_found" == "1" && "$target_names" == *"-merged-"* ]]; then
+        pass "Admin event merge preserves conflicting filenames"
+    else
+        fail "Admin event merge preserves conflicting filenames" \
+            "target>=2 files, source gone, marker kept, -merged- rename" \
+            "target=$target_count_n source=$source_count_n marker=$marker_found names=$target_names after=$after"
+    fi
+
+    admin_curl -X DELETE "$BASE_URL/admin-api/events/$target_id" > /dev/null || true
+}
+
 test_guest_upload_retag() {
     require_admin_creds "Guest upload re-tag" || return
     admin_curl -X POST "$BASE_URL/admin-api/events" \
@@ -1564,6 +1673,7 @@ test_delete_forbidden
 test_scoped_delete
 test_admin_events_crud
 test_admin_event_merge
+test_admin_event_merge_preserves_filename_conflicts
 test_guest_upload_retag
 test_guest_upload_retag_forbidden
 test_guest_upload_clear_event_tag

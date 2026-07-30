@@ -582,15 +582,29 @@ function countEventFilesOnDisk(eventSlug) {
   return count;
 }
 
+function uniqueMergedFilename(targetDir, filename) {
+  const ext = path.extname(filename);
+  const base = path.basename(filename, ext);
+  let candidate = filename;
+  while (fs.existsSync(path.join(targetDir, candidate))) {
+    candidate = `${base}-merged-${crypto.randomBytes(3).toString('hex')}${ext}`;
+  }
+  return candidate;
+}
+
 function renameEventFoldersOnDisk(oldSlug, newSlug) {
   if (!oldSlug || !newSlug || oldSlug === newSlug) {
     return;
   }
 
   forEachStayUploadFolder(stayPath => {
+    const resolvedStay = path.resolve(stayPath);
     const oldPath = path.resolve(path.join(stayPath, oldSlug));
     const newPath = path.resolve(path.join(stayPath, newSlug));
-    if (!oldPath.startsWith(path.resolve(stayPath)) || !newPath.startsWith(path.resolve(stayPath))) {
+    if (
+      !(oldPath === resolvedStay || oldPath.startsWith(resolvedStay + path.sep)) ||
+      !(newPath === resolvedStay || newPath.startsWith(resolvedStay + path.sep))
+    ) {
       return;
     }
     if (!fs.existsSync(oldPath) || !fs.statSync(oldPath).isDirectory()) {
@@ -602,12 +616,14 @@ function renameEventFoldersOnDisk(oldSlug, newSlug) {
           return;
         }
         const source = path.join(oldPath, entry.name);
-        const target = path.join(newPath, entry.name);
-        if (!fs.existsSync(target)) {
-          fs.renameSync(source, target);
-        }
+        const targetName = uniqueMergedFilename(newPath, entry.name);
+        fs.renameSync(source, path.join(newPath, targetName));
       });
-      fs.rmdirSync(oldPath, { recursive: true });
+      // Only remove the source folder after every file was moved. Never delete
+      // conflicting photos in place (previous recursive rmdir lost them).
+      if (fs.readdirSync(oldPath).length === 0) {
+        fs.rmdirSync(oldPath);
+      }
       return;
     }
     fs.renameSync(oldPath, newPath);
