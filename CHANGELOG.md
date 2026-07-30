@@ -82,6 +82,7 @@ All notable changes to this project will be documented here.
 - Rejected upload files are removed after validation failure.
 
 ### Fixed
+- Admin event merge/rename no longer deletes guest photos when the target event folder already has the same filename; conflicting source files are kept with a unique `-merged-<hex>` suffix.
 - Guest registration now loads rooms from public `/guest/rooms` instead of `/admin-api/rooms`, so room lists work when reverse proxies protect admin API paths.
 - Setup scripts now update `adminUser` and `adminHash` on reinstall when credentials are entered during setup, instead of preserving a stale default `admin` username from an existing `config.json`.
 - Admin panel Overview and Settings tabs now show the configured HTTP Basic Auth username.
