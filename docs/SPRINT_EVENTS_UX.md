@@ -46,4 +46,4 @@ Improve how hosts and guests work with **event-tagged photos**. Hosts manage eve
 
 ## Next sprint
 
-[ROADMAP.md](../ROADMAP.md) — **Admin quality-of-life** (dark mode toggle).
+[docs/SPRINT_ADMIN_QOL.md](SPRINT_ADMIN_QOL.md) — **Admin quality-of-life** (dark mode toggle). See [ROADMAP.md](../ROADMAP.md).

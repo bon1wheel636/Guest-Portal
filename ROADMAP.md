@@ -145,7 +145,7 @@ Planned order after PR #40. Each sprint should get its own handoff doc (`docs/SP
 |-------|--------|---------|--------|
 | 1 | Guest types hardening and test coverage | [docs/SPRINT_GUEST_TYPES_HARDENING.md](docs/SPRINT_GUEST_TYPES_HARDENING.md) | Complete |
 | 2 | Events UX | [docs/SPRINT_EVENTS_UX.md](docs/SPRINT_EVENTS_UX.md) | Complete |
-| 3 | Admin quality-of-life | _(planned — create `docs/SPRINT_ADMIN_QOL.md`)_ | Planned |
+| 3 | Admin quality-of-life | [docs/SPRINT_ADMIN_QOL.md](docs/SPRINT_ADMIN_QOL.md) | Planned |
 | 4 | UniFi external portal | _(planned — create `docs/SPRINT_UNIFI_PORTAL.md`)_ | Planned (needs controller details) |
 
 ---
@@ -205,14 +205,16 @@ Guest- and admin-facing improvements for event-tagged photos. **All new UI is re
 
 ## Planned sprint: admin quality-of-life
 
+**Handoff:** [docs/SPRINT_ADMIN_QOL.md](docs/SPRINT_ADMIN_QOL.md) — read this at the start of a new agent session.
+
 **Depends on:** none.
 
 Admin panel polish without guest permission or upload path changes. **Responsive on mobile and desktop.**
 
 - [ ] **Dark mode toggle**
   - Admin panel theme preference via CSS variables; persist in `localStorage` (v1).
-  - Sensible contrast for cards, tabs, forms, deployment status, and photo grid.
-- [ ] **Handoff doc, tests, and documentation updates**
+  - Sensible contrast for cards, tabs, forms, deployment status, photo grid, and Guest Notes.
+- [ ] **Tests and documentation updates**
 
 ---
 
