@@ -535,6 +535,19 @@ function findEventById(id) {
   return (guestData.events || []).find(event => event.id === id) || null;
 }
 
+function findEventBySlug(slug, excludeId = null) {
+  const normalized = sanitizeEventSlug(slug);
+  if (!normalized || normalized === 'General') {
+    return null;
+  }
+  return (guestData.events || []).find(event => {
+    if (excludeId && event.id === excludeId) {
+      return false;
+    }
+    return sanitizeEventSlug(event.name) === normalized;
+  }) || null;
+}
+
 function createEventRecord(name, createdBy = 'admin') {
   const trimmed = (name || '').trim().substring(0, 100);
   if (!trimmed) {
@@ -542,6 +555,12 @@ function createEventRecord(name, createdBy = 'admin') {
   }
   if (findEventByName(trimmed)) {
     return { error: 'Event already exists' };
+  }
+  // Folder names are slug-based; colliding names like "Hello World" and
+  // "Hello-World" would share one directory and corrupt merges/renames.
+  const slugConflict = findEventBySlug(trimmed);
+  if (slugConflict) {
+    return { error: `Event folder name conflicts with existing event "${slugConflict.name}"` };
   }
 
   const event = {
@@ -643,6 +662,10 @@ function getOrCreateEvent(eventName, createdBy, guestType) {
 
   const existing = findEventByName(trimmed);
   if (existing) return existing;
+
+  // Reuse the event that already owns this on-disk folder slug.
+  const slugMatch = findEventBySlug(trimmed);
+  if (slugMatch) return slugMatch;
 
   if (!guestType.permissions.createEventNames) {
     return null;
@@ -2543,7 +2566,16 @@ app.patch('/admin-api/events/:id', authMiddleware, (req, res) => {
     if (target.id === event.id) {
       return res.status(400).send('Cannot merge an event into itself');
     }
-    mergeEventFoldersOnDisk(sanitizeEventSlug(event.name), sanitizeEventSlug(target.name));
+    const sourceSlug = sanitizeEventSlug(event.name);
+    // Pre-existing slug collisions share one folder; merging would move
+    // the sibling event's photos too. Block until the names are disambiguated.
+    const slugSibling = findEventBySlug(sourceSlug, event.id);
+    if (slugSibling) {
+      return res.status(409).send(
+        `Cannot merge: another event ("${slugSibling.name}") shares the same upload folder. Rename one of them first.`
+      );
+    }
+    mergeEventFoldersOnDisk(sourceSlug, sanitizeEventSlug(target.name));
     guestData.events = (guestData.events || []).filter(entry => entry.id !== event.id);
     saveGuestData();
     return res.json({ success: true, mergedInto: target.id, event: formatEventForAdmin(target) });
@@ -2553,13 +2585,18 @@ app.patch('/admin-api/events/:id', authMiddleware, (req, res) => {
   if (!newName) {
     return res.status(400).send('Event name is required');
   }
-  const duplicate = findEventByName(newName);
+  const trimmedName = newName.substring(0, 100);
+  const duplicate = findEventByName(trimmedName);
   if (duplicate && duplicate.id !== event.id) {
     return res.status(400).send('Event name already exists');
   }
+  const slugConflict = findEventBySlug(trimmedName, event.id);
+  if (slugConflict) {
+    return res.status(400).send(`Event folder name conflicts with existing event "${slugConflict.name}"`);
+  }
 
   const oldSlug = sanitizeEventSlug(event.name);
-  event.name = newName.substring(0, 100);
+  event.name = trimmedName;
   renameEventFoldersOnDisk(oldSlug, sanitizeEventSlug(event.name));
   saveGuestData();
   res.json({ success: true, event: formatEventForAdmin(event) });
