@@ -6,6 +6,9 @@ All notable changes to this project will be documented here.
 
 ## [Unreleased]
 
+### Fixed
+- Event create/rename now rejects names that share an upload folder slug with another event (e.g. `Hello World` vs `Hello-World`); merge also refuses when a sibling event already shares the source slug, so admin merge cannot move another event's photos.
+
 ### Added
 - Guest **text notes for hosts** — `GET/PUT/DELETE /guest/note` with `leaveGuestNote` permission; one editable note per stay stored in `storage.json`; admin list/delete via `/admin-api/guest-notes`; Welcome hub textarea UI and Guests tab in admin.
 - Guest gallery **re-tag** — `PATCH /guest/uploads/:eventSlug/:filename` moves uploads between event folders; UI on `photo.html` when `tagPhotosToEvent` is allowed.

@@ -1122,6 +1122,64 @@ print(','.join(target_files))
     admin_curl -X DELETE "$BASE_URL/admin-api/events/$target_id" > /dev/null || true
 }
 
+test_admin_event_slug_collision_rejected() {
+    require_admin_creds "Admin event slug collision rejected" || return
+    local create_base=$(admin_curl -X POST "$BASE_URL/admin-api/events" \
+        -H "Content-Type: application/json" \
+        -d '{"name":"Slug Collision Party"}')
+    local base_id=$(echo "$create_base" | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4)
+    if [[ -z "$base_id" ]]; then
+        fail "Admin event slug collision rejected" "base event id" "$create_base"
+        return
+    fi
+
+    # "Slug Collision Party!!!" sanitizes to the same folder slug as "Slug Collision Party"
+    local create_conflict_code
+    create_conflict_code=$(curl -s -o /tmp/slug-collision-create.body -w "%{http_code}" \
+        -u "$ADMIN_USER:$ADMIN_PASS" \
+        -X POST "$BASE_URL/admin-api/events" \
+        -H "Content-Type: application/json" \
+        -d '{"name":"Slug Collision Party!!!"}')
+    local create_conflict_body
+    create_conflict_body=$(cat /tmp/slug-collision-create.body 2>/dev/null || true)
+    rm -f /tmp/slug-collision-create.body
+    if [[ "$create_conflict_code" == "400" ]] && [[ "$create_conflict_body" == *"conflicts with existing event"* ]]; then
+        pass "Admin event create rejects folder-slug collision"
+    else
+        fail "Admin event create rejects folder-slug collision" "400 + conflicts message" \
+            "code=$create_conflict_code body=$create_conflict_body"
+    fi
+
+    local create_other=$(admin_curl -X POST "$BASE_URL/admin-api/events" \
+        -H "Content-Type: application/json" \
+        -d '{"name":"Slug Collision Other"}')
+    local other_id=$(echo "$create_other" | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4)
+    if [[ -z "$other_id" ]]; then
+        fail "Admin event slug collision rejected" "other event id" "$create_other"
+        admin_curl -X DELETE "$BASE_URL/admin-api/events/$base_id" > /dev/null || true
+        return
+    fi
+
+    local rename_conflict_code
+    rename_conflict_code=$(curl -s -o /tmp/slug-collision-rename.body -w "%{http_code}" \
+        -u "$ADMIN_USER:$ADMIN_PASS" \
+        -X PATCH "$BASE_URL/admin-api/events/$other_id" \
+        -H "Content-Type: application/json" \
+        -d '{"name":"Slug-Collision-Party"}')
+    local rename_conflict_body
+    rename_conflict_body=$(cat /tmp/slug-collision-rename.body 2>/dev/null || true)
+    rm -f /tmp/slug-collision-rename.body
+    if [[ "$rename_conflict_code" == "400" ]] && [[ "$rename_conflict_body" == *"conflicts with existing event"* ]]; then
+        pass "Admin event rename rejects folder-slug collision"
+    else
+        fail "Admin event rename rejects folder-slug collision" "400 + conflicts message" \
+            "code=$rename_conflict_code body=$rename_conflict_body"
+    fi
+
+    admin_curl -X DELETE "$BASE_URL/admin-api/events/$other_id" > /dev/null || true
+    admin_curl -X DELETE "$BASE_URL/admin-api/events/$base_id" > /dev/null || true
+}
+
 test_guest_upload_retag() {
     require_admin_creds "Guest upload re-tag" || return
     admin_curl -X POST "$BASE_URL/admin-api/events" \
@@ -1674,6 +1732,7 @@ test_scoped_delete
 test_admin_events_crud
 test_admin_event_merge
 test_admin_event_merge_preserves_filename_conflicts
+test_admin_event_slug_collision_rejected
 test_guest_upload_retag
 test_guest_upload_retag_forbidden
 test_guest_upload_clear_event_tag
