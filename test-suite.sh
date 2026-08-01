@@ -799,6 +799,37 @@ test_event_subfolder_upload() {
     fi
 }
 
+test_event_upload_photos_before_event_field() {
+    # welcome.html historically appended photos before eventName. Multer's
+    # destination callback runs per file part, so req.body.eventName was still
+    # empty and photos silently landed in General instead of the tagged event.
+    require_admin_creds "Event upload with photos-before-eventName field order" || return
+    local response=$(curl -s -X POST "$BASE_URL/register" \
+        -H "Content-Type: application/json" \
+        -d '{"name":"Field Order Guest","room":"Room 1","stayDays":3,"guestTypeId":"type_overnight"}')
+    local token=$(echo "$response" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
+    if [[ -z "$token" ]]; then
+        fail "Event upload photos-before-eventName" "registration token" "$response"
+        return
+    fi
+    printf '%s\n' '%PDF-1.4' '1 0 obj <<>> endobj' '%%EOF' > /tmp/test-field-order-upload.pdf
+    local http_code=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$BASE_URL/upload" \
+        -H "X-Guest-Token: $token" \
+        -F "photos=@/tmp/test-field-order-upload.pdf;type=application/pdf" \
+        -F "eventName=Field Order Party")
+    rm -f /tmp/test-field-order-upload.pdf
+    if [[ "$http_code" != "200" ]]; then
+        fail "Event upload photos-before-eventName" "200 upload" "$http_code"
+        return
+    fi
+    local list=$(curl -s "$BASE_URL/guest/uploads" -H "X-Guest-Token: $token")
+    if [[ "$list" == *'"eventSlug":"Field-Order-Party"'* ]] || [[ "$list" == *'"event":"Field Order Party"'* ]]; then
+        pass "Event upload honors eventName when file parts precede the field"
+    else
+        fail "Event upload honors eventName when file parts precede the field" "Field Order Party" "$list"
+    fi
+}
+
 test_legacy_session() {
     require_admin_creds "Legacy session without guestTypeId" || return
     admin_curl -X POST "$BASE_URL/admin-api/rooms" \
@@ -1725,6 +1756,7 @@ test_business_day_upload_forbidden
 test_business_day_link_forbidden
 test_change_guest_type_permissions
 test_event_subfolder_upload
+test_event_upload_photos_before_event_field
 test_legacy_session
 test_day_personal_registration
 test_delete_forbidden
