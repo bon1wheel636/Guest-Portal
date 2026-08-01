@@ -7,6 +7,7 @@ All notable changes to this project will be documented here.
 ## [Unreleased]
 
 ### Fixed
+- Guest uploads now honor `eventName` even when the file parts precede that field in the multipart body (the welcome hub FormData order). Files are staged under `.incoming` and moved after multer finishes parsing, so event tags no longer silently fall back to General.
 - Event create/rename now rejects names that share an upload folder slug with another event (e.g. `Hello World` vs `Hello-World`); merge also refuses when a sibling event already shares the source slug, so admin merge cannot move another event's photos.
 
 ### Added

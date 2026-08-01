@@ -24,6 +24,9 @@ const MAX_GUEST_UPLOAD_SIZE_BYTES = 50 * 1024 * 1024;
 const MAX_GUEST_UPLOAD_FILES = 10;
 const URL_CHECK_TIMEOUT_MS = 2500;
 const MAX_GUEST_NOTE_LENGTH = 5000;
+// Temporary per-stay folder for multipart uploads. eventName may appear after
+// file parts in the stream, so destination cannot rely on req.body yet.
+const INCOMING_UPLOAD_DIR = '.incoming';
 
 // H2: Use JSON.parse(fs.readFileSync()) instead of require() to avoid module caching
 const config = fs.existsSync(configPath) ? JSON.parse(fs.readFileSync(configPath, 'utf8')) : {};
@@ -762,6 +765,10 @@ function listGuestUploadFiles(guestId) {
 
   getGuestUploadFolders(guestId).forEach(folderPath => {
     fs.readdirSync(folderPath).forEach(name => {
+      // Skip staging/hidden dirs (e.g. .incoming used during multipart upload).
+      if (name.startsWith('.')) {
+        return;
+      }
       const entryPath = path.join(folderPath, name);
       const stat = fs.statSync(entryPath);
       if (stat.isFile()) {
@@ -955,7 +962,7 @@ function resolveLegacyGuestUploadFile(guestId, filename) {
     });
 
     fs.readdirSync(folderPath, { withFileTypes: true })
-      .filter(entry => entry.isDirectory() && entry.name !== 'General')
+      .filter(entry => entry.isDirectory() && entry.name !== 'General' && !entry.name.startsWith('.'))
       .forEach(subdir => {
         const nestedPath = path.resolve(path.join(folderPath, subdir.name, safeName));
         if (
@@ -1240,6 +1247,43 @@ function removeUploadedFiles(files = []) {
   });
 }
 
+function finalizeGuestUploadFiles(guest, files, requestedEventName) {
+  const stayDir = getGuestStayFolder(guest);
+  const eventSlug = resolveUploadEventName(guest, requestedEventName);
+  const targetDir = path.join(stayDir, eventSlug);
+  const resolvedStay = path.resolve(stayDir);
+  const resolvedTarget = path.resolve(targetDir);
+
+  if (!(resolvedTarget === resolvedStay || resolvedTarget.startsWith(resolvedStay + path.sep))) {
+    throw new Error('Invalid upload path');
+  }
+
+  fs.mkdirSync(targetDir, { recursive: true });
+
+  files.forEach(file => {
+    const destination = path.resolve(path.join(targetDir, path.basename(file.filename)));
+    if (!destination.startsWith(resolvedTarget + path.sep)) {
+      throw new Error('Invalid upload filename');
+    }
+    fs.renameSync(file.path, destination);
+    file.path = destination;
+    file.destination = targetDir;
+  });
+
+  const incomingDir = path.join(stayDir, INCOMING_UPLOAD_DIR);
+  if (fs.existsSync(incomingDir)) {
+    try {
+      if (fs.readdirSync(incomingDir).length === 0) {
+        fs.rmdirSync(incomingDir);
+      }
+    } catch (err) {
+      console.error('Failed to remove empty incoming upload folder:', err);
+    }
+  }
+
+  return eventSlug;
+}
+
 function getDirectoryStatus(dirPath) {
   const resolved = path.resolve(dirPath);
   const status = {
@@ -1353,6 +1397,10 @@ function collectStayFolderFiles(stayFolderPath, stayFolderName, uploadsDir) {
   const entries = fs.readdirSync(stayFolderPath, { withFileTypes: true });
 
   entries.forEach(entry => {
+    // Skip staging/hidden dirs (e.g. .incoming used during multipart upload).
+    if (entry.name.startsWith('.')) {
+      return;
+    }
     const entryPath = path.join(stayFolderPath, entry.name);
     if (entry.isFile()) {
       const stat = fs.statSync(entryPath);
@@ -1448,8 +1496,8 @@ const storage = multer.diskStorage({
     try {
       const guest = req.guestSession.guest;
       const stayDir = getGuestStayFolder(guest);
-      const eventSlug = resolveUploadEventName(guest, req.body?.eventName);
-      const dir = path.join(stayDir, eventSlug);
+      // Stage first: multipart fields after the file part are not in req.body yet.
+      const dir = path.join(stayDir, INCOMING_UPLOAD_DIR);
       if (!path.resolve(dir).startsWith(path.resolve(getUploadsDir()))) {
         return cb(new Error('Invalid upload path'));
       }
@@ -1787,6 +1835,16 @@ app.post('/upload', validateGuestUploadToken, requireGuestPermission('uploadPhot
     removeUploadedFiles(req.files);
     return res.status(400).send('Uploaded file content does not match an allowed file type');
   }
+
+  try {
+    // req.body.eventName is reliable here even when the file parts preceded it.
+    finalizeGuestUploadFiles(req.guestSession.guest, req.files, req.body?.eventName);
+  } catch (err) {
+    console.error('Failed to finalize guest upload:', err);
+    removeUploadedFiles(req.files);
+    return res.status(500).send('Failed to store upload');
+  }
+
   res.sendStatus(200);
 });
 

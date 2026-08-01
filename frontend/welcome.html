@@ -482,11 +482,14 @@
 
       const formData = new FormData();
       const files = fileInput.files;
-      for (let i = 0; i < files.length; i++) formData.append('photos', files[i]);
+      // Append eventName before file parts. Multer reads multipart in order, and
+      // destination runs before later fields are available (server also stages
+      // then finalizes, but clients should still send fields first).
       if (permissions.tagPhotosToEvent) {
         const eventName = document.getElementById('uploadEventName').value.trim();
         if (eventName) formData.append('eventName', eventName);
       }
+      for (let i = 0; i < files.length; i++) formData.append('photos', files[i]);
 
       uploadButton.disabled = true;
       uploadProgress.style.display = 'block';
