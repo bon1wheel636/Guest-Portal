@@ -7,6 +7,7 @@ All notable changes to this project will be documented here.
 ## [Unreleased]
 
 ### Fixed
+- Event names that sanitize to the reserved `General` upload folder (`***`, `...`, `General!!!`, etc.) can no longer be created or renamed into; merging/renaming legacy General-slug events updates metadata only and no longer moves every guest's untagged photos.
 - Event create/rename now rejects names that share an upload folder slug with another event (e.g. `Hello World` vs `Hello-World`); merge also refuses when a sibling event already shares the source slug, so admin merge cannot move another event's photos.
 
 ### Added
