@@ -516,6 +516,13 @@ function sanitizeEventSlug(name) {
   return slug || 'General';
 }
 
+// "General" is the shared untagged upload folder, not a real event-owned
+// directory. Names that sanitize to it (*** / ... / General!!!) must never
+// create/merge/rename as if they owned that folder.
+function isReservedEventSlug(slug) {
+  return !slug || slug === 'General';
+}
+
 function resolveEventNameFromSlug(eventSlug) {
   const slug = sanitizeEventSlug(eventSlug);
   if (slug === 'General') {
@@ -537,7 +544,7 @@ function findEventById(id) {
 
 function findEventBySlug(slug, excludeId = null) {
   const normalized = sanitizeEventSlug(slug);
-  if (!normalized || normalized === 'General') {
+  if (isReservedEventSlug(normalized)) {
     return null;
   }
   return (guestData.events || []).find(event => {
@@ -552,6 +559,9 @@ function createEventRecord(name, createdBy = 'admin') {
   const trimmed = (name || '').trim().substring(0, 100);
   if (!trimmed) {
     return { error: 'Event name is required' };
+  }
+  if (isReservedEventSlug(sanitizeEventSlug(trimmed))) {
+    return { error: 'Event name must include letters or numbers (cannot reserve the General upload folder)' };
   }
   if (findEventByName(trimmed)) {
     return { error: 'Event already exists' };
@@ -663,6 +673,12 @@ function getOrCreateEvent(eventName, createdBy, guestType) {
   const existing = findEventByName(trimmed);
   if (existing) return existing;
 
+  // Punctuation-only / "General" names map to the shared untagged folder.
+  // Never create an event record that pretends to own it.
+  if (isReservedEventSlug(sanitizeEventSlug(trimmed))) {
+    return null;
+  }
+
   // Reuse the event that already owns this on-disk folder slug.
   const slugMatch = findEventBySlug(trimmed);
   if (slugMatch) return slugMatch;
@@ -690,7 +706,8 @@ function formatEventForAdmin(event) {
     eventSlug,
     createdAt: event.createdAt,
     createdBy: event.createdBy || 'unknown',
-    uploadFileCount: countEventFilesOnDisk(eventSlug)
+    // Reserved General slug is shared untagged storage — not this event's files.
+    uploadFileCount: isReservedEventSlug(eventSlug) ? 0 : countEventFilesOnDisk(eventSlug)
   };
 }
 
@@ -2567,6 +2584,13 @@ app.patch('/admin-api/events/:id', authMiddleware, (req, res) => {
       return res.status(400).send('Cannot merge an event into itself');
     }
     const sourceSlug = sanitizeEventSlug(event.name);
+    // Events whose names sanitize to General never owned that shared folder.
+    // Drop the record only — moving General/ would steal every guest's untagged photos.
+    if (isReservedEventSlug(sourceSlug)) {
+      guestData.events = (guestData.events || []).filter(entry => entry.id !== event.id);
+      saveGuestData();
+      return res.json({ success: true, mergedInto: target.id, event: formatEventForAdmin(target) });
+    }
     // Pre-existing slug collisions share one folder; merging would move
     // the sibling event's photos too. Block until the names are disambiguated.
     const slugSibling = findEventBySlug(sourceSlug, event.id);
@@ -2575,7 +2599,13 @@ app.patch('/admin-api/events/:id', authMiddleware, (req, res) => {
         `Cannot merge: another event ("${slugSibling.name}") shares the same upload folder. Rename one of them first.`
       );
     }
-    mergeEventFoldersOnDisk(sourceSlug, sanitizeEventSlug(target.name));
+    const targetSlug = sanitizeEventSlug(target.name);
+    if (!isReservedEventSlug(targetSlug)) {
+      mergeEventFoldersOnDisk(sourceSlug, targetSlug);
+    } else {
+      // Target is a legacy General-slug event: move into shared untagged storage.
+      mergeEventFoldersOnDisk(sourceSlug, 'General');
+    }
     guestData.events = (guestData.events || []).filter(entry => entry.id !== event.id);
     saveGuestData();
     return res.json({ success: true, mergedInto: target.id, event: formatEventForAdmin(target) });
@@ -2590,6 +2620,12 @@ app.patch('/admin-api/events/:id', authMiddleware, (req, res) => {
   if (duplicate && duplicate.id !== event.id) {
     return res.status(400).send('Event name already exists');
   }
+  const newSlug = sanitizeEventSlug(trimmedName);
+  if (isReservedEventSlug(newSlug)) {
+    return res.status(400).send(
+      'Event name must include letters or numbers (cannot reserve the General upload folder)'
+    );
+  }
   const slugConflict = findEventBySlug(trimmedName, event.id);
   if (slugConflict) {
     return res.status(400).send(`Event folder name conflicts with existing event "${slugConflict.name}"`);
@@ -2597,7 +2633,10 @@ app.patch('/admin-api/events/:id', authMiddleware, (req, res) => {
 
   const oldSlug = sanitizeEventSlug(event.name);
   event.name = trimmedName;
-  renameEventFoldersOnDisk(oldSlug, sanitizeEventSlug(event.name));
+  // Legacy General-slug events never owned General/; rename metadata only.
+  if (!isReservedEventSlug(oldSlug)) {
+    renameEventFoldersOnDisk(oldSlug, newSlug);
+  }
   saveGuestData();
   res.json({ success: true, event: formatEventForAdmin(event) });
 });
@@ -2609,7 +2648,8 @@ app.delete('/admin-api/events/:id', authMiddleware, (req, res) => {
   }
 
   const eventSlug = sanitizeEventSlug(event.name);
-  if (countEventFilesOnDisk(eventSlug) > 0) {
+  // General is shared untagged storage — do not treat its files as owned by this event.
+  if (!isReservedEventSlug(eventSlug) && countEventFilesOnDisk(eventSlug) > 0) {
     return res.status(409).send('Event has uploaded photos. Rename or merge it before deleting.');
   }
 
