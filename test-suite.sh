@@ -1245,10 +1245,11 @@ PY
     fi
 
     printf '%s\n' '%PDF-1.4' '1 0 obj << /renameCollision true >> endobj' '%%EOF' > /tmp/test-rename-collision.pdf
+    # eventName must precede file parts so multer destination sees it.
     curl -s -X POST "$BASE_URL/upload" \
         -H "X-Guest-Token: $token" \
-        -F "photos=@/tmp/test-rename-collision.pdf;type=application/pdf" \
-        -F "eventName=Rename Collision Party" > /dev/null
+        -F "eventName=Rename Collision Party" \
+        -F "photos=@/tmp/test-rename-collision.pdf;type=application/pdf" > /dev/null
     rm -f /tmp/test-rename-collision.pdf
 
     local uploads_root
