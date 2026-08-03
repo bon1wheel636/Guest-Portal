@@ -7,6 +7,7 @@ All notable changes to this project will be documented here.
 ## [Unreleased]
 
 ### Fixed
+- Renaming one of two events that already share an upload folder slug is now metadata-only, so the shared photos stay with the sibling instead of being moved away (the recovery path suggested by the merge collision error).
 - Event create/rename now rejects names that share an upload folder slug with another event (e.g. `Hello World` vs `Hello-World`); merge also refuses when a sibling event already shares the source slug, so admin merge cannot move another event's photos.
 
 ### Added
