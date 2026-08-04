@@ -7,11 +7,9 @@ All notable changes to this project will be documented here.
 ## [Unreleased]
 
 ### Fixed
-<<<<<<< HEAD
 - Guest uploads now honor `eventName` even when the file parts precede that field in the multipart body (the welcome hub FormData order). Files are staged under `.incoming` and moved after multer finishes parsing, so event tags no longer silently fall back to General.
-=======
 - Event names that sanitize to the reserved `General` upload folder (`***`, `...`, `General!!!`, etc.) can no longer be created or renamed into; merging/renaming legacy General-slug events updates metadata only and no longer moves every guest's untagged photos.
->>>>>>> origin/cursor/critical-bug-management-c2f0
+- Renaming one of two events that already share an upload folder slug is now metadata-only, so the shared photos stay with the sibling instead of being moved away (the recovery path suggested by the merge collision error).
 - Event create/rename now rejects names that share an upload folder slug with another event (e.g. `Hello World` vs `Hello-World`); merge also refuses when a sibling event already shares the source slug, so admin merge cannot move another event's photos.
 
 ### Added

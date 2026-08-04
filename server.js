@@ -2690,13 +2690,22 @@ app.patch('/admin-api/events/:id', authMiddleware, (req, res) => {
   }
 
   const oldSlug = sanitizeEventSlug(event.name);
-  event.name = trimmedName;
+  // Pre-existing slug collisions share one folder. Moving it on rename would
+  // steal the sibling event's photos — the failure mode the merge 409 warns
+  // about when it says "Rename one of them first." Disambiguate metadata only
+  // so the remaining slug owner keeps the folder.
   // Legacy General-slug events never owned General/; rename metadata only.
-  if (!isReservedEventSlug(oldSlug)) {
+  const slugSibling = findEventBySlug(oldSlug, event.id);
+  event.name = trimmedName;
+  if (!isReservedEventSlug(oldSlug) && !slugSibling) {
     renameEventFoldersOnDisk(oldSlug, newSlug);
   }
   saveGuestData();
-  res.json({ success: true, event: formatEventForAdmin(event) });
+  res.json({
+    success: true,
+    event: formatEventForAdmin(event),
+    ...(slugSibling ? { photosLeftWith: slugSibling.name } : {})
+  });
 });
 
 app.delete('/admin-api/events/:id', authMiddleware, (req, res) => {

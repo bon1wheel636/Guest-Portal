@@ -1430,6 +1430,125 @@ PY
     admin_curl -X DELETE "$BASE_URL/admin-api/events/$target_id" > /dev/null || true
 }
 
+test_admin_event_rename_away_from_slug_collision() {
+    require_admin_creds "Admin event rename away from slug collision" || return
+
+    # Create the folder-owning event via API, then seed a legacy sibling that
+    # shares the same slug (create API rejects new collisions).
+    local create_owner=$(admin_curl -X POST "$BASE_URL/admin-api/events" \
+        -H "Content-Type: application/json" \
+        -d '{"name":"Rename Collision Party"}')
+    local owner_id=$(echo "$create_owner" | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4)
+    if [[ -z "$owner_id" ]]; then
+        fail "Admin event rename away from slug collision" "owner event id" "$create_owner"
+        return
+    fi
+
+    local storage_path='/etc/guest-portal/storage.json'
+    if [[ ! -f "$storage_path" ]]; then
+        fail "Admin event rename away from slug collision" "storage.json" "missing"
+        return
+    fi
+
+    local sibling_id="event_legacy_slug_sibling_rename"
+    python3 - <<PY
+import json, time
+path = '$storage_path'
+time.sleep(0.2)
+data = json.load(open(path))
+events = [e for e in data.get('events', []) if e.get('id') != '$sibling_id']
+events.append({
+    'id': '$sibling_id',
+    'name': 'Rename-Collision-Party',
+    'createdAt': '2026-01-01T00:00:00.000Z',
+    'createdBy': 'test'
+})
+data['events'] = events
+json.dump(data, open(path, 'w'), indent=2)
+print('seeded')
+PY
+
+    pkill -f 'node server.js' 2>/dev/null || true
+    sleep 0.5
+    (cd "$(dirname "$0")" && node server.js >/tmp/guest-portal-test-server.log 2>&1 &)
+    local ready=0
+    for _ in $(seq 1 30); do
+        if curl -s -o /dev/null -w "%{http_code}" "$BASE_URL/" | grep -q 200; then
+            ready=1
+            break
+        fi
+        sleep 0.2
+    done
+    if [[ "$ready" != "1" ]]; then
+        fail "Admin event rename away from slug collision" "server restart" \
+            "$(tail -n 20 /tmp/guest-portal-test-server.log 2>/dev/null || true)"
+        return
+    fi
+
+    local response=$(curl -s -X POST "$BASE_URL/register" \
+        -H "Content-Type: application/json" \
+        -d '{"name":"Slug Rename Victim","room":"Room 1","stayDays":2,"guestTypeId":"type_overnight"}')
+    local token=$(echo "$response" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
+    if [[ -z "$token" ]]; then
+        fail "Admin event rename away from slug collision" "registration token" "$response"
+        return
+    fi
+
+    printf '%s\n' '%PDF-1.4' '1 0 obj << /renameCollision true >> endobj' '%%EOF' > /tmp/test-rename-collision.pdf
+    # eventName must precede file parts so multer destination sees it.
+    curl -s -X POST "$BASE_URL/upload" \
+        -H "X-Guest-Token: $token" \
+        -F "eventName=Rename Collision Party" \
+        -F "photos=@/tmp/test-rename-collision.pdf;type=application/pdf" > /dev/null
+    rm -f /tmp/test-rename-collision.pdf
+
+    local uploads_root
+    uploads_root=$(python3 -c "
+import json, os
+cfg_path='/etc/guest-portal/config.json'
+upload=''
+if os.path.exists(cfg_path):
+    upload=json.load(open(cfg_path)).get('uploadDir') or ''
+print(upload)
+" 2>/dev/null)
+    if [[ -z "$uploads_root" ]]; then
+        uploads_root="$(pwd)/uploads"
+    fi
+    if [[ "$uploads_root" != /* ]]; then
+        uploads_root="$(cd "$(dirname "$0")" && pwd)/$uploads_root"
+    fi
+
+    local before_old
+    before_old=$(find "$uploads_root" -type f -path '*/Rename-Collision-Party/*' 2>/dev/null | wc -l | tr -d ' ')
+    if [[ "$before_old" -lt 1 ]]; then
+        fail "Admin event rename away from slug collision" "photo in shared slug folder" \
+            "count=$before_old root=$uploads_root"
+        return
+    fi
+
+    # Rename the API-created event away from the shared slug. Previously this
+    # moved the shared folder and left the sibling event without photos.
+    local rename=$(admin_curl -X PATCH "$BASE_URL/admin-api/events/$owner_id" \
+        -H "Content-Type: application/json" \
+        -d '{"name":"Rename Collision Disambiguated"}')
+    local after_old
+    after_old=$(find "$uploads_root" -type f -path '*/Rename-Collision-Party/*' 2>/dev/null | wc -l | tr -d ' ')
+    local after_new
+    after_new=$(find "$uploads_root" -type f -path '*/Rename-Collision-Disambiguated/*' 2>/dev/null | wc -l | tr -d ' ')
+
+    if [[ "$rename" == *'"success":true'* && "$rename" == *'"photosLeftWith":"Rename-Collision-Party"'* && \
+          "$after_old" == "$before_old" && "$after_new" == "0" ]]; then
+        pass "Admin event rename away from slug collision is metadata-only"
+    else
+        fail "Admin event rename away from slug collision is metadata-only" \
+            "success + photosLeftWith sibling, old folder unchanged, new folder empty" \
+            "rename=$rename before=$before_old after_old=$after_old after_new=$after_new"
+    fi
+
+    admin_curl -X DELETE "$BASE_URL/admin-api/events/$owner_id" > /dev/null || true
+    admin_curl -X DELETE "$BASE_URL/admin-api/events/$sibling_id" > /dev/null || true
+}
+
 test_guest_upload_retag() {
     require_admin_creds "Guest upload re-tag" || return
     admin_curl -X POST "$BASE_URL/admin-api/events" \
@@ -1985,6 +2104,7 @@ test_admin_event_merge
 test_admin_event_merge_preserves_filename_conflicts
 test_admin_event_slug_collision_rejected
 test_admin_event_reserved_general_slug
+test_admin_event_rename_away_from_slug_collision
 test_guest_upload_retag
 test_guest_upload_retag_forbidden
 test_guest_upload_clear_event_tag
