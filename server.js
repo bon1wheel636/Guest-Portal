@@ -174,6 +174,43 @@ function getUploadsDir() {
   return config.uploadDir || path.join(__dirname, 'uploads');
 }
 
+// Reject prefix false-positives like /uploads_evil matching /uploads
+function isResolvedPathInside(parentDir, candidatePath) {
+  const resolvedParent = path.resolve(parentDir);
+  const resolvedCandidate = path.resolve(candidatePath);
+  return (
+    resolvedCandidate === resolvedParent ||
+    resolvedCandidate.startsWith(resolvedParent + path.sep)
+  );
+}
+
+// Admin download/delete: folder param must be a single stay-folder name under uploads.
+// Reject path separators, .. segments, the uploads root itself, and prefix siblings.
+function resolveAdminUploadFolderPath(uploadsDir, folderName) {
+  if (typeof folderName !== 'string' || !folderName || folderName === '.' || folderName === '..') {
+    return null;
+  }
+  if (
+    folderName.includes('\0') ||
+    folderName.includes('/') ||
+    folderName.includes('\\') ||
+    folderName.includes('..') ||
+    path.basename(folderName) !== folderName
+  ) {
+    return null;
+  }
+
+  const resolvedUploads = path.resolve(uploadsDir);
+  const folderPath = path.resolve(path.join(uploadsDir, folderName));
+  if (folderPath === resolvedUploads) {
+    return null;
+  }
+  if (!folderPath.startsWith(resolvedUploads + path.sep)) {
+    return null;
+  }
+  return folderPath;
+}
+
 function sanitizeFilename(filename) {
   return filename
     .replace(/[/\\]/g, '_')
@@ -204,29 +241,37 @@ function getLinkCodeExpirationMs() {
   return getExpirationMinutes() * 60 * 1000;
 }
 
-// L5: Async file writes to avoid blocking the event loop
-function saveConfig() {
-  fs.promises.writeFile(configPath, JSON.stringify(config, null, 2)).catch(err => {
-    console.error('Failed to save config:', err);
-  });
+// L5: Async file writes to avoid blocking the event loop.
+// Serialize per-file writes so overlapping save* calls cannot interleave
+// writeFile truncates (corrupt JSON) or finish out of order (lost notes/events).
+function createSerializedJsonSaver(filePath, label, getValue) {
+  let chain = Promise.resolve();
+  function saveSerialized() {
+    const payload = JSON.stringify(getValue(), null, 2);
+    chain = chain
+      .catch(() => {})
+      .then(() => fs.promises.writeFile(filePath, payload))
+      .catch(err => {
+        console.error(`Failed to save ${label}:`, err);
+      });
+    return chain;
+  }
+  saveSerialized.flush = () => chain.catch(() => {});
+  return saveSerialized;
 }
 
-function saveSessions() {
-  fs.promises.writeFile(sessionFile, JSON.stringify(sessionCodes, null, 2)).catch(err => {
-    console.error('Failed to save sessions:', err);
-  });
-}
+const saveConfig = createSerializedJsonSaver(configPath, 'config', () => config);
+const saveSessions = createSerializedJsonSaver(sessionFile, 'sessions', () => sessionCodes);
+const saveGuestTokens = createSerializedJsonSaver(guestTokensFile, 'guest tokens', () => guestTokens);
+const saveGuestData = createSerializedJsonSaver(dbPath, 'guest data', () => guestData);
 
-function saveGuestTokens() {
-  fs.promises.writeFile(guestTokensFile, JSON.stringify(guestTokens, null, 2)).catch(err => {
-    console.error('Failed to save guest tokens:', err);
-  });
-}
-
-function saveGuestData() {
-  fs.promises.writeFile(dbPath, JSON.stringify(guestData, null, 2)).catch(err => {
-    console.error('Failed to save guest data:', err);
-  });
+async function flushPersistentState() {
+  await Promise.all([
+    saveConfig.flush(),
+    saveSessions.flush(),
+    saveGuestTokens.flush(),
+    saveGuestData.flush()
+  ]);
 }
 
 // C2: Use crypto.randomBytes instead of Math.random for secure token generation
@@ -725,7 +770,7 @@ function getGuestStayFolder(guest) {
     : new Date().toISOString().split('T')[0];
   const folderName = `${name}-${guest.id}-${datePart}`;
   const dir = path.join(uploadsDir, folderName);
-  if (!path.resolve(dir).startsWith(path.resolve(uploadsDir))) {
+  if (!isResolvedPathInside(uploadsDir, dir) || path.resolve(dir) === path.resolve(uploadsDir)) {
     throw new Error('Invalid upload path');
   }
   return dir;
@@ -815,7 +860,7 @@ function findGuestUploadFile(guestId, filename, eventSlug) {
   for (const folderPath of getGuestUploadFolders(guestId)) {
     const scopedPath = path.resolve(path.join(folderPath, normalizedSlug, safeName));
     if (
-      scopedPath.startsWith(path.resolve(folderPath)) &&
+      isResolvedPathInside(folderPath, scopedPath) &&
       fs.existsSync(scopedPath) &&
       fs.statSync(scopedPath).isFile()
     ) {
@@ -825,7 +870,7 @@ function findGuestUploadFile(guestId, filename, eventSlug) {
     if (normalizedSlug === 'General') {
       const rootPath = path.resolve(path.join(folderPath, safeName));
       if (
-        rootPath.startsWith(path.resolve(folderPath)) &&
+        isResolvedPathInside(folderPath, rootPath) &&
         fs.existsSync(rootPath) &&
         fs.statSync(rootPath).isFile()
       ) {
@@ -942,7 +987,7 @@ function resolveLegacyGuestUploadFile(guestId, filename) {
 
     flatCandidates.forEach(candidate => {
       if (
-        candidate.startsWith(path.resolve(folderPath)) &&
+        isResolvedPathInside(folderPath, candidate) &&
         fs.existsSync(candidate) &&
         fs.statSync(candidate).isFile()
       ) {
@@ -959,7 +1004,7 @@ function resolveLegacyGuestUploadFile(guestId, filename) {
       .forEach(subdir => {
         const nestedPath = path.resolve(path.join(folderPath, subdir.name, safeName));
         if (
-          nestedPath.startsWith(path.resolve(folderPath)) &&
+          isResolvedPathInside(folderPath, nestedPath) &&
           fs.existsSync(nestedPath) &&
           fs.statSync(nestedPath).isFile()
         ) {
@@ -1450,7 +1495,7 @@ const storage = multer.diskStorage({
       const stayDir = getGuestStayFolder(guest);
       const eventSlug = resolveUploadEventName(guest, req.body?.eventName);
       const dir = path.join(stayDir, eventSlug);
-      if (!path.resolve(dir).startsWith(path.resolve(getUploadsDir()))) {
+      if (!isResolvedPathInside(getUploadsDir(), dir)) {
         return cb(new Error('Invalid upload path'));
       }
       fs.mkdirSync(dir, { recursive: true });
@@ -2123,9 +2168,9 @@ app.get('/admin-api/uploads', authMiddleware, (req, res) => {
 app.get('/admin-api/uploads/download/:folder', authMiddleware, (req, res) => {
   const uploadsDir = getUploadsDir();
   const folderName = req.params.folder;
-  const folderPath = path.resolve(path.join(uploadsDir, folderName));
+  const folderPath = resolveAdminUploadFolderPath(uploadsDir, folderName);
 
-  if (!folderPath.startsWith(path.resolve(uploadsDir))) {
+  if (!folderPath) {
     return res.status(400).send('Invalid folder');
   }
   if (!fs.existsSync(folderPath) || !fs.statSync(folderPath).isDirectory()) {
@@ -2180,9 +2225,9 @@ app.get('/admin-api/uploads/download-all', authMiddleware, (req, res) => {
 app.delete('/admin-api/uploads/:folder', authMiddleware, (req, res) => {
   const uploadsDir = getUploadsDir();
   const folderName = req.params.folder;
-  const folderPath = path.resolve(path.join(uploadsDir, folderName));
+  const folderPath = resolveAdminUploadFolderPath(uploadsDir, folderName);
 
-  if (!folderPath.startsWith(path.resolve(uploadsDir))) {
+  if (!folderPath) {
     return res.status(400).send('Invalid folder');
   }
   if (folderName === 'backgrounds') {
@@ -2259,7 +2304,7 @@ app.delete('/admin-api/background', authMiddleware, (req, res) => {
   if (config.backgroundImage) {
     const uploadsDir = path.resolve(getUploadsDir());
     const bgPath = path.resolve(path.join(uploadsDir, 'backgrounds', path.basename(config.backgroundImage)));
-    if (bgPath.startsWith(uploadsDir) && fs.existsSync(bgPath)) {
+    if (isResolvedPathInside(uploadsDir, bgPath) && fs.existsSync(bgPath)) {
       fs.unlinkSync(bgPath);
     }
     delete config.backgroundImage;
@@ -2774,7 +2819,12 @@ const server = app.listen(port, () => {
 // L4: Graceful shutdown — close server and flush pending writes
 function shutdown(signal) {
   console.log(`\n${signal} received. Shutting down gracefully...`);
-  server.close(() => {
+  server.close(async () => {
+    try {
+      await flushPersistentState();
+    } catch (err) {
+      console.error('Failed to flush persistent state during shutdown:', err);
+    }
     console.log('Server closed.');
     process.exit(0);
   });

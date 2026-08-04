@@ -7,6 +7,8 @@ All notable changes to this project will be documented here.
 ## [Unreleased]
 
 ### Fixed
+- Admin upload download/delete path checks no longer use bare `startsWith` on the uploads directory prefix. Encoded traversal such as `..%2Fuploads` or `..%2Fuploads_evil` previously could zip or recursively delete the uploads root (including backgrounds) or sibling directories that share the `/uploads` path prefix.
+- Persist helpers (`saveGuestData` / tokens / sessions / config) now serialize async writes so concurrent guest-note and admin mutations cannot corrupt JSON files or lose the latest in-memory state on disk.
 - Event create/rename now rejects names that share an upload folder slug with another event (e.g. `Hello World` vs `Hello-World`); merge also refuses when a sibling event already shares the source slug, so admin merge cannot move another event's photos.
 
 ### Added
