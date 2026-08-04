@@ -1211,6 +1211,225 @@ test_admin_event_slug_collision_rejected() {
     admin_curl -X DELETE "$BASE_URL/admin-api/events/$base_id" > /dev/null || true
 }
 
+test_admin_event_reserved_general_slug() {
+    require_admin_creds "Admin event reserved General slug" || return
+
+    local create_code create_body
+    for name in '***' '...' 'General!!!' 'General'; do
+        create_code=$(curl -s -o /tmp/reserved-slug-create.body -w "%{http_code}" \
+            -u "$ADMIN_USER:$ADMIN_PASS" \
+            -X POST "$BASE_URL/admin-api/events" \
+            -H "Content-Type: application/json" \
+            -d "{\"name\":\"$name\"}")
+        create_body=$(cat /tmp/reserved-slug-create.body 2>/dev/null || true)
+        rm -f /tmp/reserved-slug-create.body
+        if [[ "$create_code" != "400" ]] || [[ "$create_body" != *"General upload folder"* ]]; then
+            fail "Admin event create rejects reserved General slug ($name)" \
+                "400 + General upload folder message" "code=$create_code body=$create_body"
+            return
+        fi
+    done
+    pass "Admin event create rejects reserved General slug names"
+
+    local create_ok=$(admin_curl -X POST "$BASE_URL/admin-api/events" \
+        -H "Content-Type: application/json" \
+        -d '{"name":"Reserved Slug Rename Target"}')
+    local rename_id=$(echo "$create_ok" | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4)
+    if [[ -z "$rename_id" ]]; then
+        fail "Admin event rename rejects reserved General slug" "create id" "$create_ok"
+        return
+    fi
+    local rename_code rename_body
+    rename_code=$(curl -s -o /tmp/reserved-slug-rename.body -w "%{http_code}" \
+        -u "$ADMIN_USER:$ADMIN_PASS" \
+        -X PATCH "$BASE_URL/admin-api/events/$rename_id" \
+        -H "Content-Type: application/json" \
+        -d '{"name":"***"}')
+    rename_body=$(cat /tmp/reserved-slug-rename.body 2>/dev/null || true)
+    rm -f /tmp/reserved-slug-rename.body
+    if [[ "$rename_code" == "400" && "$rename_body" == *"General upload folder"* ]]; then
+        pass "Admin event rename rejects reserved General slug"
+    else
+        fail "Admin event rename rejects reserved General slug" "400 + General upload folder message" \
+            "code=$rename_code body=$rename_body"
+    fi
+    admin_curl -X DELETE "$BASE_URL/admin-api/events/$rename_id" > /dev/null || true
+
+    # Seed a legacy General-slug event in storage (create API now blocks these),
+    # restart so in-memory state picks it up, then prove merge/rename do not move
+    # every guest's untagged General/ photos.
+    local storage_path='/etc/guest-portal/storage.json'
+    if [[ ! -f "$storage_path" ]]; then
+        fail "Admin event General-slug merge preserves untagged photos" "storage.json" "missing"
+        return
+    fi
+
+    # Create the merge target via API first, wait for async save, then append the
+    # legacy General-slug event on disk (a subsequent API save would wipe a prior seed).
+    admin_curl -X DELETE "$BASE_URL/admin-api/events/$(
+        admin_curl "$BASE_URL/admin-api/events" | python3 -c "
+import json,sys
+events=json.load(sys.stdin)
+print(next((e['id'] for e in events if e.get('name')=='General Slug Safe Target'),''))
+" 2>/dev/null
+    )" > /dev/null 2>&1 || true
+    local create_target=$(admin_curl -X POST "$BASE_URL/admin-api/events" \
+        -H "Content-Type: application/json" \
+        -d '{"name":"General Slug Safe Target"}')
+    local target_id
+    target_id=$(echo "$create_target" | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4)
+    if [[ -z "$target_id" ]]; then
+        fail "Admin event General-slug merge preserves untagged photos" "target id" "$create_target"
+        return
+    fi
+    sleep 0.3
+
+    local legacy_id="event_legacy_general_slug_test"
+    python3 - <<PY
+import json, time
+path = '$storage_path'
+# Wait briefly for the target event to land on disk from the async save.
+for _ in range(20):
+    data = json.load(open(path))
+    if any(e.get('id') == '$target_id' for e in data.get('events', [])):
+        break
+    time.sleep(0.1)
+else:
+    data = json.load(open(path))
+events = [e for e in data.get('events', []) if e.get('id') != '$legacy_id']
+events.append({
+    'id': '$legacy_id',
+    'name': 'Legacy General Slug!!!',
+    'createdAt': '2026-01-01T00:00:00.000Z',
+    'createdBy': 'test'
+})
+data['events'] = events
+json.dump(data, open(path, 'w'), indent=2)
+print('seeded')
+PY
+
+    # Restart server to load seeded legacy event
+    pkill -f 'node server.js' 2>/dev/null || true
+    sleep 0.5
+    (cd "$(dirname "$0")" && node server.js >/tmp/guest-portal-test-server.log 2>&1 &)
+    local ready=0
+    for _ in $(seq 1 30); do
+        if curl -s -o /dev/null -w "%{http_code}" "$BASE_URL/" | grep -q 200; then
+            ready=1
+            break
+        fi
+        sleep 0.2
+    done
+    if [[ "$ready" != "1" ]]; then
+        fail "Admin event General-slug merge preserves untagged photos" "server restart" \
+            "$(tail -n 20 /tmp/guest-portal-test-server.log 2>/dev/null || true)"
+        return
+    fi
+
+    local response=$(curl -s -X POST "$BASE_URL/register" \
+        -H "Content-Type: application/json" \
+        -d '{"name":"General Slug Victim","room":"Room 1","stayDays":2,"guestTypeId":"type_overnight"}')
+    local token=$(echo "$response" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
+    if [[ -z "$token" ]]; then
+        fail "Admin event General-slug merge preserves untagged photos" "registration token" "$response"
+        return
+    fi
+    printf '%s\n' '%PDF-1.4' '1 0 obj << /untagged true >> endobj' '%%EOF' > /tmp/test-general-slug-untagged.pdf
+    curl -s -X POST "$BASE_URL/upload" \
+        -H "X-Guest-Token: $token" \
+        -F "photos=@/tmp/test-general-slug-untagged.pdf;type=application/pdf" > /dev/null
+    rm -f /tmp/test-general-slug-untagged.pdf
+
+    local uploads_root
+    uploads_root=$(python3 -c "
+import json, os
+cfg_path='/etc/guest-portal/config.json'
+upload=''
+if os.path.exists(cfg_path):
+    upload=json.load(open(cfg_path)).get('uploadDir') or ''
+print(upload)
+" 2>/dev/null)
+    if [[ -z "$uploads_root" ]]; then
+        uploads_root="$(pwd)/uploads"
+    fi
+    local general_before
+    general_before=$(find "$uploads_root" -type f -path '*/General/*' 2>/dev/null | wc -l | tr -d ' ')
+    if [[ "$general_before" -lt 1 ]]; then
+        fail "Admin event General-slug merge preserves untagged photos" "untagged General file" \
+            "count=$general_before root=$uploads_root"
+        return
+    fi
+
+    local merge=$(admin_curl -X PATCH "$BASE_URL/admin-api/events/$legacy_id" \
+        -H "Content-Type: application/json" \
+        -d "{\"mergeIntoId\":\"$target_id\"}")
+    local general_after
+    general_after=$(find "$uploads_root" -type f -path '*/General/*' 2>/dev/null | wc -l | tr -d ' ')
+    local target_after
+    target_after=$(find "$uploads_root" -type f -path '*/General-Slug-Safe-Target/*' 2>/dev/null | wc -l | tr -d ' ')
+    if [[ "$merge" == *'"success":true'* && "$general_after" == "$general_before" && "$target_after" == "0" ]]; then
+        pass "Admin event General-slug merge preserves untagged photos"
+    else
+        fail "Admin event General-slug merge preserves untagged photos" \
+            "merge success, General count unchanged, target empty" \
+            "merge=$merge before=$general_before after=$general_after target=$target_after"
+    fi
+
+    # Re-seed another legacy event and rename without moving General/
+    sleep 0.3
+    local legacy_rename_id="event_legacy_general_slug_rename"
+    python3 - <<PY
+import json, time
+path = '$storage_path'
+# Ensure the merge's async save finished before we append the rename seed.
+time.sleep(0.2)
+data = json.load(open(path))
+events = [e for e in data.get('events', []) if e.get('id') != '$legacy_rename_id']
+events.append({
+    'id': '$legacy_rename_id',
+    'name': '@@@',
+    'createdAt': '2026-01-01T00:00:00.000Z',
+    'createdBy': 'test'
+})
+data['events'] = events
+json.dump(data, open(path, 'w'), indent=2)
+PY
+    pkill -f 'node server.js' 2>/dev/null || true
+    sleep 0.5
+    (cd "$(dirname "$0")" && node server.js >/tmp/guest-portal-test-server.log 2>&1 &)
+    ready=0
+    for _ in $(seq 1 30); do
+        if curl -s -o /dev/null -w "%{http_code}" "$BASE_URL/" | grep -q 200; then
+            ready=1
+            break
+        fi
+        sleep 0.2
+    done
+    if [[ "$ready" != "1" ]]; then
+        fail "Admin event General-slug rename is metadata-only" "server restart" \
+            "$(tail -n 20 /tmp/guest-portal-test-server.log 2>/dev/null || true)"
+        return
+    fi
+    general_before=$(find "$uploads_root" -type f -path '*/General/*' 2>/dev/null | wc -l | tr -d ' ')
+    local rename=$(admin_curl -X PATCH "$BASE_URL/admin-api/events/$legacy_rename_id" \
+        -H "Content-Type: application/json" \
+        -d '{"name":"Recovered From General Slug"}')
+    general_after=$(find "$uploads_root" -type f -path '*/General/*' 2>/dev/null | wc -l | tr -d ' ')
+    local recovered_count
+    recovered_count=$(find "$uploads_root" -type f -path '*/Recovered-From-General-Slug/*' 2>/dev/null | wc -l | tr -d ' ')
+    if [[ "$rename" == *'"success":true'* && "$rename" == *'Recovered From General Slug'* && \
+          "$general_after" == "$general_before" && "$recovered_count" == "0" ]]; then
+        pass "Admin event General-slug rename is metadata-only"
+    else
+        fail "Admin event General-slug rename is metadata-only" \
+            "rename success, General unchanged, no recovered folder files" \
+            "rename=$rename before=$general_before after=$general_after recovered=$recovered_count"
+    fi
+
+    admin_curl -X DELETE "$BASE_URL/admin-api/events/$legacy_rename_id" > /dev/null || true
+    admin_curl -X DELETE "$BASE_URL/admin-api/events/$target_id" > /dev/null || true
+}
+
 test_guest_upload_retag() {
     require_admin_creds "Guest upload re-tag" || return
     admin_curl -X POST "$BASE_URL/admin-api/events" \
@@ -1765,6 +1984,7 @@ test_admin_events_crud
 test_admin_event_merge
 test_admin_event_merge_preserves_filename_conflicts
 test_admin_event_slug_collision_rejected
+test_admin_event_reserved_general_slug
 test_guest_upload_retag
 test_guest_upload_retag_forbidden
 test_guest_upload_clear_event_tag
