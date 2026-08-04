@@ -605,6 +605,45 @@ test_admin_uploads_metadata() {
     fi
 }
 
+test_admin_upload_folder_path_traversal() {
+    require_admin_creds "Admin upload folder path traversal" || return
+
+    local path_info=$(admin_curl "$BASE_URL/admin-api/upload-path")
+    local uploads_dir=$(python3 -c "import json,sys; print(json.load(sys.stdin).get('path',''))" <<<"$path_info")
+    if [[ -z "$uploads_dir" ]]; then
+        fail "Admin upload folder path traversal" "uploads path from /admin-api/upload-path" "$path_info"
+        return
+    fi
+
+    local sibling_dir="${uploads_dir}_evil_traversal"
+    mkdir -p "$uploads_dir/backgrounds" "$sibling_dir"
+    echo "keep-uploads" > "$uploads_dir/.traversal-canary"
+    echo "keep-sibling" > "$sibling_dir/secret.txt"
+
+    local del_sibling_code=$(curl -s -o /tmp/admin-trav-del-sibling.txt -w "%{http_code}" \
+        -u "$ADMIN_USER:$ADMIN_PASS" -X DELETE "$BASE_URL/admin-api/uploads/..%2F$(basename "$sibling_dir")")
+    local del_root_code=$(curl -s -o /tmp/admin-trav-del-root.txt -w "%{http_code}" \
+        -u "$ADMIN_USER:$ADMIN_PASS" -X DELETE "$BASE_URL/admin-api/uploads/..%2F$(basename "$uploads_dir")")
+    local dl_sibling_code=$(curl -s -o /tmp/admin-trav-dl-sibling.zip -w "%{http_code}" \
+        -u "$ADMIN_USER:$ADMIN_PASS" "$BASE_URL/admin-api/uploads/download/..%2F$(basename "$sibling_dir")")
+
+    local sibling_ok=0
+    local uploads_ok=0
+    [[ -f "$sibling_dir/secret.txt" ]] && sibling_ok=1
+    [[ -f "$uploads_dir/.traversal-canary" ]] && uploads_ok=1
+
+    rm -f "$uploads_dir/.traversal-canary"
+    rm -rf "$sibling_dir"
+
+    if [[ "$del_sibling_code" == "400" && "$del_root_code" == "400" && "$dl_sibling_code" == "400" && "$sibling_ok" == "1" && "$uploads_ok" == "1" ]]; then
+        pass "Admin upload folder path traversal blocked"
+    else
+        fail "Admin upload folder path traversal blocked" \
+            "400 for delete/download traversal + canaries intact" \
+            "del_sibling=$del_sibling_code del_root=$del_root_code dl_sibling=$dl_sibling_code sibling_ok=$sibling_ok uploads_ok=$uploads_ok"
+    fi
+}
+
 test_guest_uploads_requires_token() {
     local http_code=$(curl -s -o /dev/null -w "%{http_code}" "$BASE_URL/guest/uploads")
     if [[ "$http_code" == "401" ]]; then
@@ -1714,6 +1753,7 @@ test_validate_returning_device
 test_guest_uploads_list
 test_guest_link_code_qr
 test_admin_uploads_metadata
+test_admin_upload_folder_path_traversal
 test_guest_uploads_requires_token
 test_guest_upload_delete
 test_guest_upload_delete_requires_token
