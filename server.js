@@ -169,8 +169,6 @@ function ensureStorageDefaults() {
   }
 }
 
-ensureStorageDefaults();
-
 // ─── Utility Functions ──────────────────────────────────────────────────────
 
 function getUploadsDir() {
@@ -276,6 +274,9 @@ async function flushPersistentState() {
     saveGuestData.flush()
   ]);
 }
+
+// After savers exist: const bindings are not hoisted like the old function decls.
+ensureStorageDefaults();
 
 // C2: Use crypto.randomBytes instead of Math.random for secure token generation
 function generateCode() {
