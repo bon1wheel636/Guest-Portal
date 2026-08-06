@@ -1571,8 +1571,14 @@ const storage = multer.diskStorage({
     }
   },
   filename: (req, file, cb) => {
-    const safeName = sanitizeFilename(file.originalname);
-    cb(null, `${Date.now()}-${safeName}`);
+    // Date.now() alone collides when multiple parts are stored in the same ms
+    // (common for multi-select uploads with identical original names). Shared
+    // staging names overwrite each other, then finalize rename fails and the
+    // error path deletes any file already moved out of .incoming.
+    const uniquePrefix = `${Date.now()}-${crypto.randomBytes(4).toString('hex')}-`;
+    const maxBaseLen = Math.max(1, 255 - Buffer.byteLength(uniquePrefix, 'utf8'));
+    const safeName = sanitizeFilename(file.originalname).substring(0, maxBaseLen);
+    cb(null, `${uniquePrefix}${safeName}`);
   }
 });
 
@@ -1904,7 +1910,19 @@ app.post('/upload', validateGuestUploadToken, requireGuestPermission('uploadPhot
     finalizeGuestUploadFiles(req.guestSession.guest, req.files, req.body?.eventName);
   } catch (err) {
     console.error('Failed to finalize guest upload:', err);
-    removeUploadedFiles(req.files);
+    // Only wipe files still in .incoming. Finalized destinations must stay —
+    // otherwise a mid-batch finalize failure deletes photos already stored.
+    try {
+      const incomingDir = path.resolve(
+        path.join(getGuestStayFolder(req.guestSession.guest), INCOMING_UPLOAD_DIR)
+      );
+      removeUploadedFiles((req.files || []).filter(file => {
+        const resolved = path.resolve(file.path);
+        return resolved === incomingDir || resolved.startsWith(incomingDir + path.sep);
+      }));
+    } catch (cleanupErr) {
+      console.error('Failed to clean staging uploads after finalize error:', cleanupErr);
+    }
     return res.status(500).send('Failed to store upload');
   }
 

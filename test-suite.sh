@@ -869,6 +869,38 @@ test_event_upload_photos_before_event_field() {
     fi
 }
 
+test_multi_upload_same_original_name() {
+    # Multer used `${Date.now()}-${safeName}` for staging. Same-ms + same original
+    # name overwrote siblings in .incoming; finalize then failed and wiped the batch.
+    local response=$(curl -s -X POST "$BASE_URL/register" \
+        -H "Content-Type: application/json" \
+        -d '{"name":"Same Name Upload Guest","room":"Room 1","stayDays":3,"guestTypeId":"type_overnight"}')
+    local token=$(echo "$response" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
+    if [[ -z "$token" ]]; then
+        fail "Multi-upload same original name" "registration token" "$response"
+        return
+    fi
+    local files=()
+    local i
+    for i in $(seq 1 10); do
+        printf '%s\n' '%PDF-1.4' "obj $i" '%%EOF' > "/tmp/same-name-upload-$i.pdf"
+        files+=(-F "photos=@/tmp/same-name-upload-$i.pdf;filename=vacation.pdf;type=application/pdf")
+    done
+    local http_code=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$BASE_URL/upload" \
+        -H "X-Guest-Token: $token" \
+        "${files[@]}")
+    local list=$(curl -s "$BASE_URL/guest/uploads" -H "X-Guest-Token: $token")
+    local count=$(python3 -c "import json,sys; print(len(json.load(sys.stdin).get('files',[])))" <<<"$list")
+    for i in $(seq 1 10); do
+        rm -f "/tmp/same-name-upload-$i.pdf"
+    done
+    if [[ "$http_code" == "200" && "$count" == "10" ]]; then
+        pass "Multi-upload keeps all files that share an original name"
+    else
+        fail "Multi-upload keeps all files that share an original name" "200 + 10 files" "http=$http_code count=$count list=$list"
+    fi
+}
+
 test_legacy_session() {
     require_admin_creds "Legacy session without guestTypeId" || return
     admin_curl -X POST "$BASE_URL/admin-api/rooms" \
@@ -2135,6 +2167,7 @@ test_business_day_link_forbidden
 test_change_guest_type_permissions
 test_event_subfolder_upload
 test_event_upload_photos_before_event_field
+test_multi_upload_same_original_name
 test_legacy_session
 test_day_personal_registration
 test_delete_forbidden
