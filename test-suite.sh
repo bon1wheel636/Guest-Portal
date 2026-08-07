@@ -145,6 +145,46 @@ test_add_room_valid() {
     fi
 }
 
+test_public_rooms_hide_dashboard_url() {
+    require_admin_creds "Public rooms hide dashboardUrl" || return
+    admin_curl -X POST "$BASE_URL/admin-api/rooms" \
+        -H "Content-Type: application/json" \
+        -d '{"name":"Secret Dash Room","dashboardUrl":"http://homeassistant.local:8123/secret-dashboard"}' > /dev/null
+
+    local public_body public_code
+    public_code=$(curl -s -o /tmp/public-rooms.body -w "%{http_code}" "$BASE_URL/guest/rooms")
+    public_body=$(cat /tmp/public-rooms.body 2>/dev/null || true)
+    rm -f /tmp/public-rooms.body
+
+    if [[ "$public_code" == "200" && "$public_body" == *"Secret Dash Room"* && \
+          "$public_body" != *"dashboardUrl"* && "$public_body" != *"homeassistant.local"* ]]; then
+        pass "Public /guest/rooms returns names without dashboardUrl"
+    else
+        fail "Public /guest/rooms returns names without dashboardUrl" \
+            "200 + room name, no dashboardUrl/URL" \
+            "code=$public_code body=$public_body"
+    fi
+
+    local unauth_code
+    unauth_code=$(curl -s -o /dev/null -w "%{http_code}" "$BASE_URL/admin-api/rooms")
+    if [[ "$unauth_code" == "401" ]]; then
+        pass "Unauthenticated /admin-api/rooms is rejected"
+    else
+        fail "Unauthenticated /admin-api/rooms is rejected" "401" "code=$unauth_code"
+    fi
+
+    local admin_body
+    admin_body=$(admin_curl "$BASE_URL/admin-api/rooms")
+    if [[ "$admin_body" == *"Secret Dash Room"* && "$admin_body" == *"homeassistant.local:8123/secret-dashboard"* ]]; then
+        pass "Authenticated /admin-api/rooms still returns dashboardUrl"
+    else
+        fail "Authenticated /admin-api/rooms still returns dashboardUrl" \
+            "room + dashboardUrl present" "$admin_body"
+    fi
+
+    admin_curl -X DELETE "$BASE_URL/admin-api/rooms/Secret%20Dash%20Room" > /dev/null || true
+}
+
 test_add_room_invalid_name() {
     require_admin_creds "Rejects XSS in room name" || return
     local response=$(admin_curl -X POST "$BASE_URL/admin-api/rooms" \
@@ -2089,6 +2129,7 @@ test_register_empty
 
 test_get_rooms
 test_add_room_valid
+test_public_rooms_hide_dashboard_url
 test_add_room_invalid_name
 test_add_room_invalid_url
 test_delete_room
