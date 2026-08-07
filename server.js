@@ -1717,14 +1717,18 @@ app.post('/admin-api/setup', async (req, res) => {
 });
 
 // Public guest endpoints (do not place under /admin-api — proxies may require auth there)
-app.get('/guest/rooms', (req, res) => res.json(guestData.rooms || []));
+// Registration only needs room names. Never expose dashboardUrl here — that would
+// bypass smartHomeControls and leak internal smart-home links to anyone on the LAN.
+app.get('/guest/rooms', (req, res) => {
+  res.json((guestData.rooms || []).map(room => ({ name: room.name })));
+});
 
 app.get('/guest/background', (req, res) => {
   res.json({ backgroundImage: config.backgroundImage || null });
 });
 
-// Backward-compatible aliases
-app.get('/admin-api/rooms', (req, res) => res.json(guestData.rooms || []));
+// Admin room list includes dashboardUrl; requires auth (unlike the public name-only list).
+app.get('/admin-api/rooms', authMiddleware, (req, res) => res.json(guestData.rooms || []));
 
 // Public: background image info needed by guest pages
 app.get('/admin-api/background', (req, res) => {
