@@ -250,6 +250,69 @@ test_admin_setup_required() {
     fi
 }
 
+# Concurrent first-run setup: only one request may create the admin account.
+# Skips when setup is already complete (normal CI / local runs with admin creds).
+# To exercise: restart with adminHash placeholder, then run this suite.
+test_admin_setup_race() {
+    local setup_state
+    setup_state=$(curl -s "$BASE_URL/admin-api/setup-required")
+    if [[ "$setup_state" != *'"setupRequired":true'* ]]; then
+        skip "Admin setup race (requires setupRequired=true / fresh placeholder config)"
+        return
+    fi
+
+    local tmpdir
+    tmpdir=$(mktemp -d)
+    # Fire two setups in parallel during bcrypt.hash window.
+    curl -s -o "$tmpdir/owner.json" -w "%{http_code}" -X POST "$BASE_URL/admin-api/setup" \
+        -H "Content-Type: application/json" \
+        -d '{"username":"owner","password":"ownerpass123"}' >"$tmpdir/owner.code" &
+    local pid1=$!
+    curl -s -o "$tmpdir/attacker.json" -w "%{http_code}" -X POST "$BASE_URL/admin-api/setup" \
+        -H "Content-Type: application/json" \
+        -d '{"username":"attacker","password":"attackerpass123"}' >"$tmpdir/attacker.code" &
+    local pid2=$!
+    wait $pid1
+    wait $pid2
+
+    local code1 code2 body1 body2
+    code1=$(cat "$tmpdir/owner.code")
+    code2=$(cat "$tmpdir/attacker.code")
+    body1=$(cat "$tmpdir/owner.json")
+    body2=$(cat "$tmpdir/attacker.json")
+    rm -rf "$tmpdir"
+
+    local success_count=0
+    local conflict_or_forbidden=0
+    [[ "$code1" == "200" && "$body1" == *'"success":true'* ]] && success_count=$((success_count + 1))
+    [[ "$code2" == "200" && "$body2" == *'"success":true'* ]] && success_count=$((success_count + 1))
+    [[ "$code1" == "409" || "$code1" == "403" ]] && conflict_or_forbidden=$((conflict_or_forbidden + 1))
+    [[ "$code2" == "409" || "$code2" == "403" ]] && conflict_or_forbidden=$((conflict_or_forbidden + 1))
+
+    if [[ "$success_count" -eq 1 && "$conflict_or_forbidden" -eq 1 ]]; then
+        # Winner must be the only valid Basic Auth identity.
+        local winner=""
+        if [[ "$code1" == "200" ]]; then winner="owner:ownerpass123"; else winner="attacker:attackerpass123"; fi
+        local loser=""
+        if [[ "$code1" == "200" ]]; then loser="attacker:attackerpass123"; else loser="owner:ownerpass123"; fi
+        local win_code lose_code
+        win_code=$(curl -s -o /dev/null -w "%{http_code}" -u "$winner" "$BASE_URL/admin-api/guest-types")
+        lose_code=$(curl -s -o /dev/null -w "%{http_code}" -u "$loser" "$BASE_URL/admin-api/guest-types")
+        if [[ "$win_code" == "200" && "$lose_code" == "401" ]]; then
+            pass "Admin setup race: only one creator wins; loser cannot authenticate"
+            # Export winner for subsequent admin tests in this process when ADMIN_PASS unset.
+            if [[ -z "$ADMIN_PASS" ]]; then
+                ADMIN_USER="${winner%%:*}"
+                ADMIN_PASS="${winner#*:}"
+            fi
+        else
+            fail "Admin setup race auth check" "winner 200 / loser 401" "winner $win_code / loser $lose_code"
+        fi
+    else
+        fail "Admin setup race" "one 200 success and one 409/403" "codes=${code1},${code2} bodies=${body1} | ${body2}"
+    fi
+}
+
 test_admin_login_invalid() {
     require_admin_creds "Admin page rejects invalid Basic Auth" || return
     local http_code=$(curl -s -o /dev/null -w "%{http_code}" \
@@ -2100,6 +2163,7 @@ test_list_sessions
 test_revoke_session
 
 test_admin_setup_required
+test_admin_setup_race
 test_admin_login_invalid
 test_deployment_status
 test_portal_url_setting

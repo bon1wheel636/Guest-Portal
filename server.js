@@ -1680,15 +1680,21 @@ app.get('/health', (req, res) => {
   res.json({ status: 'ok' });
 });
 
+function isAdminConfigured() {
+  return Boolean(config.adminHash && config.adminHash !== '<bcrypt_hash_placeholder>');
+}
+
 // Check if admin setup is needed (no password configured)
 app.get('/admin-api/setup-required', (req, res) => {
-  const needsSetup = !config.adminHash || config.adminHash === '<bcrypt_hash_placeholder>';
-  res.json({ setupRequired: needsSetup });
+  res.json({ setupRequired: !isAdminConfigured() });
 });
+
+// Reject concurrent first-run setup while bcrypt.hash is in flight (TOCTOU).
+let adminSetupInProgress = false;
 
 // First-run admin setup (only works if no password is set)
 app.post('/admin-api/setup', async (req, res) => {
-  if (config.adminHash && config.adminHash !== '<bcrypt_hash_placeholder>') {
+  if (isAdminConfigured()) {
     return res.status(403).send('Admin already configured. Use setup-local.sh to reset.');
   }
 
@@ -1705,14 +1711,26 @@ app.post('/admin-api/setup', async (req, res) => {
     return res.status(400).send('Username can only contain letters, numbers, underscores, and hyphens');
   }
 
+  // Single-threaded: set before any await so a second request cannot enter hashing.
+  if (adminSetupInProgress) {
+    return res.status(409).send('Admin setup already in progress');
+  }
+  adminSetupInProgress = true;
+
   try {
     const hash = await bcrypt.hash(password, 10);
+    // Recheck after await in case config was replaced out-of-band.
+    if (isAdminConfigured()) {
+      return res.status(403).send('Admin already configured. Use setup-local.sh to reset.');
+    }
     config.adminUser = username;
     config.adminHash = hash;
-    saveConfig();
+    await saveConfig();
     res.json({ success: true, username, message: 'Admin account created successfully' });
   } catch (err) {
     res.status(500).send('Failed to create admin account');
+  } finally {
+    adminSetupInProgress = false;
   }
 });
 
