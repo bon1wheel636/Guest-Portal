@@ -1312,6 +1312,21 @@ test_admin_event_reserved_general_slug() {
         fail "Admin event rename rejects reserved General slug" "400 + General upload folder message" \
             "code=$rename_code body=$rename_body"
     fi
+
+    rename_code=$(curl -s -o /tmp/reserved-slug-rename-case.body -w "%{http_code}" \
+        -u "$ADMIN_USER:$ADMIN_PASS" \
+        -X PATCH "$BASE_URL/admin-api/events/$rename_id" \
+        -H "Content-Type: application/json" \
+        -d '{"name":"general"}')
+    rename_body=$(cat /tmp/reserved-slug-rename-case.body 2>/dev/null || true)
+    rm -f /tmp/reserved-slug-rename-case.body
+    if [[ "$rename_code" == "400" && "$rename_body" == *"General upload folder"* ]]; then
+        pass "Admin event rename rejects lowercase general reserved slug"
+    else
+        fail "Admin event rename rejects lowercase general reserved slug" \
+            "400 + General upload folder message" \
+            "code=$rename_code body=$rename_body"
+    fi
     admin_curl -X DELETE "$BASE_URL/admin-api/events/$rename_id" > /dev/null || true
 
     # Seed a legacy General-slug event in storage (create API now blocks these),
