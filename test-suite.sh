@@ -1220,6 +1220,24 @@ test_admin_event_slug_collision_rejected() {
             "code=$create_conflict_code body=$create_conflict_body"
     fi
 
+    # Case-folded slug collision (SMB/NAS mounts treat Foo and foo as one directory).
+    # Names differ so findEventByName does not catch this — only case-insensitive slug match.
+    local create_case_conflict_code create_case_conflict_body
+    create_case_conflict_code=$(curl -s -o /tmp/slug-collision-case.body -w "%{http_code}" \
+        -u "$ADMIN_USER:$ADMIN_PASS" \
+        -X POST "$BASE_URL/admin-api/events" \
+        -H "Content-Type: application/json" \
+        -d '{"name":"slug-collision-party!!!"}')
+    create_case_conflict_body=$(cat /tmp/slug-collision-case.body 2>/dev/null || true)
+    rm -f /tmp/slug-collision-case.body
+    if [[ "$create_case_conflict_code" == "400" ]] && [[ "$create_case_conflict_body" == *"conflicts with existing event"* ]]; then
+        pass "Admin event create rejects case-insensitive folder-slug collision"
+    else
+        fail "Admin event create rejects case-insensitive folder-slug collision" \
+            "400 + conflicts message" \
+            "code=$create_case_conflict_code body=$create_case_conflict_body"
+    fi
+
     local create_other=$(admin_curl -X POST "$BASE_URL/admin-api/events" \
         -H "Content-Type: application/json" \
         -d '{"name":"Slug Collision Other"}')
@@ -1254,7 +1272,9 @@ test_admin_event_reserved_general_slug() {
     require_admin_creds "Admin event reserved General slug" || return
 
     local create_code create_body
-    for name in '***' '...' 'General!!!' 'General'; do
+    # Include case variants: on SMB/NAS mounts, general/ aliases General/ and
+    # merge/rename would otherwise move every guest's untagged photos.
+    for name in '***' '...' 'General!!!' 'General' 'general' 'GENERAL' 'general!!!'; do
         create_code=$(curl -s -o /tmp/reserved-slug-create.body -w "%{http_code}" \
             -u "$ADMIN_USER:$ADMIN_PASS" \
             -X POST "$BASE_URL/admin-api/events" \
@@ -1338,7 +1358,10 @@ else:
 events = [e for e in data.get('events', []) if e.get('id') != '$legacy_id']
 events.append({
     'id': '$legacy_id',
-    'name': 'Legacy General Slug!!!',
+    # Lowercase "general" must be treated as the reserved shared folder (not a
+    # distinct event). A prior seed name that did not sanitize to General made
+    # this assertion a false positive on case-sensitive filesystems.
+    'name': 'general',
     'createdAt': '2026-01-01T00:00:00.000Z',
     'createdBy': 'test'
 })

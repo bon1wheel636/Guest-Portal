@@ -562,14 +562,20 @@ function formatGuestResponse(guest) {
 
 function sanitizeEventSlug(name) {
   const slug = sanitizeName(name || 'General');
-  return slug || 'General';
+  const normalized = slug || 'General';
+  // Fold case so general / GENERAL / general!!! all resolve to the shared
+  // untagged folder — required on case-insensitive NAS (SMB) mounts.
+  if (normalized.toLowerCase() === 'general') {
+    return 'General';
+  }
+  return normalized;
 }
 
 // "General" is the shared untagged upload folder, not a real event-owned
-// directory. Names that sanitize to it (*** / ... / General!!!) must never
-// create/merge/rename as if they owned that folder.
+// directory. Names that sanitize to it (*** / ... / General!!! / general)
+// must never create/merge/rename as if they owned that folder.
 function isReservedEventSlug(slug) {
-  return !slug || slug === 'General';
+  return !slug || String(slug).toLowerCase() === 'general';
 }
 
 function resolveEventNameFromSlug(eventSlug) {
@@ -596,11 +602,13 @@ function findEventBySlug(slug, excludeId = null) {
   if (isReservedEventSlug(normalized)) {
     return null;
   }
+  const normalizedKey = normalized.toLowerCase();
   return (guestData.events || []).find(event => {
     if (excludeId && event.id === excludeId) {
       return false;
     }
-    return sanitizeEventSlug(event.name) === normalized;
+    // Case-insensitive: Foo and foo share one directory on SMB/NAS mounts.
+    return sanitizeEventSlug(event.name).toLowerCase() === normalizedKey;
   }) || null;
 }
 
