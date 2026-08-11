@@ -475,9 +475,10 @@ function getGuestPermissions(guest) {
     return { ...type.permissions };
   }
 
-  if (guest.permissionsSnapshot) {
-    return { ...guest.permissionsSnapshot };
-  }
+  // Type missing or disabled: always restricted. Do not re-apply
+  // permissionsSnapshot — that freezes registration-time grants and would
+  // restore upload/Smart Home after an admin lockdown or type disable.
+  // Snapshot is still written on registration/type change for audit/future use.
   return { ...RESTRICTED_FALLBACK_PERMISSIONS };
 }
 

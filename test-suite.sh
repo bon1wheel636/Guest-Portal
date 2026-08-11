@@ -810,6 +810,111 @@ test_change_guest_type_permissions() {
     admin_curl -X DELETE "$BASE_URL/admin-api/guest-sessions/$guest_id" > /dev/null
 }
 
+test_disabled_guest_type_uses_restricted_fallback() {
+    # permissionsSnapshot freezes registration-time grants. Using it when the
+    # type is later disabled would restore upload/Smart Home after an admin
+    # lockdown. Disabled/missing types must use restricted fallback instead.
+    require_admin_creds "Disabled guest type uses restricted fallback" || return
+    admin_curl -X POST "$BASE_URL/admin-api/rooms" \
+        -H "Content-Type: application/json" \
+        -d '{"name":"Snapshot Lock Room","dashboardUrl":"http://example.com/snapshot-lock"}' > /dev/null
+
+    local types=$(admin_curl "$BASE_URL/admin-api/guest-types")
+    local overnight_body=$(echo "$types" | python3 -c "
+import json, sys
+types = json.load(sys.stdin)
+t = next(x for x in types if x['id'] == 'type_overnight')
+print(json.dumps({
+    'name': t['name'],
+    'description': t.get('description', ''),
+    'visitMode': t['visitMode'],
+    'defaultStayDays': t.get('defaultStayDays', 7),
+    'requiresRoom': t.get('requiresRoom', True),
+    'enabled': True,
+    'permissions': t['permissions']
+}))
+")
+    local tightened_body=$(echo "$types" | python3 -c "
+import json, sys
+types = json.load(sys.stdin)
+t = next(x for x in types if x['id'] == 'type_overnight')
+perms = dict(t['permissions'])
+perms['uploadPhotos'] = False
+perms['smartHomeControls'] = False
+perms['deleteOwnPhotos'] = False
+print(json.dumps({
+    'name': t['name'],
+    'description': t.get('description', ''),
+    'visitMode': t['visitMode'],
+    'defaultStayDays': t.get('defaultStayDays', 7),
+    'requiresRoom': t.get('requiresRoom', True),
+    'enabled': True,
+    'permissions': perms
+}))
+")
+
+    # Ensure overnight starts enabled with its stored permissions.
+    admin_curl -X PATCH "$BASE_URL/admin-api/guest-types/type_overnight" \
+        -H "Content-Type: application/json" \
+        -d "$overnight_body" > /dev/null
+
+    local response=$(curl -s -X POST "$BASE_URL/register" \
+        -H "Content-Type: application/json" \
+        -d '{"name":"Snapshot Lock Guest","room":"Snapshot Lock Room","stayDays":2,"guestTypeId":"type_overnight"}')
+    local token=$(echo "$response" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
+    if [[ -z "$token" ]]; then
+        fail "Disabled guest type restricted fallback" "registration token" "$response"
+        admin_curl -X PATCH "$BASE_URL/admin-api/guest-types/type_overnight" \
+            -H "Content-Type: application/json" \
+            -d "$overnight_body" > /dev/null
+        return
+    fi
+
+    admin_curl -X PATCH "$BASE_URL/admin-api/guest-types/type_overnight" \
+        -H "Content-Type: application/json" \
+        -d "$tightened_body" > /dev/null
+
+    local tightened=$(curl -s -X POST "$BASE_URL/guest/validate" \
+        -H "Content-Type: application/json" \
+        -d "{\"token\":\"$token\"}")
+    if [[ "$tightened" != *'"uploadPhotos":false'* ]] || [[ "$tightened" != *'"smartHomeControls":false'* ]]; then
+        fail "Disabled guest type restricted fallback" "live tighten applied" "$tightened"
+        admin_curl -X PATCH "$BASE_URL/admin-api/guest-types/type_overnight" \
+            -H "Content-Type: application/json" \
+            -d "$overnight_body" > /dev/null
+        return
+    fi
+
+    admin_curl -X DELETE "$BASE_URL/admin-api/guest-types/type_overnight" > /dev/null
+
+    local disabled=$(curl -s -X POST "$BASE_URL/guest/validate" \
+        -H "Content-Type: application/json" \
+        -d "{\"token\":\"$token\"}")
+    printf '%s\n' '%PDF-1.4' 'snapshot-lock' '%%EOF' > /tmp/snapshot-lock.pdf
+    local upload_code=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$BASE_URL/upload" \
+        -H "X-Guest-Token: $token" \
+        -F "photos=@/tmp/snapshot-lock.pdf;type=application/pdf")
+    rm -f /tmp/snapshot-lock.pdf
+
+    # Restore overnight for later tests.
+    admin_curl -X PATCH "$BASE_URL/admin-api/guest-types/type_overnight" \
+        -H "Content-Type: application/json" \
+        -d "$overnight_body" > /dev/null
+
+    if [[ "$disabled" == *'"uploadPhotos":false'* ]] \
+        && [[ "$disabled" == *'"smartHomeControls":false'* ]] \
+        && [[ "$disabled" == *'"viewPhotoGallery":false'* ]] \
+        && [[ "$disabled" == *'"viewWelcomeHub":true'* ]] \
+        && [[ "$disabled" == *'Unknown (restricted)'* ]] \
+        && [[ "$upload_code" == "403" ]]; then
+        pass "Disabled guest type uses restricted fallback (no snapshot re-grant)"
+    else
+        fail "Disabled guest type uses restricted fallback" \
+            "restricted perms + 403 upload" \
+            "validate=$disabled upload=$upload_code"
+    fi
+}
+
 test_event_subfolder_upload() {
     require_admin_creds "Event subfolder upload" || return
     local response=$(curl -s -X POST "$BASE_URL/register" \
@@ -2133,6 +2238,7 @@ test_validate_permissions
 test_business_day_upload_forbidden
 test_business_day_link_forbidden
 test_change_guest_type_permissions
+test_disabled_guest_type_uses_restricted_fallback
 test_event_subfolder_upload
 test_event_upload_photos_before_event_field
 test_legacy_session
