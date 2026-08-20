@@ -243,23 +243,7 @@ function getLinkCodeExpirationMs() {
 }
 
 // L5: Async file writes to avoid blocking the event loop.
-// Serialize per-file writes so overlapping save* calls cannot interleave
-// writeFile truncates (corrupt JSON) or finish out of order (lost notes/events).
-function createSerializedJsonSaver(filePath, label, getValue) {
-  let chain = Promise.resolve();
-  function saveSerialized() {
-    const payload = JSON.stringify(getValue(), null, 2);
-    chain = chain
-      .catch(() => {})
-      .then(() => fs.promises.writeFile(filePath, payload))
-      .catch(err => {
-        console.error(`Failed to save ${label}:`, err);
-      });
-    return chain;
-  }
-  saveSerialized.flush = () => chain.catch(() => {});
-  return saveSerialized;
-}
+const { createSerializedJsonSaver } = require('./serialized-json-saver');
 
 const saveConfig = createSerializedJsonSaver(configPath, 'config', () => config);
 const saveSessions = createSerializedJsonSaver(sessionFile, 'sessions', () => sessionCodes);

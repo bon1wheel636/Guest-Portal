@@ -1934,6 +1934,15 @@ print(json.dumps({
     fi
 }
 
+test_serialized_json_saver_write_time_snapshot() {
+    local output
+    if output=$(node "$(dirname "$0")/scripts/test-serialized-json-saver.js" 2>&1); then
+        pass "Serialized JSON saver stringifies at write time"
+    else
+        fail "Serialized JSON saver write-time snapshot" "PASS from scripts/test-serialized-json-saver.js" "$output"
+    fi
+}
+
 test_admin_guest_notes_list_and_delete() {
     require_admin_creds "Admin guest notes list and delete" || return
     local response=$(curl -s -X POST "$BASE_URL/register" \
@@ -2152,6 +2161,7 @@ test_guest_note_crud
 test_business_day_can_leave_note
 test_guest_note_forbidden_without_permission
 test_admin_guest_notes_list_and_delete
+test_serialized_json_saver_write_time_snapshot
 test_index_hero_markup
 
 test_index_html
