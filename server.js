@@ -1871,7 +1871,13 @@ app.post('/guest/link-device', (req, res) => {
   if (!guest) {
     return res.status(404).send('Guest session not found');
   }
+  if (new Date(guest.checkoutDate) < new Date()) {
+    return res.status(410).send('Guest session expired');
+  }
 
+  if (!Array.isArray(guest.devices)) {
+    guest.devices = [];
+  }
   guest.devices.push({
     addedAt: new Date().toISOString(),
     userAgent: req.get('User-Agent') || 'Unknown'
@@ -2060,14 +2066,16 @@ app.post('/session', (req, res) => {
 app.get('/session/:code', (req, res) => {
   const { code } = req.params;
   const entry = sessionCodes[code];
-  if (entry && entry.expires > Date.now()) {
-    const guest = entry.guest;
-    delete sessionCodes[code];
-    saveSessions();
-    res.json(guest);
-  } else {
-    res.status(404).send('Invalid or expired code');
+  // Device-link codes must only be redeemed via POST /guest/link-device.
+  // Consuming them here burned valid QR/link codes (empty 200) when clients
+  // fell back to this legacy route after link-device rate-limits or errors.
+  if (!entry || entry.expires < Date.now() || entry.type === 'device-link' || !entry.guest) {
+    return res.status(404).send('Invalid or expired code');
   }
+  const guest = entry.guest;
+  delete sessionCodes[code];
+  saveSessions();
+  res.json(guest);
 });
 
 // ─── Admin-Protected Routes ─────────────────────────────────────────────────

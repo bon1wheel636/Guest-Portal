@@ -406,12 +406,26 @@
           window.location.href = 'welcome.html';
           return true;
         }
+
+        // Only fall back to legacy /session/:code on 404. Other failures
+        // (429/500/410) must not hit that route — it used to consume
+        // device-link codes and return an empty 200.
+        if (res.status !== 404) {
+          alert(res.status === 410
+            ? 'This guest session has expired.'
+            : 'Unable to link device. Please try again in a moment.');
+          return false;
+        }
       } catch (e) {}
 
       try {
         const res = await fetch(`/session/${code}`);
         if (res.ok) {
           const guest = await res.json();
+          if (!guest || !guest.name) {
+            alert('Invalid or expired code.');
+            return false;
+          }
           localStorage.setItem('guestData', JSON.stringify(guest));
           window.location.href = 'welcome.html';
           return true;

@@ -595,6 +595,41 @@ test_guest_link_code_qr() {
     fi
 }
 
+test_device_link_code_not_consumed_by_legacy_session_get() {
+    # GET /session/:code used to delete device-link entries and return empty 200.
+    # Registration UI falls back to that route when /guest/link-device fails, which
+    # burned QR codes under rate-limit/error conditions.
+    if [[ -z "$GUEST_TOKEN" ]]; then
+        fail "Device-link code survives legacy session GET" "Needs guest token" "No token available"
+        return
+    fi
+    local link_response=$(curl -s -X POST "$BASE_URL/guest/link-code" \
+        -H "Content-Type: application/json" \
+        -d "{\"token\":\"$GUEST_TOKEN\"}")
+    local code=$(echo "$link_response" | grep -o '"code":"[^"]*"' | head -1 | cut -d'"' -f4)
+    if [[ -z "$code" ]]; then
+        fail "Device-link code survives legacy session GET" "link code in response" "$link_response"
+        return
+    fi
+
+    local legacy_http=$(curl -s -o /tmp/gp-legacy-session-get.txt -w "%{http_code}" "$BASE_URL/session/$code")
+    local legacy_body=$(cat /tmp/gp-legacy-session-get.txt)
+    rm -f /tmp/gp-legacy-session-get.txt
+    if [[ "$legacy_http" != "404" ]]; then
+        fail "Device-link code survives legacy session GET" "404 from GET /session/:code" "http=$legacy_http body=$legacy_body"
+        return
+    fi
+
+    local redeem=$(curl -s -X POST "$BASE_URL/guest/link-device" \
+        -H "Content-Type: application/json" \
+        -d "{\"code\":\"$code\"}")
+    if [[ "$redeem" == *'"token"'* ]] && [[ "$redeem" == *'"guest"'* ]]; then
+        pass "Device-link code survives legacy session GET"
+    else
+        fail "Device-link code survives legacy session GET" "POST /guest/link-device still redeems code" "$redeem"
+    fi
+}
+
 test_admin_uploads_metadata() {
     require_admin_creds "Admin upload preview metadata" || return
     local response=$(admin_curl "$BASE_URL/admin-api/uploads")
@@ -2121,6 +2156,7 @@ test_upload_rejects_code
 test_validate_returning_device
 test_guest_uploads_list
 test_guest_link_code_qr
+test_device_link_code_not_consumed_by_legacy_session_get
 test_admin_uploads_metadata
 test_admin_upload_folder_path_traversal
 test_guest_uploads_requires_token
