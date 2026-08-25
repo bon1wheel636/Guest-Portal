@@ -7,6 +7,7 @@ All notable changes to this project will be documented here.
 ## [Unreleased]
 
 ### Fixed
+- Overnight (and other `tagPhotosToEvent`) registration no longer silently drops an optional `eventName`. The picker already sent the field for photo grouping / welcome prefill; the server now persists it and creates "+ Add new event" names the same way required day-personal registration does.
 - Guest uploads now honor `eventName` even when the file parts precede that field in the multipart body (the welcome hub FormData order). Files are staged under `.incoming` and moved after multer finishes parsing, so event tags no longer silently fall back to General.
 - Event names that sanitize to the reserved `General` upload folder (`***`, `...`, `General!!!`, etc.) can no longer be created or renamed into; merging/renaming legacy General-slug events updates metadata only and no longer moves every guest's untagged photos.
 - Renaming one of two events that already share an upload folder slug is now metadata-only, so the shared photos stay with the sibling instead of being moved away (the recovery path suggested by the merge collision error).

@@ -944,6 +944,53 @@ print(int((checkout - now).total_seconds() / 3600))
     fi
 }
 
+test_overnight_optional_registration_event() {
+    # Overnight has tagPhotosToEvent but not selectEventAtRegistration. The
+    # registration UI still shows an optional event picker and sends eventName;
+    # dropping it lost welcome prefill, session labels, and never created
+    # "+ Add new event" names.
+    require_admin_creds "Overnight optional registration event" || return
+    admin_curl -X POST "$BASE_URL/admin-api/rooms" \
+        -H "Content-Type: application/json" \
+        -d '{"name":"Optional Event Room","dashboardUrl":"http://example.com/optional-event"}' > /dev/null
+
+    local response=$(curl -s -X POST "$BASE_URL/register" \
+        -H "Content-Type: application/json" \
+        -d '{"name":"Optional Event Guest","room":"Optional Event Room","stayDays":3,"guestTypeId":"type_overnight","eventName":"Optional Stay Tag"}')
+    local token=$(echo "$response" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
+    local guest_id=$(echo "$response" | grep -o '"id":"guest_[^"]*"' | head -1 | cut -d'"' -f4)
+    if [[ -z "$token" ]]; then
+        fail "Overnight optional registration event" "registration token" "$response"
+        return
+    fi
+    if [[ "$response" == *'"eventName":"Optional Stay Tag"'* ]]; then
+        pass "Overnight registration persists optional eventName"
+    else
+        fail "Overnight registration persists optional eventName" 'eventName":"Optional Stay Tag"' "$response"
+        return
+    fi
+
+    local events=$(curl -s "$BASE_URL/guest/events")
+    if [[ "$events" == *'"name":"Optional Stay Tag"'* ]]; then
+        pass "Overnight optional eventName creates event record"
+    else
+        fail "Overnight optional eventName creates event record" 'name":"Optional Stay Tag"' "$events"
+    fi
+
+    local validate=$(curl -s -X POST "$BASE_URL/guest/validate" \
+        -H "Content-Type: application/json" \
+        -d "{\"token\":\"$token\"}")
+    if [[ "$validate" == *'"eventName":"Optional Stay Tag"'* ]]; then
+        pass "Overnight session validate returns optional eventName"
+    else
+        fail "Overnight session validate returns optional eventName" 'eventName":"Optional Stay Tag"' "$validate"
+    fi
+
+    if [[ -n "$guest_id" ]]; then
+        admin_curl -X DELETE "$BASE_URL/admin-api/guest-sessions/$guest_id" > /dev/null
+    fi
+}
+
 test_delete_forbidden() {
     require_admin_creds "Delete own photos forbidden" || return
     admin_curl -X POST "$BASE_URL/admin-api/rooms" \
@@ -2137,6 +2184,7 @@ test_event_subfolder_upload
 test_event_upload_photos_before_event_field
 test_legacy_session
 test_day_personal_registration
+test_overnight_optional_registration_event
 test_delete_forbidden
 test_scoped_delete
 test_admin_events_crud

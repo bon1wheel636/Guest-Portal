@@ -1209,12 +1209,19 @@ function createGuestRegistration(name, guestTypeId, options = {}, userAgent) {
     checkoutDate.setDate(checkoutDate.getDate() + days);
   }
 
+  // Overnight guests may optionally tag a stay to an event when
+  // tagPhotosToEvent is set (registration UI sends eventName). Day-personal
+  // requires selectEventAtRegistration. Persist in both cases — previously
+  // optional eventName was dropped, so welcome prefill / history / notes lost
+  // the association and "+ Add new event" names were never created.
   let eventName = null;
-  if (guestType.permissions.selectEventAtRegistration) {
-    const requestedEvent = (options.eventName || '').trim();
-    if (!requestedEvent) {
-      return { error: 'Event name is required for this guest type' };
-    }
+  const requestedEvent = typeof options.eventName === 'string' ? options.eventName.trim() : '';
+  const requireEvent = Boolean(guestType.permissions.selectEventAtRegistration);
+  const allowOptionalEvent = Boolean(guestType.permissions.tagPhotosToEvent);
+  if (requireEvent && !requestedEvent) {
+    return { error: 'Event name is required for this guest type' };
+  }
+  if (requestedEvent && (requireEvent || allowOptionalEvent)) {
     const event = getOrCreateEvent(requestedEvent, 'registration', guestType);
     if (!event) {
       return { error: 'Event not found or creation not permitted' };
