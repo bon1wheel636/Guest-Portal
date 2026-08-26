@@ -2813,12 +2813,19 @@ app.post('/admin-api/guest-types/reorder', authMiddleware, (req, res) => {
   if (!Array.isArray(order)) {
     return res.status(400).send('Order must be an array of guest type IDs');
   }
-  const typeMap = new Map((guestData.guestTypes || []).map(type => [type.id, type]));
-  const reordered = order.map(id => typeMap.get(id)).filter(Boolean);
-  if (reordered.length !== (guestData.guestTypes || []).length) {
+  // Length-only checks accepted duplicates (same id twice) and omitted another
+  // type — reordered.length still matched, and the omitted type was hard-deleted
+  // from storage (worse than DELETE, which only sets enabled=false).
+  const typeIds = (guestData.guestTypes || []).map(type => type.id);
+  if (
+    order.length !== typeIds.length ||
+    new Set(order).size !== order.length ||
+    !order.every(id => typeIds.includes(id))
+  ) {
     return res.status(400).send('Order must include every guest type ID exactly once');
   }
-  guestData.guestTypes = reordered;
+  const typeMap = new Map((guestData.guestTypes || []).map(type => [type.id, type]));
+  guestData.guestTypes = order.map(id => typeMap.get(id));
   saveGuestData();
   res.json({ success: true, guestTypes: guestData.guestTypes });
 });

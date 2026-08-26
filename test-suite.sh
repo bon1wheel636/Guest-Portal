@@ -810,6 +810,72 @@ test_change_guest_type_permissions() {
     admin_curl -X DELETE "$BASE_URL/admin-api/guest-sessions/$guest_id" > /dev/null
 }
 
+test_guest_types_reorder_rejects_duplicates() {
+    require_admin_creds "Guest types reorder rejects duplicates" || return
+    local before=$(admin_curl "$BASE_URL/admin-api/guest-types")
+    local count_before=$(python3 -c "import json,sys; print(len(json.load(sys.stdin)))" <<< "$before")
+    if [[ -z "$count_before" || "$count_before" -lt 2 ]]; then
+        fail "Guest types reorder rejects duplicates" "at least 2 guest types" "$before"
+        return
+    fi
+    local first_id=$(python3 -c "import json,sys; print(json.load(sys.stdin)[0]['id'])" <<< "$before")
+    local second_id=$(python3 -c "import json,sys; print(json.load(sys.stdin)[1]['id'])" <<< "$before")
+    # Same length as type list, but duplicates one id and omits another — previously
+    # passed validation and hard-deleted the omitted type from storage.json.
+    local bad_order
+    bad_order=$(python3 -c "
+import json,sys
+types=json.load(sys.stdin)
+ids=[t['id'] for t in types]
+ids[-1]=ids[0]
+print(json.dumps({'order': ids}))
+" <<< "$before")
+    local http_code=$(admin_curl -o /tmp/guest-type-reorder-dup.txt -w "%{http_code}" -X POST \
+        "$BASE_URL/admin-api/guest-types/reorder" \
+        -H "Content-Type: application/json" \
+        -d "$bad_order")
+    local body=$(cat /tmp/guest-type-reorder-dup.txt)
+    rm -f /tmp/guest-type-reorder-dup.txt
+    local after=$(admin_curl "$BASE_URL/admin-api/guest-types")
+    local count_after=$(python3 -c "import json,sys; print(len(json.load(sys.stdin)))" <<< "$after")
+    local still_has_second=$(python3 -c "
+import json,sys
+ids=[t['id'] for t in json.load(sys.stdin)]
+print('yes' if '$second_id' in ids else 'no')
+" <<< "$after")
+    if [[ "$http_code" == "400" && "$count_after" == "$count_before" && "$still_has_second" == "yes" ]]; then
+        pass "Guest types reorder rejects duplicate IDs without deleting types"
+    else
+        fail "Guest types reorder rejects duplicate IDs without deleting types" \
+            "400 + unchanged type list including $second_id" \
+            "http=$http_code count=$count_after/$count_before has_second=$still_has_second body=$body after=$after"
+    fi
+
+    # Valid permutation (swap first two) still succeeds
+    local good_order
+    good_order=$(python3 -c "
+import json,sys
+types=json.load(sys.stdin)
+ids=[t['id'] for t in types]
+ids[0], ids[1] = ids[1], ids[0]
+print(json.dumps({'order': ids}))
+" <<< "$before")
+    local ok=$(admin_curl -X POST "$BASE_URL/admin-api/guest-types/reorder" \
+        -H "Content-Type: application/json" \
+        -d "$good_order")
+    # Restore original order
+    local restore
+    restore=$(python3 -c "import json,sys; print(json.dumps({'order':[t['id'] for t in json.load(sys.stdin)]}))" <<< "$before")
+    admin_curl -X POST "$BASE_URL/admin-api/guest-types/reorder" \
+        -H "Content-Type: application/json" \
+        -d "$restore" > /dev/null
+    if [[ "$ok" == *'"success":true'* ]]; then
+        pass "Guest types reorder accepts a full unique permutation"
+    else
+        fail "Guest types reorder accepts a full unique permutation" "success true" "$ok"
+    fi
+}
+
 test_event_subfolder_upload() {
     require_admin_creds "Event subfolder upload" || return
     local response=$(curl -s -X POST "$BASE_URL/register" \
@@ -2133,6 +2199,7 @@ test_validate_permissions
 test_business_day_upload_forbidden
 test_business_day_link_forbidden
 test_change_guest_type_permissions
+test_guest_types_reorder_rejects_duplicates
 test_event_subfolder_upload
 test_event_upload_photos_before_event_field
 test_legacy_session
