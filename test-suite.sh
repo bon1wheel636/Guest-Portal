@@ -1014,6 +1014,111 @@ PY
     fi
 }
 
+test_guest_upload_folder_id_isolation() {
+    # getGuestUploadFolders used includes(`-${guestId}-`). A guest name may contain
+    # spaces (allowed) which become hyphens, so embedding another guest's id in the
+    # display name produced a stay folder that substring-matched when the victim
+    # listed uploads — planting the attacker's files into the victim's gallery
+    # (and letting the victim delete/retag the attacker's files).
+    require_admin_creds "Guest upload folder id isolation" || return
+    admin_curl -X POST "$BASE_URL/admin-api/rooms" \
+        -H "Content-Type: application/json" \
+        -d '{"name":"Isolation Room","dashboardUrl":"http://example.com/isolation"}' > /dev/null
+
+    local victim_reg=$(curl -s -X POST "$BASE_URL/register" \
+        -H "Content-Type: application/json" \
+        -d '{"name":"Victim Guest","room":"Isolation Room","stayDays":3,"guestTypeId":"type_overnight"}')
+    local victim_token=$(echo "$victim_reg" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
+    local victim_id=$(echo "$victim_reg" | grep -o '"id":"guest_[^"]*"' | head -1 | cut -d'"' -f4)
+    if [[ -z "$victim_token" || -z "$victim_id" ]]; then
+        fail "Guest upload folder id isolation" "victim registration" "$victim_reg"
+        return
+    fi
+
+    printf '%s\n' '%PDF-1.4' 'victim secret photo' '%%EOF' > /tmp/victim-isolation.pdf
+    local upload_code=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$BASE_URL/upload" \
+        -H "X-Guest-Token: $victim_token" \
+        -F "photos=@/tmp/victim-isolation.pdf;filename=victim-secret.pdf;type=application/pdf")
+    rm -f /tmp/victim-isolation.pdf
+    if [[ "$upload_code" != "200" ]]; then
+        fail "Guest upload folder id isolation" "victim upload 200" "http=$upload_code"
+        admin_curl -X DELETE "$BASE_URL/admin-api/guest-sessions/$victim_id" > /dev/null
+        return
+    fi
+
+    # Space in name is valid; sanitizeName turns it into a hyphen so the stay
+    # folder embeds -${victim_id}- before the attacker's own id segment.
+    local attacker_name="Mallory ${victim_id}"
+    local attacker_payload
+    attacker_payload=$(python3 -c "import json,sys; print(json.dumps({'name':sys.argv[1],'room':'Isolation Room','stayDays':3,'guestTypeId':'type_overnight'}))" "$attacker_name")
+    local attacker_reg=$(curl -s -X POST "$BASE_URL/register" \
+        -H "Content-Type: application/json" \
+        -d "$attacker_payload")
+    local attacker_token=$(echo "$attacker_reg" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
+    local attacker_id=$(echo "$attacker_reg" | grep -o '"id":"guest_[^"]*"' | head -1 | cut -d'"' -f4)
+    if [[ -z "$attacker_token" || -z "$attacker_id" ]]; then
+        fail "Guest upload folder id isolation" "attacker registration" "$attacker_reg"
+        admin_curl -X DELETE "$BASE_URL/admin-api/guest-sessions/$victim_id" > /dev/null
+        return
+    fi
+
+    printf '%s\n' '%PDF-1.4' 'planted into victim gallery' '%%EOF' > /tmp/planted-isolation.pdf
+    local plant_code=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$BASE_URL/upload" \
+        -H "X-Guest-Token: $attacker_token" \
+        -F "photos=@/tmp/planted-isolation.pdf;filename=planted-by-attacker.pdf;type=application/pdf")
+    rm -f /tmp/planted-isolation.pdf
+    if [[ "$plant_code" != "200" ]]; then
+        fail "Guest upload folder id isolation" "attacker upload 200" "http=$plant_code"
+        admin_curl -X DELETE "$BASE_URL/admin-api/guest-sessions/$victim_id" > /dev/null
+        admin_curl -X DELETE "$BASE_URL/admin-api/guest-sessions/$attacker_id" > /dev/null
+        return
+    fi
+
+    local victim_list=$(curl -s "$BASE_URL/guest/uploads" -H "X-Guest-Token: $victim_token")
+    if [[ "$victim_list" == *"planted-by-attacker.pdf"* ]]; then
+        fail "Guest upload folder id isolation" "victim gallery must not include planted file" "$victim_list"
+    elif [[ "$victim_list" != *"victim-secret.pdf"* ]]; then
+        fail "Guest upload folder id isolation" "victim still sees own upload" "$victim_list"
+    else
+        pass "Guest upload folder id isolation blocks gallery planting via embedded id"
+    fi
+
+    local attacker_list=$(curl -s "$BASE_URL/guest/uploads" -H "X-Guest-Token: $attacker_token")
+    if [[ "$attacker_list" == *"planted-by-attacker.pdf"* ]] && [[ "$attacker_list" != *"victim-secret.pdf"* ]]; then
+        pass "Attacker still sees only own uploads"
+    else
+        fail "Attacker still sees only own uploads" "planted only" "$attacker_list"
+    fi
+
+    # Victim must not be able to delete the attacker's file through the gallery either.
+    local planted_name
+    planted_name=$(python3 -c "import json,sys; files=json.load(sys.stdin).get('files',[]); print(next((f['name'] for f in files if 'planted-by-attacker' in f['name']),''))" <<<"$attacker_list")
+    if [[ -n "$planted_name" ]]; then
+        local encoded_name=$(python3 -c "import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1]))" "$planted_name")
+        local delete_code=$(curl -s -o /dev/null -w "%{http_code}" -X DELETE \
+            "$BASE_URL/guest/uploads/General/$encoded_name" \
+            -H "X-Guest-Token: $victim_token")
+        if [[ "$delete_code" == "404" ]]; then
+            pass "Victim cannot delete attacker file via embedded-id match"
+        else
+            fail "Victim cannot delete attacker file via embedded-id match" "404" "http=$delete_code"
+        fi
+        local attacker_list_after=$(curl -s "$BASE_URL/guest/uploads" -H "X-Guest-Token: $attacker_token")
+        if [[ "$attacker_list_after" == *"planted-by-attacker"* ]]; then
+            pass "Attacker file remains after victim delete attempt"
+        else
+            fail "Attacker file remains after victim delete attempt" "planted file present" "$attacker_list_after"
+        fi
+    else
+        fail "Victim cannot delete attacker file via embedded-id match" "attacker planted filename" "$attacker_list"
+    fi
+
+    admin_curl -X DELETE "$BASE_URL/admin-api/guest-sessions/$victim_id" > /dev/null
+    if [[ -n "$attacker_id" ]]; then
+        admin_curl -X DELETE "$BASE_URL/admin-api/guest-sessions/$attacker_id" > /dev/null
+    fi
+}
+
 test_admin_events_crud() {
     require_admin_creds "Admin events CRUD" || return
     local create=$(admin_curl -X POST "$BASE_URL/admin-api/events" \
@@ -2139,6 +2244,7 @@ test_legacy_session
 test_day_personal_registration
 test_delete_forbidden
 test_scoped_delete
+test_guest_upload_folder_id_isolation
 test_admin_events_crud
 test_admin_event_merge
 test_admin_event_merge_preserves_filename_conflicts

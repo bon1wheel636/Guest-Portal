@@ -811,15 +811,24 @@ function isReturningDevice(guest, userAgent) {
   return (guest.devices || []).some(device => device.userAgent === ua);
 }
 
+function escapeRegExp(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 function getGuestUploadFolders(guestId) {
   const uploadsDir = getUploadsDir();
-  if (!fs.existsSync(uploadsDir)) {
+  if (!fs.existsSync(uploadsDir) || !guestId || typeof guestId !== 'string') {
     return [];
   }
 
-  const guestMarker = `-${guestId}-`;
+  // Stay folders are `${sanitizeName(name)}-${guestId}-${YYYY-MM-DD}`.
+  // Match that trailing `-guestId-date` segment only — a plain includes()
+  // check let guests embed another guest's id in their display name, upload
+  // files, and have those files appear in the victim's gallery (victim folder
+  // scan matched the attacker's stay folder).
+  const stayFolderPattern = new RegExp(`-${escapeRegExp(guestId)}-\\d{4}-\\d{2}-\\d{2}$`);
   return fs.readdirSync(uploadsDir, { withFileTypes: true })
-    .filter(entry => entry.isDirectory() && entry.name !== 'backgrounds' && entry.name.includes(guestMarker))
+    .filter(entry => entry.isDirectory() && entry.name !== 'backgrounds' && stayFolderPattern.test(entry.name))
     .map(entry => path.join(uploadsDir, entry.name));
 }
 
