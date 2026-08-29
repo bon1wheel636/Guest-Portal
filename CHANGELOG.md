@@ -7,6 +7,7 @@ All notable changes to this project will be documented here.
 ## [Unreleased]
 
 ### Fixed
+- Case-only event renames (e.g. `Birthday Party` → `birthday party`) no longer mass-rename guest photos to `*-merged-*` on case-insensitive NAS/SMB volumes. The rename path treated the same directory as a merge target, so every file looked like a basename conflict. Disk rename now also runs before metadata is updated so a failed folder move cannot orphan photos under the old slug.
 - Guest uploads now honor `eventName` even when the file parts precede that field in the multipart body (the welcome hub FormData order). Files are staged under `.incoming` and moved after multer finishes parsing, so event tags no longer silently fall back to General.
 - Event names that sanitize to the reserved `General` upload folder (`***`, `...`, `General!!!`, etc.) can no longer be created or renamed into; merging/renaming legacy General-slug events updates metadata only and no longer moves every guest's untagged photos.
 - Renaming one of two events that already share an upload folder slug is now metadata-only, so the shared photos stay with the sibling instead of being moved away (the recovery path suggested by the merge collision error).

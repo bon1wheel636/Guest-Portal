@@ -670,10 +670,29 @@ function uniqueMergedFilename(targetDir, filename) {
   return candidate;
 }
 
+function sameDirectoryOnDisk(pathA, pathB) {
+  try {
+    if (!fs.existsSync(pathA) || !fs.existsSync(pathB)) {
+      return false;
+    }
+    const statA = fs.statSync(pathA);
+    const statB = fs.statSync(pathB);
+    return statA.isDirectory() && statB.isDirectory() && statA.dev === statB.dev && statA.ino === statB.ino;
+  } catch {
+    return false;
+  }
+}
+
 function renameEventFoldersOnDisk(oldSlug, newSlug) {
   if (!oldSlug || !newSlug || oldSlug === newSlug) {
     return;
   }
+
+  // Case-only slug changes ("Birthday-Party" → "birthday-party"): on
+  // case-insensitive NAS/SMB volumes these paths are the same directory.
+  // Falling through to the merge branch makes uniqueMergedFilename treat every
+  // file as a conflict with itself and rename all photos to *-merged-*.
+  const caseOnlySlugChange = oldSlug.toLowerCase() === newSlug.toLowerCase();
 
   forEachStayUploadFolder(stayPath => {
     const resolvedStay = path.resolve(stayPath);
@@ -688,6 +707,19 @@ function renameEventFoldersOnDisk(oldSlug, newSlug) {
     if (!fs.existsSync(oldPath) || !fs.statSync(oldPath).isDirectory()) {
       return;
     }
+
+    if (caseOnlySlugChange || sameDirectoryOnDisk(oldPath, newPath)) {
+      // Update dentry casing when the FS supports it; never merge-into-self.
+      if (oldPath !== newPath) {
+        try {
+          fs.renameSync(oldPath, newPath);
+        } catch (err) {
+          console.error('Failed case-only event folder rename (metadata still updated):', err);
+        }
+      }
+      return;
+    }
+
     if (fs.existsSync(newPath)) {
       fs.readdirSync(oldPath, { withFileTypes: true }).forEach(entry => {
         if (!entry.isFile()) {
@@ -2742,10 +2774,17 @@ app.patch('/admin-api/events/:id', authMiddleware, (req, res) => {
   // so the remaining slug owner keeps the folder.
   // Legacy General-slug events never owned General/; rename metadata only.
   const slugSibling = findEventBySlug(oldSlug, event.id);
-  event.name = trimmedName;
+  // Rename on disk before mutating metadata. If disk rename throws, keep the
+  // old name so countEventFilesOnDisk still finds photos (and DELETE stays blocked).
   if (!isReservedEventSlug(oldSlug) && !slugSibling) {
-    renameEventFoldersOnDisk(oldSlug, newSlug);
+    try {
+      renameEventFoldersOnDisk(oldSlug, newSlug);
+    } catch (err) {
+      console.error('Failed to rename event folders on disk:', err);
+      return res.status(500).send('Failed to rename event folders on disk');
+    }
   }
+  event.name = trimmedName;
   saveGuestData();
   res.json({
     success: true,

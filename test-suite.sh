@@ -1588,6 +1588,112 @@ print(upload)
     admin_curl -X DELETE "$BASE_URL/admin-api/events/$sibling_id" > /dev/null || true
 }
 
+test_admin_event_case_only_rename_preserves_filenames() {
+    # On case-insensitive NAS/SMB mounts, renaming Birthday Party → birthday party
+    # makes oldPath and newPath the same directory. The prior merge branch then
+    # treated every file as a basename conflict and renamed all photos to
+    # *-merged-*. Simulate that with a case-variant symlink on Linux.
+    require_admin_creds "Admin event case-only rename preserves filenames" || return
+
+    local create_event
+    create_event=$(admin_curl -X POST "$BASE_URL/admin-api/events" \
+        -H "Content-Type: application/json" \
+        -d '{"name":"Case Rename Party"}')
+    local event_id
+    event_id=$(echo "$create_event" | grep -o '"id":"event_[^"]*"' | head -1 | cut -d'"' -f4)
+    if [[ -z "$event_id" ]]; then
+        fail "Admin event case-only rename preserves filenames" "event id" "$create_event"
+        return
+    fi
+
+    admin_curl -X POST "$BASE_URL/admin-api/rooms" \
+        -H "Content-Type: application/json" \
+        -d '{"name":"Case Rename Room","dashboardUrl":"http://example.com/case-rename"}' > /dev/null
+
+    local response
+    response=$(curl -s -X POST "$BASE_URL/register" \
+        -H "Content-Type: application/json" \
+        -d '{"name":"Case Rename Guest","room":"Case Rename Room","stayDays":2,"guestTypeId":"type_overnight"}')
+    local token
+    token=$(echo "$response" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
+    local guest_id
+    guest_id=$(echo "$response" | grep -o '"id":"guest_[^"]*"' | head -1 | cut -d'"' -f4)
+    if [[ -z "$token" ]]; then
+        fail "Admin event case-only rename preserves filenames" "registration token" "$response"
+        admin_curl -X DELETE "$BASE_URL/admin-api/events/$event_id" > /dev/null || true
+        return
+    fi
+
+    printf '%s\n' '%PDF-1.4' '1 0 obj << /caseRename true >> endobj' '%%EOF' > /tmp/test-case-rename.pdf
+    local upload_code
+    upload_code=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$BASE_URL/upload" \
+        -H "X-Guest-Token: $token" \
+        -F "eventName=Case Rename Party" \
+        -F "photos=@/tmp/test-case-rename.pdf;filename=case-rename-photo.pdf;type=application/pdf")
+    rm -f /tmp/test-case-rename.pdf
+    if [[ "$upload_code" != "200" ]]; then
+        fail "Admin event case-only rename preserves filenames" "upload 200" "http=$upload_code"
+        admin_curl -X DELETE "$BASE_URL/admin-api/guest-sessions/$guest_id" > /dev/null || true
+        admin_curl -X DELETE "$BASE_URL/admin-api/events/$event_id" > /dev/null || true
+        return
+    fi
+
+    local uploads_root
+    uploads_root=$(admin_curl "$BASE_URL/admin-api/upload-path" | python3 -c "import json,sys; print(json.load(sys.stdin).get('path',''))" 2>/dev/null || true)
+    if [[ -z "$uploads_root" || ! -d "$uploads_root" ]]; then
+        fail "Admin event case-only rename preserves filenames" "uploads path" "$uploads_root"
+        admin_curl -X DELETE "$BASE_URL/admin-api/guest-sessions/$guest_id" > /dev/null || true
+        admin_curl -X DELETE "$BASE_URL/admin-api/events/$event_id" > /dev/null || true
+        return
+    fi
+
+    local event_dir
+    event_dir=$(find "$uploads_root" -type d -name 'Case-Rename-Party' 2>/dev/null | head -1)
+    if [[ -z "$event_dir" ]]; then
+        fail "Admin event case-only rename preserves filenames" "Case-Rename-Party folder" "not found under $uploads_root"
+        admin_curl -X DELETE "$BASE_URL/admin-api/guest-sessions/$guest_id" > /dev/null || true
+        admin_curl -X DELETE "$BASE_URL/admin-api/events/$event_id" > /dev/null || true
+        return
+    fi
+
+    local stay_dir
+    stay_dir=$(dirname "$event_dir")
+    # Symlink simulates case-insensitive FS: new slug path exists and resolves
+    # to the same directory inode as the old slug.
+    ln -sfn 'Case-Rename-Party' "$stay_dir/case-rename-party"
+
+    local before_names
+    before_names=$(find "$event_dir" -maxdepth 1 -type f -printf '%f\n' 2>/dev/null | sort)
+
+    local rename_code rename_body
+    rename_code=$(curl -s -o /tmp/case-only-rename.body -w "%{http_code}" \
+        -u "$ADMIN_USER:$ADMIN_PASS" \
+        -X PATCH "$BASE_URL/admin-api/events/$event_id" \
+        -H "Content-Type: application/json" \
+        -d '{"name":"case rename party"}')
+    rename_body=$(cat /tmp/case-only-rename.body 2>/dev/null || true)
+    rm -f /tmp/case-only-rename.body
+
+    local after_merged
+    after_merged=$(find "$stay_dir" -type f -name '*-merged-*' 2>/dev/null | wc -l | tr -d ' ')
+    local after_original
+    after_original=$(find "$stay_dir" -type f -name '*case-rename-photo.pdf' ! -name '*-merged-*' 2>/dev/null | wc -l | tr -d ' ')
+
+    rm -f "$stay_dir/case-rename-party"
+
+    if [[ "$rename_code" == "200" && "$rename_body" == *'"success":true'* && \
+          "$after_merged" == "0" && "$after_original" -ge 1 ]]; then
+        pass "Admin event case-only rename preserves filenames"
+    else
+        fail "Admin event case-only rename preserves filenames" \
+            "200 success, no *-merged-* files, original basename kept" \
+            "code=$rename_code body=$rename_body merged=$after_merged original=$after_original before=$before_names"
+    fi
+
+    admin_curl -X DELETE "$BASE_URL/admin-api/guest-sessions/$guest_id" > /dev/null || true
+    admin_curl -X DELETE "$BASE_URL/admin-api/events/$event_id" > /dev/null || true
+}
+
 test_guest_upload_retag() {
     require_admin_creds "Guest upload re-tag" || return
     admin_curl -X POST "$BASE_URL/admin-api/events" \
@@ -2145,6 +2251,7 @@ test_admin_event_merge_preserves_filename_conflicts
 test_admin_event_slug_collision_rejected
 test_admin_event_reserved_general_slug
 test_admin_event_rename_away_from_slug_collision
+test_admin_event_case_only_rename_preserves_filenames
 test_guest_upload_retag
 test_guest_upload_retag_forbidden
 test_guest_upload_clear_event_tag
