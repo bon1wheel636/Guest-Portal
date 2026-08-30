@@ -243,23 +243,7 @@ function getLinkCodeExpirationMs() {
 }
 
 // L5: Async file writes to avoid blocking the event loop.
-// Serialize per-file writes so overlapping save* calls cannot interleave
-// writeFile truncates (corrupt JSON) or finish out of order (lost notes/events).
-function createSerializedJsonSaver(filePath, label, getValue) {
-  let chain = Promise.resolve();
-  function saveSerialized() {
-    const payload = JSON.stringify(getValue(), null, 2);
-    chain = chain
-      .catch(() => {})
-      .then(() => fs.promises.writeFile(filePath, payload))
-      .catch(err => {
-        console.error(`Failed to save ${label}:`, err);
-      });
-    return chain;
-  }
-  saveSerialized.flush = () => chain.catch(() => {});
-  return saveSerialized;
-}
+const { createSerializedJsonSaver } = require('./serialized-json-saver');
 
 const saveConfig = createSerializedJsonSaver(configPath, 'config', () => config);
 const saveSessions = createSerializedJsonSaver(sessionFile, 'sessions', () => sessionCodes);
@@ -475,9 +459,10 @@ function getGuestPermissions(guest) {
     return { ...type.permissions };
   }
 
-  if (guest.permissionsSnapshot) {
-    return { ...guest.permissionsSnapshot };
-  }
+  // Type missing or disabled: always restricted. Do not re-apply
+  // permissionsSnapshot — that freezes registration-time grants and would
+  // restore upload/Smart Home after an admin lockdown or type disable.
+  // Snapshot is still written on registration/type change for audit/future use.
   return { ...RESTRICTED_FALLBACK_PERMISSIONS };
 }
 
@@ -562,14 +547,20 @@ function formatGuestResponse(guest) {
 
 function sanitizeEventSlug(name) {
   const slug = sanitizeName(name || 'General');
-  return slug || 'General';
+  const normalized = slug || 'General';
+  // Fold case so general / GENERAL / general!!! all resolve to the shared
+  // untagged folder — required on case-insensitive NAS (SMB) mounts.
+  if (normalized.toLowerCase() === 'general') {
+    return 'General';
+  }
+  return normalized;
 }
 
 // "General" is the shared untagged upload folder, not a real event-owned
-// directory. Names that sanitize to it (*** / ... / General!!!) must never
-// create/merge/rename as if they owned that folder.
+// directory. Names that sanitize to it (*** / ... / General!!! / general)
+// must never create/merge/rename as if they owned that folder.
 function isReservedEventSlug(slug) {
-  return !slug || slug === 'General';
+  return !slug || String(slug).toLowerCase() === 'general';
 }
 
 function resolveEventNameFromSlug(eventSlug) {
@@ -596,11 +587,13 @@ function findEventBySlug(slug, excludeId = null) {
   if (isReservedEventSlug(normalized)) {
     return null;
   }
+  const normalizedKey = normalized.toLowerCase();
   return (guestData.events || []).find(event => {
     if (excludeId && event.id === excludeId) {
       return false;
     }
-    return sanitizeEventSlug(event.name) === normalized;
+    // Case-insensitive: Foo and foo share one directory on SMB/NAS mounts.
+    return sanitizeEventSlug(event.name).toLowerCase() === normalizedKey;
   }) || null;
 }
 
@@ -670,10 +663,29 @@ function uniqueMergedFilename(targetDir, filename) {
   return candidate;
 }
 
+function sameDirectoryOnDisk(pathA, pathB) {
+  try {
+    if (!fs.existsSync(pathA) || !fs.existsSync(pathB)) {
+      return false;
+    }
+    const statA = fs.statSync(pathA);
+    const statB = fs.statSync(pathB);
+    return statA.isDirectory() && statB.isDirectory() && statA.dev === statB.dev && statA.ino === statB.ino;
+  } catch {
+    return false;
+  }
+}
+
 function renameEventFoldersOnDisk(oldSlug, newSlug) {
   if (!oldSlug || !newSlug || oldSlug === newSlug) {
     return;
   }
+
+  // Case-only slug changes ("Birthday-Party" → "birthday-party"): on
+  // case-insensitive NAS/SMB volumes these paths are the same directory.
+  // Falling through to the merge branch makes uniqueMergedFilename treat every
+  // file as a conflict with itself and rename all photos to *-merged-*.
+  const caseOnlySlugChange = oldSlug.toLowerCase() === newSlug.toLowerCase();
 
   forEachStayUploadFolder(stayPath => {
     const resolvedStay = path.resolve(stayPath);
@@ -688,6 +700,19 @@ function renameEventFoldersOnDisk(oldSlug, newSlug) {
     if (!fs.existsSync(oldPath) || !fs.statSync(oldPath).isDirectory()) {
       return;
     }
+
+    if (caseOnlySlugChange || sameDirectoryOnDisk(oldPath, newPath)) {
+      // Update dentry casing when the FS supports it; never merge-into-self.
+      if (oldPath !== newPath) {
+        try {
+          fs.renameSync(oldPath, newPath);
+        } catch (err) {
+          console.error('Failed case-only event folder rename (metadata still updated):', err);
+        }
+      }
+      return;
+    }
+
     if (fs.existsSync(newPath)) {
       fs.readdirSync(oldPath, { withFileTypes: true }).forEach(entry => {
         if (!entry.isFile()) {
@@ -811,15 +836,24 @@ function isReturningDevice(guest, userAgent) {
   return (guest.devices || []).some(device => device.userAgent === ua);
 }
 
+function escapeRegExp(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 function getGuestUploadFolders(guestId) {
   const uploadsDir = getUploadsDir();
-  if (!fs.existsSync(uploadsDir)) {
+  if (!fs.existsSync(uploadsDir) || !guestId || typeof guestId !== 'string') {
     return [];
   }
 
-  const guestMarker = `-${guestId}-`;
+  // Stay folders are `${sanitizeName(name)}-${guestId}-${YYYY-MM-DD}`.
+  // Match that trailing `-guestId-date` segment only — a plain includes()
+  // check let guests embed another guest's id in their display name, upload
+  // files, and have those files appear in the victim's gallery (victim folder
+  // scan matched the attacker's stay folder).
+  const stayFolderPattern = new RegExp(`-${escapeRegExp(guestId)}-\\d{4}-\\d{2}-\\d{2}$`);
   return fs.readdirSync(uploadsDir, { withFileTypes: true })
-    .filter(entry => entry.isDirectory() && entry.name !== 'backgrounds' && entry.name.includes(guestMarker))
+    .filter(entry => entry.isDirectory() && entry.name !== 'backgrounds' && stayFolderPattern.test(entry.name))
     .map(entry => path.join(uploadsDir, entry.name));
 }
 
@@ -1209,12 +1243,19 @@ function createGuestRegistration(name, guestTypeId, options = {}, userAgent) {
     checkoutDate.setDate(checkoutDate.getDate() + days);
   }
 
+  // Overnight guests may optionally tag a stay to an event when
+  // tagPhotosToEvent is set (registration UI sends eventName). Day-personal
+  // requires selectEventAtRegistration. Persist in both cases — previously
+  // optional eventName was dropped, so welcome prefill / history / notes lost
+  // the association and "+ Add new event" names were never created.
   let eventName = null;
-  if (guestType.permissions.selectEventAtRegistration) {
-    const requestedEvent = (options.eventName || '').trim();
-    if (!requestedEvent) {
-      return { error: 'Event name is required for this guest type' };
-    }
+  const requestedEvent = typeof options.eventName === 'string' ? options.eventName.trim() : '';
+  const requireEvent = Boolean(guestType.permissions.selectEventAtRegistration);
+  const allowOptionalEvent = Boolean(guestType.permissions.tagPhotosToEvent);
+  if (requireEvent && !requestedEvent) {
+    return { error: 'Event name is required for this guest type' };
+  }
+  if (requestedEvent && (requireEvent || allowOptionalEvent)) {
     const event = getOrCreateEvent(requestedEvent, 'registration', guestType);
     if (!event) {
       return { error: 'Event not found or creation not permitted' };
@@ -1571,8 +1612,14 @@ const storage = multer.diskStorage({
     }
   },
   filename: (req, file, cb) => {
-    const safeName = sanitizeFilename(file.originalname);
-    cb(null, `${Date.now()}-${safeName}`);
+    // Date.now() alone collides when multiple parts are stored in the same ms
+    // (common for multi-select uploads with identical original names). Shared
+    // staging names overwrite each other, then finalize rename fails and the
+    // error path deletes any file already moved out of .incoming.
+    const uniquePrefix = `${Date.now()}-${crypto.randomBytes(4).toString('hex')}-`;
+    const maxBaseLen = Math.max(1, 255 - Buffer.byteLength(uniquePrefix, 'utf8'));
+    const safeName = sanitizeFilename(file.originalname).substring(0, maxBaseLen);
+    cb(null, `${uniquePrefix}${safeName}`);
   }
 });
 
@@ -1680,15 +1727,21 @@ app.get('/health', (req, res) => {
   res.json({ status: 'ok' });
 });
 
+function isAdminConfigured() {
+  return Boolean(config.adminHash && config.adminHash !== '<bcrypt_hash_placeholder>');
+}
+
 // Check if admin setup is needed (no password configured)
 app.get('/admin-api/setup-required', (req, res) => {
-  const needsSetup = !config.adminHash || config.adminHash === '<bcrypt_hash_placeholder>';
-  res.json({ setupRequired: needsSetup });
+  res.json({ setupRequired: !isAdminConfigured() });
 });
+
+// Reject concurrent first-run setup while bcrypt.hash is in flight (TOCTOU).
+let adminSetupInProgress = false;
 
 // First-run admin setup (only works if no password is set)
 app.post('/admin-api/setup', async (req, res) => {
-  if (config.adminHash && config.adminHash !== '<bcrypt_hash_placeholder>') {
+  if (isAdminConfigured()) {
     return res.status(403).send('Admin already configured. Use setup-local.sh to reset.');
   }
 
@@ -1705,26 +1758,42 @@ app.post('/admin-api/setup', async (req, res) => {
     return res.status(400).send('Username can only contain letters, numbers, underscores, and hyphens');
   }
 
+  // Single-threaded: set before any await so a second request cannot enter hashing.
+  if (adminSetupInProgress) {
+    return res.status(409).send('Admin setup already in progress');
+  }
+  adminSetupInProgress = true;
+
   try {
     const hash = await bcrypt.hash(password, 10);
+    // Recheck after await in case config was replaced out-of-band.
+    if (isAdminConfigured()) {
+      return res.status(403).send('Admin already configured. Use setup-local.sh to reset.');
+    }
     config.adminUser = username;
     config.adminHash = hash;
-    saveConfig();
+    await saveConfig();
     res.json({ success: true, username, message: 'Admin account created successfully' });
   } catch (err) {
     res.status(500).send('Failed to create admin account');
+  } finally {
+    adminSetupInProgress = false;
   }
 });
 
 // Public guest endpoints (do not place under /admin-api — proxies may require auth there)
-app.get('/guest/rooms', (req, res) => res.json(guestData.rooms || []));
+// Registration only needs room names. Never expose dashboardUrl here — that would
+// bypass smartHomeControls and leak internal smart-home links to anyone on the LAN.
+app.get('/guest/rooms', (req, res) => {
+  res.json((guestData.rooms || []).map(room => ({ name: room.name })));
+});
 
 app.get('/guest/background', (req, res) => {
   res.json({ backgroundImage: config.backgroundImage || null });
 });
 
-// Backward-compatible aliases
-app.get('/admin-api/rooms', (req, res) => res.json(guestData.rooms || []));
+// Admin room list includes dashboardUrl; requires auth (unlike the public name-only list).
+app.get('/admin-api/rooms', authMiddleware, (req, res) => res.json(guestData.rooms || []));
 
 // Public: background image info needed by guest pages
 app.get('/admin-api/background', (req, res) => {
@@ -1871,7 +1940,13 @@ app.post('/guest/link-device', (req, res) => {
   if (!guest) {
     return res.status(404).send('Guest session not found');
   }
+  if (new Date(guest.checkoutDate) < new Date()) {
+    return res.status(410).send('Guest session expired');
+  }
 
+  if (!Array.isArray(guest.devices)) {
+    guest.devices = [];
+  }
   guest.devices.push({
     addedAt: new Date().toISOString(),
     userAgent: req.get('User-Agent') || 'Unknown'
@@ -1904,7 +1979,19 @@ app.post('/upload', validateGuestUploadToken, requireGuestPermission('uploadPhot
     finalizeGuestUploadFiles(req.guestSession.guest, req.files, req.body?.eventName);
   } catch (err) {
     console.error('Failed to finalize guest upload:', err);
-    removeUploadedFiles(req.files);
+    // Only wipe files still in .incoming. Finalized destinations must stay —
+    // otherwise a mid-batch finalize failure deletes photos already stored.
+    try {
+      const incomingDir = path.resolve(
+        path.join(getGuestStayFolder(req.guestSession.guest), INCOMING_UPLOAD_DIR)
+      );
+      removeUploadedFiles((req.files || []).filter(file => {
+        const resolved = path.resolve(file.path);
+        return resolved === incomingDir || resolved.startsWith(incomingDir + path.sep);
+      }));
+    } catch (cleanupErr) {
+      console.error('Failed to clean staging uploads after finalize error:', cleanupErr);
+    }
     return res.status(500).send('Failed to store upload');
   }
 
@@ -2060,14 +2147,16 @@ app.post('/session', (req, res) => {
 app.get('/session/:code', (req, res) => {
   const { code } = req.params;
   const entry = sessionCodes[code];
-  if (entry && entry.expires > Date.now()) {
-    const guest = entry.guest;
-    delete sessionCodes[code];
-    saveSessions();
-    res.json(guest);
-  } else {
-    res.status(404).send('Invalid or expired code');
+  // Device-link codes must only be redeemed via POST /guest/link-device.
+  // Consuming them here burned valid QR/link codes (empty 200) when clients
+  // fell back to this legacy route after link-device rate-limits or errors.
+  if (!entry || entry.expires < Date.now() || entry.type === 'device-link' || !entry.guest) {
+    return res.status(404).send('Invalid or expired code');
   }
+  const guest = entry.guest;
+  delete sessionCodes[code];
+  saveSessions();
+  res.json(guest);
 });
 
 // ─── Admin-Protected Routes ─────────────────────────────────────────────────
@@ -2742,10 +2831,17 @@ app.patch('/admin-api/events/:id', authMiddleware, (req, res) => {
   // so the remaining slug owner keeps the folder.
   // Legacy General-slug events never owned General/; rename metadata only.
   const slugSibling = findEventBySlug(oldSlug, event.id);
-  event.name = trimmedName;
+  // Rename on disk before mutating metadata. If disk rename throws, keep the
+  // old name so countEventFilesOnDisk still finds photos (and DELETE stays blocked).
   if (!isReservedEventSlug(oldSlug) && !slugSibling) {
-    renameEventFoldersOnDisk(oldSlug, newSlug);
+    try {
+      renameEventFoldersOnDisk(oldSlug, newSlug);
+    } catch (err) {
+      console.error('Failed to rename event folders on disk:', err);
+      return res.status(500).send('Failed to rename event folders on disk');
+    }
   }
+  event.name = trimmedName;
   saveGuestData();
   res.json({
     success: true,
@@ -2813,12 +2909,19 @@ app.post('/admin-api/guest-types/reorder', authMiddleware, (req, res) => {
   if (!Array.isArray(order)) {
     return res.status(400).send('Order must be an array of guest type IDs');
   }
-  const typeMap = new Map((guestData.guestTypes || []).map(type => [type.id, type]));
-  const reordered = order.map(id => typeMap.get(id)).filter(Boolean);
-  if (reordered.length !== (guestData.guestTypes || []).length) {
+  // Length-only checks accepted duplicates (same id twice) and omitted another
+  // type — reordered.length still matched, and the omitted type was hard-deleted
+  // from storage (worse than DELETE, which only sets enabled=false).
+  const typeIds = (guestData.guestTypes || []).map(type => type.id);
+  if (
+    order.length !== typeIds.length ||
+    new Set(order).size !== order.length ||
+    !order.every(id => typeIds.includes(id))
+  ) {
     return res.status(400).send('Order must include every guest type ID exactly once');
   }
-  guestData.guestTypes = reordered;
+  const typeMap = new Map((guestData.guestTypes || []).map(type => [type.id, type]));
+  guestData.guestTypes = order.map(id => typeMap.get(id));
   saveGuestData();
   res.json({ success: true, guestTypes: guestData.guestTypes });
 });
