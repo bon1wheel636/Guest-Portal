@@ -145,6 +145,46 @@ test_add_room_valid() {
     fi
 }
 
+test_public_rooms_hide_dashboard_url() {
+    require_admin_creds "Public rooms hide dashboardUrl" || return
+    admin_curl -X POST "$BASE_URL/admin-api/rooms" \
+        -H "Content-Type: application/json" \
+        -d '{"name":"Secret Dash Room","dashboardUrl":"http://homeassistant.local:8123/secret-dashboard"}' > /dev/null
+
+    local public_body public_code
+    public_code=$(curl -s -o /tmp/public-rooms.body -w "%{http_code}" "$BASE_URL/guest/rooms")
+    public_body=$(cat /tmp/public-rooms.body 2>/dev/null || true)
+    rm -f /tmp/public-rooms.body
+
+    if [[ "$public_code" == "200" && "$public_body" == *"Secret Dash Room"* && \
+          "$public_body" != *"dashboardUrl"* && "$public_body" != *"homeassistant.local"* ]]; then
+        pass "Public /guest/rooms returns names without dashboardUrl"
+    else
+        fail "Public /guest/rooms returns names without dashboardUrl" \
+            "200 + room name, no dashboardUrl/URL" \
+            "code=$public_code body=$public_body"
+    fi
+
+    local unauth_code
+    unauth_code=$(curl -s -o /dev/null -w "%{http_code}" "$BASE_URL/admin-api/rooms")
+    if [[ "$unauth_code" == "401" ]]; then
+        pass "Unauthenticated /admin-api/rooms is rejected"
+    else
+        fail "Unauthenticated /admin-api/rooms is rejected" "401" "code=$unauth_code"
+    fi
+
+    local admin_body
+    admin_body=$(admin_curl "$BASE_URL/admin-api/rooms")
+    if [[ "$admin_body" == *"Secret Dash Room"* && "$admin_body" == *"homeassistant.local:8123/secret-dashboard"* ]]; then
+        pass "Authenticated /admin-api/rooms still returns dashboardUrl"
+    else
+        fail "Authenticated /admin-api/rooms still returns dashboardUrl" \
+            "room + dashboardUrl present" "$admin_body"
+    fi
+
+    admin_curl -X DELETE "$BASE_URL/admin-api/rooms/Secret%20Dash%20Room" > /dev/null || true
+}
+
 test_add_room_invalid_name() {
     require_admin_creds "Rejects XSS in room name" || return
     local response=$(admin_curl -X POST "$BASE_URL/admin-api/rooms" \
@@ -247,6 +287,69 @@ test_admin_setup_required() {
         pass "Check setup required endpoint"
     else
         fail "Check setup required endpoint" '{"setupRequired":...}' "$response"
+    fi
+}
+
+# Concurrent first-run setup: only one request may create the admin account.
+# Skips when setup is already complete (normal CI / local runs with admin creds).
+# To exercise: restart with adminHash placeholder, then run this suite.
+test_admin_setup_race() {
+    local setup_state
+    setup_state=$(curl -s "$BASE_URL/admin-api/setup-required")
+    if [[ "$setup_state" != *'"setupRequired":true'* ]]; then
+        skip "Admin setup race (requires setupRequired=true / fresh placeholder config)"
+        return
+    fi
+
+    local tmpdir
+    tmpdir=$(mktemp -d)
+    # Fire two setups in parallel during bcrypt.hash window.
+    curl -s -o "$tmpdir/owner.json" -w "%{http_code}" -X POST "$BASE_URL/admin-api/setup" \
+        -H "Content-Type: application/json" \
+        -d '{"username":"owner","password":"ownerpass123"}' >"$tmpdir/owner.code" &
+    local pid1=$!
+    curl -s -o "$tmpdir/attacker.json" -w "%{http_code}" -X POST "$BASE_URL/admin-api/setup" \
+        -H "Content-Type: application/json" \
+        -d '{"username":"attacker","password":"attackerpass123"}' >"$tmpdir/attacker.code" &
+    local pid2=$!
+    wait $pid1
+    wait $pid2
+
+    local code1 code2 body1 body2
+    code1=$(cat "$tmpdir/owner.code")
+    code2=$(cat "$tmpdir/attacker.code")
+    body1=$(cat "$tmpdir/owner.json")
+    body2=$(cat "$tmpdir/attacker.json")
+    rm -rf "$tmpdir"
+
+    local success_count=0
+    local conflict_or_forbidden=0
+    [[ "$code1" == "200" && "$body1" == *'"success":true'* ]] && success_count=$((success_count + 1))
+    [[ "$code2" == "200" && "$body2" == *'"success":true'* ]] && success_count=$((success_count + 1))
+    [[ "$code1" == "409" || "$code1" == "403" ]] && conflict_or_forbidden=$((conflict_or_forbidden + 1))
+    [[ "$code2" == "409" || "$code2" == "403" ]] && conflict_or_forbidden=$((conflict_or_forbidden + 1))
+
+    if [[ "$success_count" -eq 1 && "$conflict_or_forbidden" -eq 1 ]]; then
+        # Winner must be the only valid Basic Auth identity.
+        local winner=""
+        if [[ "$code1" == "200" ]]; then winner="owner:ownerpass123"; else winner="attacker:attackerpass123"; fi
+        local loser=""
+        if [[ "$code1" == "200" ]]; then loser="attacker:attackerpass123"; else loser="owner:ownerpass123"; fi
+        local win_code lose_code
+        win_code=$(curl -s -o /dev/null -w "%{http_code}" -u "$winner" "$BASE_URL/admin-api/guest-types")
+        lose_code=$(curl -s -o /dev/null -w "%{http_code}" -u "$loser" "$BASE_URL/admin-api/guest-types")
+        if [[ "$win_code" == "200" && "$lose_code" == "401" ]]; then
+            pass "Admin setup race: only one creator wins; loser cannot authenticate"
+            # Export winner for subsequent admin tests in this process when ADMIN_PASS unset.
+            if [[ -z "$ADMIN_PASS" ]]; then
+                ADMIN_USER="${winner%%:*}"
+                ADMIN_PASS="${winner#*:}"
+            fi
+        else
+            fail "Admin setup race auth check" "winner 200 / loser 401" "winner $win_code / loser $lose_code"
+        fi
+    else
+        fail "Admin setup race" "one 200 success and one 409/403" "codes=${code1},${code2} bodies=${body1} | ${body2}"
     fi
 }
 
@@ -595,6 +698,41 @@ test_guest_link_code_qr() {
     fi
 }
 
+test_device_link_code_not_consumed_by_legacy_session_get() {
+    # GET /session/:code used to delete device-link entries and return empty 200.
+    # Registration UI falls back to that route when /guest/link-device fails, which
+    # burned QR codes under rate-limit/error conditions.
+    if [[ -z "$GUEST_TOKEN" ]]; then
+        fail "Device-link code survives legacy session GET" "Needs guest token" "No token available"
+        return
+    fi
+    local link_response=$(curl -s -X POST "$BASE_URL/guest/link-code" \
+        -H "Content-Type: application/json" \
+        -d "{\"token\":\"$GUEST_TOKEN\"}")
+    local code=$(echo "$link_response" | grep -o '"code":"[^"]*"' | head -1 | cut -d'"' -f4)
+    if [[ -z "$code" ]]; then
+        fail "Device-link code survives legacy session GET" "link code in response" "$link_response"
+        return
+    fi
+
+    local legacy_http=$(curl -s -o /tmp/gp-legacy-session-get.txt -w "%{http_code}" "$BASE_URL/session/$code")
+    local legacy_body=$(cat /tmp/gp-legacy-session-get.txt)
+    rm -f /tmp/gp-legacy-session-get.txt
+    if [[ "$legacy_http" != "404" ]]; then
+        fail "Device-link code survives legacy session GET" "404 from GET /session/:code" "http=$legacy_http body=$legacy_body"
+        return
+    fi
+
+    local redeem=$(curl -s -X POST "$BASE_URL/guest/link-device" \
+        -H "Content-Type: application/json" \
+        -d "{\"code\":\"$code\"}")
+    if [[ "$redeem" == *'"token"'* ]] && [[ "$redeem" == *'"guest"'* ]]; then
+        pass "Device-link code survives legacy session GET"
+    else
+        fail "Device-link code survives legacy session GET" "POST /guest/link-device still redeems code" "$redeem"
+    fi
+}
+
 test_admin_uploads_metadata() {
     require_admin_creds "Admin upload preview metadata" || return
     local response=$(admin_curl "$BASE_URL/admin-api/uploads")
@@ -810,6 +948,177 @@ test_change_guest_type_permissions() {
     admin_curl -X DELETE "$BASE_URL/admin-api/guest-sessions/$guest_id" > /dev/null
 }
 
+test_disabled_guest_type_uses_restricted_fallback() {
+    # permissionsSnapshot freezes registration-time grants. Using it when the
+    # type is later disabled would restore upload/Smart Home after an admin
+    # lockdown. Disabled/missing types must use restricted fallback instead.
+    require_admin_creds "Disabled guest type uses restricted fallback" || return
+    admin_curl -X POST "$BASE_URL/admin-api/rooms" \
+        -H "Content-Type: application/json" \
+        -d '{"name":"Snapshot Lock Room","dashboardUrl":"http://example.com/snapshot-lock"}' > /dev/null
+
+    local types=$(admin_curl "$BASE_URL/admin-api/guest-types")
+    local overnight_body=$(echo "$types" | python3 -c "
+import json, sys
+types = json.load(sys.stdin)
+t = next(x for x in types if x['id'] == 'type_overnight')
+print(json.dumps({
+    'name': t['name'],
+    'description': t.get('description', ''),
+    'visitMode': t['visitMode'],
+    'defaultStayDays': t.get('defaultStayDays', 7),
+    'requiresRoom': t.get('requiresRoom', True),
+    'enabled': True,
+    'permissions': t['permissions']
+}))
+")
+    local tightened_body=$(echo "$types" | python3 -c "
+import json, sys
+types = json.load(sys.stdin)
+t = next(x for x in types if x['id'] == 'type_overnight')
+perms = dict(t['permissions'])
+perms['uploadPhotos'] = False
+perms['smartHomeControls'] = False
+perms['deleteOwnPhotos'] = False
+print(json.dumps({
+    'name': t['name'],
+    'description': t.get('description', ''),
+    'visitMode': t['visitMode'],
+    'defaultStayDays': t.get('defaultStayDays', 7),
+    'requiresRoom': t.get('requiresRoom', True),
+    'enabled': True,
+    'permissions': perms
+}))
+")
+
+    # Ensure overnight starts enabled with its stored permissions.
+    admin_curl -X PATCH "$BASE_URL/admin-api/guest-types/type_overnight" \
+        -H "Content-Type: application/json" \
+        -d "$overnight_body" > /dev/null
+
+    local response=$(curl -s -X POST "$BASE_URL/register" \
+        -H "Content-Type: application/json" \
+        -d '{"name":"Snapshot Lock Guest","room":"Snapshot Lock Room","stayDays":2,"guestTypeId":"type_overnight"}')
+    local token=$(echo "$response" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
+    if [[ -z "$token" ]]; then
+        fail "Disabled guest type restricted fallback" "registration token" "$response"
+        admin_curl -X PATCH "$BASE_URL/admin-api/guest-types/type_overnight" \
+            -H "Content-Type: application/json" \
+            -d "$overnight_body" > /dev/null
+        return
+    fi
+
+    admin_curl -X PATCH "$BASE_URL/admin-api/guest-types/type_overnight" \
+        -H "Content-Type: application/json" \
+        -d "$tightened_body" > /dev/null
+
+    local tightened=$(curl -s -X POST "$BASE_URL/guest/validate" \
+        -H "Content-Type: application/json" \
+        -d "{\"token\":\"$token\"}")
+    if [[ "$tightened" != *'"uploadPhotos":false'* ]] || [[ "$tightened" != *'"smartHomeControls":false'* ]]; then
+        fail "Disabled guest type restricted fallback" "live tighten applied" "$tightened"
+        admin_curl -X PATCH "$BASE_URL/admin-api/guest-types/type_overnight" \
+            -H "Content-Type: application/json" \
+            -d "$overnight_body" > /dev/null
+        return
+    fi
+
+    admin_curl -X DELETE "$BASE_URL/admin-api/guest-types/type_overnight" > /dev/null
+
+    local disabled=$(curl -s -X POST "$BASE_URL/guest/validate" \
+        -H "Content-Type: application/json" \
+        -d "{\"token\":\"$token\"}")
+    printf '%s\n' '%PDF-1.4' 'snapshot-lock' '%%EOF' > /tmp/snapshot-lock.pdf
+    local upload_code=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$BASE_URL/upload" \
+        -H "X-Guest-Token: $token" \
+        -F "photos=@/tmp/snapshot-lock.pdf;type=application/pdf")
+    rm -f /tmp/snapshot-lock.pdf
+
+    # Restore overnight for later tests.
+    admin_curl -X PATCH "$BASE_URL/admin-api/guest-types/type_overnight" \
+        -H "Content-Type: application/json" \
+        -d "$overnight_body" > /dev/null
+
+    if [[ "$disabled" == *'"uploadPhotos":false'* ]] \
+        && [[ "$disabled" == *'"smartHomeControls":false'* ]] \
+        && [[ "$disabled" == *'"viewPhotoGallery":false'* ]] \
+        && [[ "$disabled" == *'"viewWelcomeHub":true'* ]] \
+        && [[ "$disabled" == *'Unknown (restricted)'* ]] \
+        && [[ "$upload_code" == "403" ]]; then
+        pass "Disabled guest type uses restricted fallback (no snapshot re-grant)"
+    else
+        fail "Disabled guest type uses restricted fallback" \
+            "restricted perms + 403 upload" \
+            "validate=$disabled upload=$upload_code"
+    fi
+}
+
+test_guest_types_reorder_rejects_duplicates() {
+    require_admin_creds "Guest types reorder rejects duplicates" || return
+    local before=$(admin_curl "$BASE_URL/admin-api/guest-types")
+    local count_before=$(python3 -c "import json,sys; print(len(json.load(sys.stdin)))" <<< "$before")
+    if [[ -z "$count_before" || "$count_before" -lt 2 ]]; then
+        fail "Guest types reorder rejects duplicates" "at least 2 guest types" "$before"
+        return
+    fi
+    local first_id=$(python3 -c "import json,sys; print(json.load(sys.stdin)[0]['id'])" <<< "$before")
+    local second_id=$(python3 -c "import json,sys; print(json.load(sys.stdin)[1]['id'])" <<< "$before")
+    # Same length as type list, but duplicates one id and omits another — previously
+    # passed validation and hard-deleted the omitted type from storage.json.
+    local bad_order
+    bad_order=$(python3 -c "
+import json,sys
+types=json.load(sys.stdin)
+ids=[t['id'] for t in types]
+ids[-1]=ids[0]
+print(json.dumps({'order': ids}))
+" <<< "$before")
+    local http_code=$(admin_curl -o /tmp/guest-type-reorder-dup.txt -w "%{http_code}" -X POST \
+        "$BASE_URL/admin-api/guest-types/reorder" \
+        -H "Content-Type: application/json" \
+        -d "$bad_order")
+    local body=$(cat /tmp/guest-type-reorder-dup.txt)
+    rm -f /tmp/guest-type-reorder-dup.txt
+    local after=$(admin_curl "$BASE_URL/admin-api/guest-types")
+    local count_after=$(python3 -c "import json,sys; print(len(json.load(sys.stdin)))" <<< "$after")
+    local still_has_second=$(python3 -c "
+import json,sys
+ids=[t['id'] for t in json.load(sys.stdin)]
+print('yes' if '$second_id' in ids else 'no')
+" <<< "$after")
+    if [[ "$http_code" == "400" && "$count_after" == "$count_before" && "$still_has_second" == "yes" ]]; then
+        pass "Guest types reorder rejects duplicate IDs without deleting types"
+    else
+        fail "Guest types reorder rejects duplicate IDs without deleting types" \
+            "400 + unchanged type list including $second_id" \
+            "http=$http_code count=$count_after/$count_before has_second=$still_has_second body=$body after=$after"
+    fi
+
+    # Valid permutation (swap first two) still succeeds
+    local good_order
+    good_order=$(python3 -c "
+import json,sys
+types=json.load(sys.stdin)
+ids=[t['id'] for t in types]
+ids[0], ids[1] = ids[1], ids[0]
+print(json.dumps({'order': ids}))
+" <<< "$before")
+    local ok=$(admin_curl -X POST "$BASE_URL/admin-api/guest-types/reorder" \
+        -H "Content-Type: application/json" \
+        -d "$good_order")
+    # Restore original order
+    local restore
+    restore=$(python3 -c "import json,sys; print(json.dumps({'order':[t['id'] for t in json.load(sys.stdin)]}))" <<< "$before")
+    admin_curl -X POST "$BASE_URL/admin-api/guest-types/reorder" \
+        -H "Content-Type: application/json" \
+        -d "$restore" > /dev/null
+    if [[ "$ok" == *'"success":true'* ]]; then
+        pass "Guest types reorder accepts a full unique permutation"
+    else
+        fail "Guest types reorder accepts a full unique permutation" "success true" "$ok"
+    fi
+}
+
 test_event_subfolder_upload() {
     require_admin_creds "Event subfolder upload" || return
     local response=$(curl -s -X POST "$BASE_URL/register" \
@@ -866,6 +1175,38 @@ test_event_upload_photos_before_event_field() {
         pass "Event upload honors eventName when file parts precede the field"
     else
         fail "Event upload honors eventName when file parts precede the field" "Field Order Party" "$list"
+    fi
+}
+
+test_multi_upload_same_original_name() {
+    # Multer used `${Date.now()}-${safeName}` for staging. Same-ms + same original
+    # name overwrote siblings in .incoming; finalize then failed and wiped the batch.
+    local response=$(curl -s -X POST "$BASE_URL/register" \
+        -H "Content-Type: application/json" \
+        -d '{"name":"Same Name Upload Guest","room":"Room 1","stayDays":3,"guestTypeId":"type_overnight"}')
+    local token=$(echo "$response" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
+    if [[ -z "$token" ]]; then
+        fail "Multi-upload same original name" "registration token" "$response"
+        return
+    fi
+    local files=()
+    local i
+    for i in $(seq 1 10); do
+        printf '%s\n' '%PDF-1.4' "obj $i" '%%EOF' > "/tmp/same-name-upload-$i.pdf"
+        files+=(-F "photos=@/tmp/same-name-upload-$i.pdf;filename=vacation.pdf;type=application/pdf")
+    done
+    local http_code=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$BASE_URL/upload" \
+        -H "X-Guest-Token: $token" \
+        "${files[@]}")
+    local list=$(curl -s "$BASE_URL/guest/uploads" -H "X-Guest-Token: $token")
+    local count=$(python3 -c "import json,sys; print(len(json.load(sys.stdin).get('files',[])))" <<<"$list")
+    for i in $(seq 1 10); do
+        rm -f "/tmp/same-name-upload-$i.pdf"
+    done
+    if [[ "$http_code" == "200" && "$count" == "10" ]]; then
+        pass "Multi-upload keeps all files that share an original name"
+    else
+        fail "Multi-upload keeps all files that share an original name" "200 + 10 files" "http=$http_code count=$count list=$list"
     fi
 }
 
@@ -944,6 +1285,53 @@ print(int((checkout - now).total_seconds() / 3600))
     fi
 }
 
+test_overnight_optional_registration_event() {
+    # Overnight has tagPhotosToEvent but not selectEventAtRegistration. The
+    # registration UI still shows an optional event picker and sends eventName;
+    # dropping it lost welcome prefill, session labels, and never created
+    # "+ Add new event" names.
+    require_admin_creds "Overnight optional registration event" || return
+    admin_curl -X POST "$BASE_URL/admin-api/rooms" \
+        -H "Content-Type: application/json" \
+        -d '{"name":"Optional Event Room","dashboardUrl":"http://example.com/optional-event"}' > /dev/null
+
+    local response=$(curl -s -X POST "$BASE_URL/register" \
+        -H "Content-Type: application/json" \
+        -d '{"name":"Optional Event Guest","room":"Optional Event Room","stayDays":3,"guestTypeId":"type_overnight","eventName":"Optional Stay Tag"}')
+    local token=$(echo "$response" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
+    local guest_id=$(echo "$response" | grep -o '"id":"guest_[^"]*"' | head -1 | cut -d'"' -f4)
+    if [[ -z "$token" ]]; then
+        fail "Overnight optional registration event" "registration token" "$response"
+        return
+    fi
+    if [[ "$response" == *'"eventName":"Optional Stay Tag"'* ]]; then
+        pass "Overnight registration persists optional eventName"
+    else
+        fail "Overnight registration persists optional eventName" 'eventName":"Optional Stay Tag"' "$response"
+        return
+    fi
+
+    local events=$(curl -s "$BASE_URL/guest/events")
+    if [[ "$events" == *'"name":"Optional Stay Tag"'* ]]; then
+        pass "Overnight optional eventName creates event record"
+    else
+        fail "Overnight optional eventName creates event record" 'name":"Optional Stay Tag"' "$events"
+    fi
+
+    local validate=$(curl -s -X POST "$BASE_URL/guest/validate" \
+        -H "Content-Type: application/json" \
+        -d "{\"token\":\"$token\"}")
+    if [[ "$validate" == *'"eventName":"Optional Stay Tag"'* ]]; then
+        pass "Overnight session validate returns optional eventName"
+    else
+        fail "Overnight session validate returns optional eventName" 'eventName":"Optional Stay Tag"' "$validate"
+    fi
+
+    if [[ -n "$guest_id" ]]; then
+        admin_curl -X DELETE "$BASE_URL/admin-api/guest-sessions/$guest_id" > /dev/null
+    fi
+}
+
 test_delete_forbidden() {
     require_admin_creds "Delete own photos forbidden" || return
     admin_curl -X POST "$BASE_URL/admin-api/rooms" \
@@ -1011,6 +1399,111 @@ PY
         pass "Scoped delete removes only the targeted duplicate basename"
     else
         fail "Scoped delete removes only the targeted duplicate basename" "200 delete + Event-B file remains" "delete=$http_code list=$remaining"
+    fi
+}
+
+test_guest_upload_folder_id_isolation() {
+    # getGuestUploadFolders used includes(`-${guestId}-`). A guest name may contain
+    # spaces (allowed) which become hyphens, so embedding another guest's id in the
+    # display name produced a stay folder that substring-matched when the victim
+    # listed uploads — planting the attacker's files into the victim's gallery
+    # (and letting the victim delete/retag the attacker's files).
+    require_admin_creds "Guest upload folder id isolation" || return
+    admin_curl -X POST "$BASE_URL/admin-api/rooms" \
+        -H "Content-Type: application/json" \
+        -d '{"name":"Isolation Room","dashboardUrl":"http://example.com/isolation"}' > /dev/null
+
+    local victim_reg=$(curl -s -X POST "$BASE_URL/register" \
+        -H "Content-Type: application/json" \
+        -d '{"name":"Victim Guest","room":"Isolation Room","stayDays":3,"guestTypeId":"type_overnight"}')
+    local victim_token=$(echo "$victim_reg" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
+    local victim_id=$(echo "$victim_reg" | grep -o '"id":"guest_[^"]*"' | head -1 | cut -d'"' -f4)
+    if [[ -z "$victim_token" || -z "$victim_id" ]]; then
+        fail "Guest upload folder id isolation" "victim registration" "$victim_reg"
+        return
+    fi
+
+    printf '%s\n' '%PDF-1.4' 'victim secret photo' '%%EOF' > /tmp/victim-isolation.pdf
+    local upload_code=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$BASE_URL/upload" \
+        -H "X-Guest-Token: $victim_token" \
+        -F "photos=@/tmp/victim-isolation.pdf;filename=victim-secret.pdf;type=application/pdf")
+    rm -f /tmp/victim-isolation.pdf
+    if [[ "$upload_code" != "200" ]]; then
+        fail "Guest upload folder id isolation" "victim upload 200" "http=$upload_code"
+        admin_curl -X DELETE "$BASE_URL/admin-api/guest-sessions/$victim_id" > /dev/null
+        return
+    fi
+
+    # Space in name is valid; sanitizeName turns it into a hyphen so the stay
+    # folder embeds -${victim_id}- before the attacker's own id segment.
+    local attacker_name="Mallory ${victim_id}"
+    local attacker_payload
+    attacker_payload=$(python3 -c "import json,sys; print(json.dumps({'name':sys.argv[1],'room':'Isolation Room','stayDays':3,'guestTypeId':'type_overnight'}))" "$attacker_name")
+    local attacker_reg=$(curl -s -X POST "$BASE_URL/register" \
+        -H "Content-Type: application/json" \
+        -d "$attacker_payload")
+    local attacker_token=$(echo "$attacker_reg" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
+    local attacker_id=$(echo "$attacker_reg" | grep -o '"id":"guest_[^"]*"' | head -1 | cut -d'"' -f4)
+    if [[ -z "$attacker_token" || -z "$attacker_id" ]]; then
+        fail "Guest upload folder id isolation" "attacker registration" "$attacker_reg"
+        admin_curl -X DELETE "$BASE_URL/admin-api/guest-sessions/$victim_id" > /dev/null
+        return
+    fi
+
+    printf '%s\n' '%PDF-1.4' 'planted into victim gallery' '%%EOF' > /tmp/planted-isolation.pdf
+    local plant_code=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$BASE_URL/upload" \
+        -H "X-Guest-Token: $attacker_token" \
+        -F "photos=@/tmp/planted-isolation.pdf;filename=planted-by-attacker.pdf;type=application/pdf")
+    rm -f /tmp/planted-isolation.pdf
+    if [[ "$plant_code" != "200" ]]; then
+        fail "Guest upload folder id isolation" "attacker upload 200" "http=$plant_code"
+        admin_curl -X DELETE "$BASE_URL/admin-api/guest-sessions/$victim_id" > /dev/null
+        admin_curl -X DELETE "$BASE_URL/admin-api/guest-sessions/$attacker_id" > /dev/null
+        return
+    fi
+
+    local victim_list=$(curl -s "$BASE_URL/guest/uploads" -H "X-Guest-Token: $victim_token")
+    if [[ "$victim_list" == *"planted-by-attacker.pdf"* ]]; then
+        fail "Guest upload folder id isolation" "victim gallery must not include planted file" "$victim_list"
+    elif [[ "$victim_list" != *"victim-secret.pdf"* ]]; then
+        fail "Guest upload folder id isolation" "victim still sees own upload" "$victim_list"
+    else
+        pass "Guest upload folder id isolation blocks gallery planting via embedded id"
+    fi
+
+    local attacker_list=$(curl -s "$BASE_URL/guest/uploads" -H "X-Guest-Token: $attacker_token")
+    if [[ "$attacker_list" == *"planted-by-attacker.pdf"* ]] && [[ "$attacker_list" != *"victim-secret.pdf"* ]]; then
+        pass "Attacker still sees only own uploads"
+    else
+        fail "Attacker still sees only own uploads" "planted only" "$attacker_list"
+    fi
+
+    # Victim must not be able to delete the attacker's file through the gallery either.
+    local planted_name
+    planted_name=$(python3 -c "import json,sys; files=json.load(sys.stdin).get('files',[]); print(next((f['name'] for f in files if 'planted-by-attacker' in f['name']),''))" <<<"$attacker_list")
+    if [[ -n "$planted_name" ]]; then
+        local encoded_name=$(python3 -c "import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1]))" "$planted_name")
+        local delete_code=$(curl -s -o /dev/null -w "%{http_code}" -X DELETE \
+            "$BASE_URL/guest/uploads/General/$encoded_name" \
+            -H "X-Guest-Token: $victim_token")
+        if [[ "$delete_code" == "404" ]]; then
+            pass "Victim cannot delete attacker file via embedded-id match"
+        else
+            fail "Victim cannot delete attacker file via embedded-id match" "404" "http=$delete_code"
+        fi
+        local attacker_list_after=$(curl -s "$BASE_URL/guest/uploads" -H "X-Guest-Token: $attacker_token")
+        if [[ "$attacker_list_after" == *"planted-by-attacker"* ]]; then
+            pass "Attacker file remains after victim delete attempt"
+        else
+            fail "Attacker file remains after victim delete attempt" "planted file present" "$attacker_list_after"
+        fi
+    else
+        fail "Victim cannot delete attacker file via embedded-id match" "attacker planted filename" "$attacker_list"
+    fi
+
+    admin_curl -X DELETE "$BASE_URL/admin-api/guest-sessions/$victim_id" > /dev/null
+    if [[ -n "$attacker_id" ]]; then
+        admin_curl -X DELETE "$BASE_URL/admin-api/guest-sessions/$attacker_id" > /dev/null
     fi
 }
 
@@ -1220,6 +1713,24 @@ test_admin_event_slug_collision_rejected() {
             "code=$create_conflict_code body=$create_conflict_body"
     fi
 
+    # Case-folded slug collision (SMB/NAS mounts treat Foo and foo as one directory).
+    # Names differ so findEventByName does not catch this — only case-insensitive slug match.
+    local create_case_conflict_code create_case_conflict_body
+    create_case_conflict_code=$(curl -s -o /tmp/slug-collision-case.body -w "%{http_code}" \
+        -u "$ADMIN_USER:$ADMIN_PASS" \
+        -X POST "$BASE_URL/admin-api/events" \
+        -H "Content-Type: application/json" \
+        -d '{"name":"slug-collision-party!!!"}')
+    create_case_conflict_body=$(cat /tmp/slug-collision-case.body 2>/dev/null || true)
+    rm -f /tmp/slug-collision-case.body
+    if [[ "$create_case_conflict_code" == "400" ]] && [[ "$create_case_conflict_body" == *"conflicts with existing event"* ]]; then
+        pass "Admin event create rejects case-insensitive folder-slug collision"
+    else
+        fail "Admin event create rejects case-insensitive folder-slug collision" \
+            "400 + conflicts message" \
+            "code=$create_case_conflict_code body=$create_case_conflict_body"
+    fi
+
     local create_other=$(admin_curl -X POST "$BASE_URL/admin-api/events" \
         -H "Content-Type: application/json" \
         -d '{"name":"Slug Collision Other"}')
@@ -1254,7 +1765,9 @@ test_admin_event_reserved_general_slug() {
     require_admin_creds "Admin event reserved General slug" || return
 
     local create_code create_body
-    for name in '***' '...' 'General!!!' 'General'; do
+    # Include case variants: on SMB/NAS mounts, general/ aliases General/ and
+    # merge/rename would otherwise move every guest's untagged photos.
+    for name in '***' '...' 'General!!!' 'General' 'general' 'GENERAL' 'general!!!'; do
         create_code=$(curl -s -o /tmp/reserved-slug-create.body -w "%{http_code}" \
             -u "$ADMIN_USER:$ADMIN_PASS" \
             -X POST "$BASE_URL/admin-api/events" \
@@ -1290,6 +1803,21 @@ test_admin_event_reserved_general_slug() {
         pass "Admin event rename rejects reserved General slug"
     else
         fail "Admin event rename rejects reserved General slug" "400 + General upload folder message" \
+            "code=$rename_code body=$rename_body"
+    fi
+
+    rename_code=$(curl -s -o /tmp/reserved-slug-rename-case.body -w "%{http_code}" \
+        -u "$ADMIN_USER:$ADMIN_PASS" \
+        -X PATCH "$BASE_URL/admin-api/events/$rename_id" \
+        -H "Content-Type: application/json" \
+        -d '{"name":"general"}')
+    rename_body=$(cat /tmp/reserved-slug-rename-case.body 2>/dev/null || true)
+    rm -f /tmp/reserved-slug-rename-case.body
+    if [[ "$rename_code" == "400" && "$rename_body" == *"General upload folder"* ]]; then
+        pass "Admin event rename rejects lowercase general reserved slug"
+    else
+        fail "Admin event rename rejects lowercase general reserved slug" \
+            "400 + General upload folder message" \
             "code=$rename_code body=$rename_body"
     fi
     admin_curl -X DELETE "$BASE_URL/admin-api/events/$rename_id" > /dev/null || true
@@ -1338,7 +1866,10 @@ else:
 events = [e for e in data.get('events', []) if e.get('id') != '$legacy_id']
 events.append({
     'id': '$legacy_id',
-    'name': 'Legacy General Slug!!!',
+    # Lowercase "general" must be treated as the reserved shared folder (not a
+    # distinct event). A prior seed name that did not sanitize to General made
+    # this assertion a false positive on case-sensitive filesystems.
+    'name': 'general',
     'createdAt': '2026-01-01T00:00:00.000Z',
     'createdBy': 'test'
 })
@@ -1586,6 +2117,112 @@ print(upload)
 
     admin_curl -X DELETE "$BASE_URL/admin-api/events/$owner_id" > /dev/null || true
     admin_curl -X DELETE "$BASE_URL/admin-api/events/$sibling_id" > /dev/null || true
+}
+
+test_admin_event_case_only_rename_preserves_filenames() {
+    # On case-insensitive NAS/SMB mounts, renaming Birthday Party → birthday party
+    # makes oldPath and newPath the same directory. The prior merge branch then
+    # treated every file as a basename conflict and renamed all photos to
+    # *-merged-*. Simulate that with a case-variant symlink on Linux.
+    require_admin_creds "Admin event case-only rename preserves filenames" || return
+
+    local create_event
+    create_event=$(admin_curl -X POST "$BASE_URL/admin-api/events" \
+        -H "Content-Type: application/json" \
+        -d '{"name":"Case Rename Party"}')
+    local event_id
+    event_id=$(echo "$create_event" | grep -o '"id":"event_[^"]*"' | head -1 | cut -d'"' -f4)
+    if [[ -z "$event_id" ]]; then
+        fail "Admin event case-only rename preserves filenames" "event id" "$create_event"
+        return
+    fi
+
+    admin_curl -X POST "$BASE_URL/admin-api/rooms" \
+        -H "Content-Type: application/json" \
+        -d '{"name":"Case Rename Room","dashboardUrl":"http://example.com/case-rename"}' > /dev/null
+
+    local response
+    response=$(curl -s -X POST "$BASE_URL/register" \
+        -H "Content-Type: application/json" \
+        -d '{"name":"Case Rename Guest","room":"Case Rename Room","stayDays":2,"guestTypeId":"type_overnight"}')
+    local token
+    token=$(echo "$response" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
+    local guest_id
+    guest_id=$(echo "$response" | grep -o '"id":"guest_[^"]*"' | head -1 | cut -d'"' -f4)
+    if [[ -z "$token" ]]; then
+        fail "Admin event case-only rename preserves filenames" "registration token" "$response"
+        admin_curl -X DELETE "$BASE_URL/admin-api/events/$event_id" > /dev/null || true
+        return
+    fi
+
+    printf '%s\n' '%PDF-1.4' '1 0 obj << /caseRename true >> endobj' '%%EOF' > /tmp/test-case-rename.pdf
+    local upload_code
+    upload_code=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$BASE_URL/upload" \
+        -H "X-Guest-Token: $token" \
+        -F "eventName=Case Rename Party" \
+        -F "photos=@/tmp/test-case-rename.pdf;filename=case-rename-photo.pdf;type=application/pdf")
+    rm -f /tmp/test-case-rename.pdf
+    if [[ "$upload_code" != "200" ]]; then
+        fail "Admin event case-only rename preserves filenames" "upload 200" "http=$upload_code"
+        admin_curl -X DELETE "$BASE_URL/admin-api/guest-sessions/$guest_id" > /dev/null || true
+        admin_curl -X DELETE "$BASE_URL/admin-api/events/$event_id" > /dev/null || true
+        return
+    fi
+
+    local uploads_root
+    uploads_root=$(admin_curl "$BASE_URL/admin-api/upload-path" | python3 -c "import json,sys; print(json.load(sys.stdin).get('path',''))" 2>/dev/null || true)
+    if [[ -z "$uploads_root" || ! -d "$uploads_root" ]]; then
+        fail "Admin event case-only rename preserves filenames" "uploads path" "$uploads_root"
+        admin_curl -X DELETE "$BASE_URL/admin-api/guest-sessions/$guest_id" > /dev/null || true
+        admin_curl -X DELETE "$BASE_URL/admin-api/events/$event_id" > /dev/null || true
+        return
+    fi
+
+    local event_dir
+    event_dir=$(find "$uploads_root" -type d -name 'Case-Rename-Party' 2>/dev/null | head -1)
+    if [[ -z "$event_dir" ]]; then
+        fail "Admin event case-only rename preserves filenames" "Case-Rename-Party folder" "not found under $uploads_root"
+        admin_curl -X DELETE "$BASE_URL/admin-api/guest-sessions/$guest_id" > /dev/null || true
+        admin_curl -X DELETE "$BASE_URL/admin-api/events/$event_id" > /dev/null || true
+        return
+    fi
+
+    local stay_dir
+    stay_dir=$(dirname "$event_dir")
+    # Symlink simulates case-insensitive FS: new slug path exists and resolves
+    # to the same directory inode as the old slug.
+    ln -sfn 'Case-Rename-Party' "$stay_dir/case-rename-party"
+
+    local before_names
+    before_names=$(find "$event_dir" -maxdepth 1 -type f -printf '%f\n' 2>/dev/null | sort)
+
+    local rename_code rename_body
+    rename_code=$(curl -s -o /tmp/case-only-rename.body -w "%{http_code}" \
+        -u "$ADMIN_USER:$ADMIN_PASS" \
+        -X PATCH "$BASE_URL/admin-api/events/$event_id" \
+        -H "Content-Type: application/json" \
+        -d '{"name":"case rename party"}')
+    rename_body=$(cat /tmp/case-only-rename.body 2>/dev/null || true)
+    rm -f /tmp/case-only-rename.body
+
+    local after_merged
+    after_merged=$(find "$stay_dir" -type f -name '*-merged-*' 2>/dev/null | wc -l | tr -d ' ')
+    local after_original
+    after_original=$(find "$stay_dir" -type f -name '*case-rename-photo.pdf' ! -name '*-merged-*' 2>/dev/null | wc -l | tr -d ' ')
+
+    rm -f "$stay_dir/case-rename-party"
+
+    if [[ "$rename_code" == "200" && "$rename_body" == *'"success":true'* && \
+          "$after_merged" == "0" && "$after_original" -ge 1 ]]; then
+        pass "Admin event case-only rename preserves filenames"
+    else
+        fail "Admin event case-only rename preserves filenames" \
+            "200 success, no *-merged-* files, original basename kept" \
+            "code=$rename_code body=$rename_body merged=$after_merged original=$after_original before=$before_names"
+    fi
+
+    admin_curl -X DELETE "$BASE_URL/admin-api/guest-sessions/$guest_id" > /dev/null || true
+    admin_curl -X DELETE "$BASE_URL/admin-api/events/$event_id" > /dev/null || true
 }
 
 test_guest_upload_retag() {
@@ -1934,6 +2571,15 @@ print(json.dumps({
     fi
 }
 
+test_serialized_json_saver_write_time_snapshot() {
+    local output
+    if output=$(node "$(dirname "$0")/scripts/test-serialized-json-saver.js" 2>&1); then
+        pass "Serialized JSON saver stringifies at write time"
+    else
+        fail "Serialized JSON saver write-time snapshot" "PASS from scripts/test-serialized-json-saver.js" "$output"
+    fi
+}
+
 test_admin_guest_notes_list_and_delete() {
     require_admin_creds "Admin guest notes list and delete" || return
     local response=$(curl -s -X POST "$BASE_URL/register" \
@@ -2089,6 +2735,7 @@ test_register_empty
 
 test_get_rooms
 test_add_room_valid
+test_public_rooms_hide_dashboard_url
 test_add_room_invalid_name
 test_add_room_invalid_url
 test_delete_room
@@ -2100,6 +2747,7 @@ test_list_sessions
 test_revoke_session
 
 test_admin_setup_required
+test_admin_setup_race
 test_admin_login_invalid
 test_deployment_status
 test_portal_url_setting
@@ -2121,6 +2769,7 @@ test_upload_rejects_code
 test_validate_returning_device
 test_guest_uploads_list
 test_guest_link_code_qr
+test_device_link_code_not_consumed_by_legacy_session_get
 test_admin_uploads_metadata
 test_admin_upload_folder_path_traversal
 test_guest_uploads_requires_token
@@ -2133,18 +2782,24 @@ test_validate_permissions
 test_business_day_upload_forbidden
 test_business_day_link_forbidden
 test_change_guest_type_permissions
+test_disabled_guest_type_uses_restricted_fallback
+test_guest_types_reorder_rejects_duplicates
 test_event_subfolder_upload
 test_event_upload_photos_before_event_field
+test_multi_upload_same_original_name
 test_legacy_session
 test_day_personal_registration
+test_overnight_optional_registration_event
 test_delete_forbidden
 test_scoped_delete
+test_guest_upload_folder_id_isolation
 test_admin_events_crud
 test_admin_event_merge
 test_admin_event_merge_preserves_filename_conflicts
 test_admin_event_slug_collision_rejected
 test_admin_event_reserved_general_slug
 test_admin_event_rename_away_from_slug_collision
+test_admin_event_case_only_rename_preserves_filenames
 test_guest_upload_retag
 test_guest_upload_retag_forbidden
 test_guest_upload_clear_event_tag
@@ -2152,6 +2807,7 @@ test_guest_note_crud
 test_business_day_can_leave_note
 test_guest_note_forbidden_without_permission
 test_admin_guest_notes_list_and_delete
+test_serialized_json_saver_write_time_snapshot
 test_index_hero_markup
 
 test_index_html
