@@ -7,6 +7,7 @@ All notable changes to this project will be documented here.
 ## [Unreleased]
 
 ### Fixed
+- Bump transitive `body-parser` to 1.20.6 and `brace-expansion` to 2.1.4 via `npm audit fix` (clears the reported low DoS in Express JSON parsing and high DoS in archiver's glob matching).
 - Multi-file guest uploads that share an original filename (or land in the same millisecond) no longer collide in `.incoming` staging. Staging names now include a random hex segment, and finalize errors only clean up files still in staging so already-stored photos are not deleted.
 - Public `GET /guest/rooms` no longer returns smart-home `dashboardUrl` values (registration only needs room names). Unauthenticated `GET /admin-api/rooms` now requires admin auth, so internal dashboard links cannot bypass `smartHomeControls`.
 - First-run `POST /admin-api/setup` no longer allows concurrent requests to both succeed during `bcrypt.hash`; a second caller gets HTTP 409 while setup is in progress, preventing a last-writer-wins admin takeover on fresh installs.
