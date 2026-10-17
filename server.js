@@ -1690,7 +1690,10 @@ function setAdminSessionCookie(res, req, token) {
 }
 
 function clearAdminSessionCookie(res) {
-  res.setHeader('Set-Cookie', 'adminSession=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0');
+  // A Secure cookie is only removed by a Secure Set-Cookie. The portal sets
+  // Secure when the proxy forwarded https, so expire both forms.
+  const expired = 'adminSession=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0';
+  res.setHeader('Set-Cookie', [expired, `${expired}; Secure`]);
 }
 
 function tooManyLoginFailures(address) {
@@ -1714,8 +1717,13 @@ function recordLoginFailure(address) {
 
 // Session cookie or HTTP Basic. No WWW-Authenticate header, so the browser
 // does not open its basic-auth prompt over the admin login form.
+// The admin page sends X-Admin-UI so a password saved from the old browser
+// prompt cannot keep the page signed in after Sign out.
 function authMiddleware(req, res, next) {
   if (adminSessionFromRequest(req)) return next();
+  if (req.get('X-Admin-UI') === '1') {
+    return res.status(401).send('Authentication required.');
+  }
   const user = basicAuth(req);
   const expectedUser = (config.adminUser || '').trim();
   if (!user || user.name.trim() !== expectedUser) {

@@ -311,7 +311,9 @@
     const DAY_ONLY_SETTINGS = ['guestTypeDefaultDayHours'];
 
     function authFetch(url, options = {}) {
-      return fetch(url, { credentials: 'same-origin', ...options });
+      const headers = new Headers(options.headers || {});
+      headers.set('X-Admin-UI', '1');
+      return fetch(url, { credentials: 'same-origin', ...options, headers });
     }
 
     function internetLabel(internet) {

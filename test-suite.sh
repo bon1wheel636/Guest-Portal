@@ -383,6 +383,55 @@ test_admin_login_invalid() {
     fi
 }
 
+test_admin_sign_out() {
+    require_admin_creds "Admin sign out" || return
+    local work
+    work=$(mktemp -d)
+    local cookie_jar="$work/cookies"
+    local login_headers="$work/login.headers"
+    local logout_headers="$work/logout.headers"
+    local login_code
+    login_code=$(curl -s -D "$login_headers" -o /dev/null -c "$cookie_jar" -w "%{http_code}" \
+        -X POST "$BASE_URL/admin-api/login" \
+        -H "Content-Type: application/json" \
+        -H "X-Forwarded-Proto: https" \
+        -d "{\"username\":\"$ADMIN_USER\",\"password\":\"$ADMIN_PASS\"}")
+    if [[ "$login_code" != "200" ]]; then
+        fail "Admin sign out" "login 200" "login $login_code"
+        return
+    fi
+    if ! grep -qi 'set-cookie: adminSession=.*; *Secure' "$login_headers"; then
+        fail "Admin sign out" "Secure session cookie" "$(grep -i set-cookie "$login_headers")"
+        return
+    fi
+    local logout_code
+    logout_code=$(curl -s -D "$logout_headers" -o /dev/null -b "$cookie_jar" -w "%{http_code}" \
+        -X POST "$BASE_URL/admin-api/logout" \
+        -H "X-Forwarded-Proto: https" \
+        -H "X-Admin-UI: 1")
+    if [[ "$logout_code" != "200" ]]; then
+        fail "Admin sign out" "logout 200" "logout $logout_code"
+        return
+    fi
+    if ! grep -qi 'set-cookie: adminSession=;.*Secure' "$logout_headers"; then
+        fail "Admin sign out" "Secure cookie cleared" "$(grep -i set-cookie "$logout_headers")"
+        return
+    fi
+    local me_code basic_ui_code basic_code
+    me_code=$(curl -s -o /dev/null -w "%{http_code}" -b "$cookie_jar" \
+        -H "X-Admin-UI: 1" "$BASE_URL/admin-api/me")
+    basic_ui_code=$(curl -s -o /dev/null -w "%{http_code}" \
+        -u "$ADMIN_USER:$ADMIN_PASS" \
+        -H "X-Admin-UI: 1" "$BASE_URL/admin-api/me")
+    basic_code=$(curl -s -o /dev/null -w "%{http_code}" \
+        -u "$ADMIN_USER:$ADMIN_PASS" "$BASE_URL/admin-api/rooms")
+    if [[ "$me_code" == "401" && "$basic_ui_code" == "401" && "$basic_code" == "200" ]]; then
+        pass "Admin sign out clears the session and ignores saved Basic Auth"
+    else
+        fail "Admin sign out clears the session and ignores saved Basic Auth" "me 401, ui basic 401, script basic 200" "me $me_code ui $basic_ui_code basic $basic_code"
+    fi
+}
+
 test_deployment_status() {
     require_admin_creds "Deployment status" || return
     local response=$(admin_curl "$BASE_URL/admin-api/deployment-status")
@@ -2861,6 +2910,7 @@ test_revoke_session
 test_admin_setup_required
 test_admin_setup_race
 test_admin_login_invalid
+test_admin_sign_out
 test_deployment_status
 test_portal_url_setting
 test_link_code_expiration_setting
