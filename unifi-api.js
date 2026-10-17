@@ -143,7 +143,7 @@ async function resolveSiteId({ origin, apiKey, siteId, tlsInsecure, fetchImpl })
   throw new Error('UniFi returned more than one site. Enter the site id in Admin Settings.');
 }
 
-async function authorizeUnifiGuest({ consoleUrl, apiKey, siteId, mac, checkoutDate, tlsInsecure, fetchImpl }) {
+async function findUnifiClient({ consoleUrl, apiKey, siteId, mac, tlsInsecure, fetchImpl }) {
   const origin = normalizeConsoleUrl(consoleUrl);
   const clientMac = normalizeMac(mac);
   if (!origin || !apiKey || !clientMac) {
@@ -166,23 +166,58 @@ async function authorizeUnifiGuest({ consoleUrl, apiKey, siteId, mac, checkoutDa
     fetchImpl
   });
   const client = listFromBody(clientsBody).find(entry => normalizeMac(entry && entry.macAddress) === clientMac);
-  if (!client || !client.id) {
-    throw new Error('This phone is not in the UniFi guest list yet');
-  }
-  const timeLimitMinutes = minutesUntil(checkoutDate);
+  return { origin, clientMac, siteId: resolvedSiteId, client: client && client.id ? client : null };
+}
+
+function clientAccess(client) {
+  const authorized = Boolean(client && client.access && client.access.authorized);
+  const expiresAt = client && client.access && client.access.authorization
+    ? client.access.authorization.expiresAt || null
+    : null;
+  return {
+    state: authorized ? 'authorized' : 'unauthorized',
+    expiresAt
+  };
+}
+
+async function describeUnifiGuest(options) {
+  const found = await findUnifiClient(options);
+  if (!found.client) return { state: 'not-seen', expiresAt: null, siteId: found.siteId };
+  return { ...clientAccess(found.client), siteId: found.siteId };
+}
+
+async function authorizeUnifiGuest(options) {
+  const found = await findUnifiClient(options);
+  if (!found.client) throw new Error('This phone is not in the UniFi guest list yet');
+  const timeLimitMinutes = minutesUntil(options.checkoutDate);
   await unifiRequest({
-    origin,
-    apiKey,
-    path: `/v1/sites/${encodeURIComponent(resolvedSiteId)}/clients/${encodeURIComponent(client.id)}/actions`,
+    origin: found.origin,
+    apiKey: options.apiKey,
+    path: `/v1/sites/${encodeURIComponent(found.siteId)}/clients/${encodeURIComponent(found.client.id)}/actions`,
     method: 'POST',
     body: {
       action: 'AUTHORIZE_GUEST_ACCESS',
       timeLimitMinutes
     },
-    tlsInsecure,
-    fetchImpl
+    tlsInsecure: options.tlsInsecure,
+    fetchImpl: options.fetchImpl
   });
-  return { ok: true, timeLimitMinutes, siteId: resolvedSiteId };
+  return { ok: true, timeLimitMinutes, siteId: found.siteId };
+}
+
+async function unauthorizeUnifiGuest(options) {
+  const found = await findUnifiClient(options);
+  if (!found.client) return { ok: true, state: 'not-seen', siteId: found.siteId };
+  await unifiRequest({
+    origin: found.origin,
+    apiKey: options.apiKey,
+    path: `/v1/sites/${encodeURIComponent(found.siteId)}/clients/${encodeURIComponent(found.client.id)}/actions`,
+    method: 'POST',
+    body: { action: 'UNAUTHORIZE_GUEST_ACCESS' },
+    tlsInsecure: options.tlsInsecure,
+    fetchImpl: options.fetchImpl
+  });
+  return { ok: true, state: 'unauthorized', siteId: found.siteId };
 }
 
 module.exports = {
@@ -191,5 +226,7 @@ module.exports = {
   normalizeSiteId,
   normalizeApiKey,
   minutesUntil,
-  authorizeUnifiGuest
+  authorizeUnifiGuest,
+  unauthorizeUnifiGuest,
+  describeUnifiGuest
 };

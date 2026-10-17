@@ -354,14 +354,32 @@ test_admin_setup_race() {
 }
 
 test_admin_login_invalid() {
-    require_admin_creds "Admin page rejects invalid Basic Auth" || return
-    local http_code=$(curl -s -o /dev/null -w "%{http_code}" \
-        "$BASE_URL/admin.html" \
+    local page
+    page=$(curl -s "$BASE_URL/admin.html")
+    if [[ "$page" == *"adminLoginForm"* && "$page" == *"Admin Sign In"* ]]; then
+        pass "Admin page shows a sign-in form"
+    else
+        fail "Admin page shows a sign-in form" "adminLoginForm" "Missing sign-in form"
+    fi
+
+    local http_code
+    http_code=$(curl -s -o /dev/null -w "%{http_code}" \
+        -X POST "$BASE_URL/admin-api/login" \
+        -H "Content-Type: application/json" \
+        -d '{"username":"admin","password":"not-the-password"}')
+    if [[ "$http_code" == "401" || "$http_code" == "409" ]]; then
+        pass "Admin sign-in rejects a bad password"
+    else
+        fail "Admin sign-in rejects a bad password" "401" "$http_code"
+    fi
+
+    http_code=$(curl -s -o /dev/null -w "%{http_code}" \
+        "$BASE_URL/admin-api/rooms" \
         -u "wronguser:wrongpass")
     if [[ "$http_code" == "401" ]]; then
-        pass "Admin page rejects invalid Basic Auth (401)"
+        pass "Admin API rejects invalid Basic Auth (401)"
     else
-        fail "Admin page rejects invalid Basic Auth" "401" "$http_code"
+        fail "Admin API rejects invalid Basic Auth" "401" "$http_code"
     fi
 }
 
@@ -538,10 +556,10 @@ test_checkout_admin_guest() {
         return
     fi
     local response=$(admin_curl -X DELETE "$BASE_URL/admin-api/guest-sessions/$ADMIN_GUEST_ID")
-    if [[ "$response" == *'"success":true'* ]]; then
+    if [[ "$response" == *'"success":true'* && "$response" == *'"internet"'* ]]; then
         pass "Check out admin guest session"
     else
-        fail "Check out admin guest session" '{"success":true}' "$response"
+        fail "Check out admin guest session" '{"success":true,"internet":...}' "$response"
     fi
 }
 
@@ -2482,6 +2500,11 @@ test_admin_html() {
 
 test_welcome_html() {
     local response=$(curl -s "$BASE_URL/welcome.html")
+    if [[ "$response" == *"smartHomeLink"* && "$response" == *'target="_blank"'* ]]; then
+        pass "Welcome hub opens the room dashboard in a new tab"
+    else
+        fail "Welcome hub opens the room dashboard in a new tab" "smartHomeLink target=_blank" "Missing new-tab link"
+    fi
     if [[ "$response" == *"Upload"* && "$response" == *"My Photos"* ]]; then
         pass "Welcome hub page loads"
     else

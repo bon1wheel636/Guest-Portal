@@ -16,7 +16,9 @@ const {
   normalizeConsoleUrl,
   normalizeSiteId,
   normalizeApiKey,
-  authorizeUnifiGuest
+  authorizeUnifiGuest,
+  unauthorizeUnifiGuest,
+  describeUnifiGuest
 } = require('./unifi-api');
 const app = express();
 
@@ -27,6 +29,7 @@ const configPath = '/etc/guest-portal/config.json';
 const dbPath = '/etc/guest-portal/storage.json';
 const sessionFile = '/etc/guest-portal/sessions.json';
 const guestTokensFile = '/etc/guest-portal/guest-tokens.json';
+const adminSessionsFile = '/etc/guest-portal/admin-sessions.json';
 const MAX_GUEST_UPLOAD_SIZE_BYTES = 50 * 1024 * 1024;
 const MAX_GUEST_UPLOAD_FILES = 10;
 const URL_CHECK_TIMEOUT_MS = 2500;
@@ -40,6 +43,7 @@ const config = fs.existsSync(configPath) ? JSON.parse(fs.readFileSync(configPath
 const guestData = fs.existsSync(dbPath) ? JSON.parse(fs.readFileSync(dbPath, 'utf8')) : { rooms: [], guests: [], events: [], guestTypes: [], guestNotes: [] };
 let sessionCodes = fs.existsSync(sessionFile) ? JSON.parse(fs.readFileSync(sessionFile, 'utf8')) : {};
 let guestTokens = fs.existsSync(guestTokensFile) ? JSON.parse(fs.readFileSync(guestTokensFile, 'utf8')) : {};
+let adminSessions = fs.existsSync(adminSessionsFile) ? JSON.parse(fs.readFileSync(adminSessionsFile, 'utf8')) : {};
 const packageJsonPath = path.join(__dirname, 'package.json');
 const packageInfo = fs.existsSync(packageJsonPath) ? JSON.parse(fs.readFileSync(packageJsonPath, 'utf8')) : {};
 
@@ -253,6 +257,7 @@ function getLinkCodeExpirationMs() {
 const { createSerializedJsonSaver } = require('./serialized-json-saver');
 
 const saveConfig = createSerializedJsonSaver(configPath, 'config', () => config);
+const saveAdminSessions = createSerializedJsonSaver(adminSessionsFile, 'admin-sessions', () => adminSessions);
 const saveSessions = createSerializedJsonSaver(sessionFile, 'sessions', () => sessionCodes);
 const saveGuestTokens = createSerializedJsonSaver(guestTokensFile, 'guest tokens', () => guestTokens);
 const saveGuestData = createSerializedJsonSaver(dbPath, 'guest data', () => guestData);
@@ -260,6 +265,7 @@ const saveGuestData = createSerializedJsonSaver(dbPath, 'guest data', () => gues
 async function flushPersistentState() {
   await Promise.all([
     saveConfig.flush(),
+    saveAdminSessions.flush(),
     saveSessions.flush(),
     saveGuestTokens.flush(),
     saveGuestData.flush()
@@ -299,6 +305,36 @@ async function authorizeStoredUnifiClient(guest) {
     checkoutDate: guest.checkoutDate
   });
   return { ok: true, minutes: result.timeLimitMinutes };
+}
+
+function unifiConnection() {
+  if (!config.unifiConsoleUrl || !config.unifiApiKey) return null;
+  return {
+    consoleUrl: config.unifiConsoleUrl,
+    apiKey: config.unifiApiKey,
+    siteId: config.unifiSiteId || ''
+  };
+}
+
+async function unauthorizeStoredUnifiClient(guest) {
+  if (!guest || !guest.unifiClientMac) return { skipped: true, reason: 'not-linked' };
+  const connection = unifiConnection();
+  if (!connection) return { skipped: true, reason: 'not-configured' };
+  const result = await unauthorizeUnifiGuest({ ...connection, mac: guest.unifiClientMac });
+  return { ok: true, state: result.state };
+}
+
+async function describeStoredUnifiClient(guest) {
+  if (!guest || !guest.unifiClientMac) return { linked: false, state: 'not-linked' };
+  const connection = unifiConnection();
+  if (!connection) return { linked: true, state: 'not-configured' };
+  try {
+    const result = await describeUnifiGuest({ ...connection, mac: guest.unifiClientMac });
+    return { linked: true, state: result.state, expiresAt: result.expiresAt };
+  } catch (err) {
+    console.error('UniFi status failed:', err.message);
+    return { linked: true, state: 'unknown' };
+  }
 }
 
 function generateToken() {
@@ -1588,27 +1624,97 @@ const limiter = rateLimit({
 });
 app.use(limiter);
 
-// C1: Auth middleware for admin endpoints
+const ADMIN_SESSION_MS = 12 * 60 * 60 * 1000;
+const loginFailures = new Map();
+
+function clientAddress(req) {
+  return req.ip || req.socket?.remoteAddress || 'unknown';
+}
+
+function readCookie(req, name) {
+  const header = req.get('Cookie') || '';
+  for (const part of header.split(';')) {
+    const separator = part.indexOf('=');
+    if (separator === -1) continue;
+    if (part.slice(0, separator).trim() === name) {
+      return decodeURIComponent(part.slice(separator + 1).trim());
+    }
+  }
+  return '';
+}
+
+function pruneAdminSessions() {
+  const now = Date.now();
+  let changed = false;
+  for (const [token, session] of Object.entries(adminSessions)) {
+    if (!session || session.expiresAt < now) {
+      delete adminSessions[token];
+      changed = true;
+    }
+  }
+  if (changed) saveAdminSessions();
+}
+
+function adminSessionFromRequest(req) {
+  pruneAdminSessions();
+  const token = readCookie(req, 'adminSession');
+  if (!token || !adminSessions[token]) return null;
+  return adminSessions[token];
+}
+
+function setAdminSessionCookie(res, req, token) {
+  const forwarded = (req.get('X-Forwarded-Proto') || '').split(',')[0].trim();
+  const secure = forwarded === 'https' || req.secure;
+  const parts = [
+    `adminSession=${encodeURIComponent(token)}`,
+    'HttpOnly',
+    'SameSite=Lax',
+    'Path=/',
+    `Max-Age=${Math.floor(ADMIN_SESSION_MS / 1000)}`
+  ];
+  if (secure) parts.push('Secure');
+  res.setHeader('Set-Cookie', parts.join('; '));
+}
+
+function clearAdminSessionCookie(res) {
+  res.setHeader('Set-Cookie', 'adminSession=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0');
+}
+
+function tooManyLoginFailures(address) {
+  const entry = loginFailures.get(address);
+  if (!entry) return false;
+  if (Date.now() > entry.resetAt) {
+    loginFailures.delete(address);
+    return false;
+  }
+  return entry.count >= 8;
+}
+
+function recordLoginFailure(address) {
+  const current = loginFailures.get(address);
+  if (!current || Date.now() > current.resetAt) {
+    loginFailures.set(address, { count: 1, resetAt: Date.now() + 10 * 60 * 1000 });
+    return;
+  }
+  current.count += 1;
+}
+
+// Session cookie or HTTP Basic. No WWW-Authenticate header, so the browser
+// does not open its basic-auth prompt over the admin login form.
 function authMiddleware(req, res, next) {
+  if (adminSessionFromRequest(req)) return next();
   const user = basicAuth(req);
   const expectedUser = (config.adminUser || '').trim();
   if (!user || user.name.trim() !== expectedUser) {
-    res.set('WWW-Authenticate', 'Basic realm="Guest Portal Admin"');
     return res.status(401).send('Authentication required.');
   }
   if (!config.adminHash || config.adminHash === '<bcrypt_hash_placeholder>') {
-    res.set('WWW-Authenticate', 'Basic realm="Guest Portal Admin"');
     return res.status(401).send('Admin account not configured.');
   }
   bcrypt.compare(user.pass, config.adminHash, (err, result) => {
-    if (err) {
-      return res.status(500).send('Authentication error.');
-    }
-    if (result) next();
-    else {
-      res.set('WWW-Authenticate', 'Basic realm="Guest Portal Admin"');
-      return res.status(401).send('Access denied.');
-    }
+    if (err) return res.status(500).send('Authentication error.');
+    if (result) return next();
+    return res.status(401).send('Access denied.');
   });
 }
 
@@ -1616,13 +1722,50 @@ function adminSetupRequired() {
   return !config.adminHash || config.adminHash === '<bcrypt_hash_placeholder>';
 }
 
-function adminPageAuth(req, res, next) {
-  if (adminSetupRequired()) return next();
-  return authMiddleware(req, res, next);
-}
-
-app.get('/admin.html', adminPageAuth, (req, res) => {
+app.get('/admin.html', (req, res) => {
   res.sendFile(path.join(__dirname, 'frontend', 'admin.html'));
+});
+
+app.get('/admin-api/me', authMiddleware, (req, res) => {
+  res.json({ username: config.adminUser || 'admin' });
+});
+
+app.post('/admin-api/login', (req, res) => {
+  if (adminSetupRequired()) return res.status(409).send('Admin account is not set up yet.');
+  const address = clientAddress(req);
+  if (tooManyLoginFailures(address)) {
+    return res.status(429).send('Too many sign-in attempts. Wait a few minutes.');
+  }
+  const username = typeof req.body?.username === 'string' ? req.body.username.trim() : '';
+  const password = typeof req.body?.password === 'string' ? req.body.password : '';
+  const expectedUser = (config.adminUser || '').trim();
+  if (!username || username !== expectedUser || !password) {
+    recordLoginFailure(address);
+    return res.status(401).send('Access denied.');
+  }
+  bcrypt.compare(password, config.adminHash, (err, result) => {
+    if (err) return res.status(500).send('Authentication error.');
+    if (!result) {
+      recordLoginFailure(address);
+      return res.status(401).send('Access denied.');
+    }
+    loginFailures.delete(address);
+    const token = crypto.randomBytes(32).toString('hex');
+    adminSessions[token] = { username, expiresAt: Date.now() + ADMIN_SESSION_MS };
+    saveAdminSessions();
+    setAdminSessionCookie(res, req, token);
+    res.json({ username });
+  });
+});
+
+app.post('/admin-api/logout', (req, res) => {
+  const token = readCookie(req, 'adminSession');
+  if (token && adminSessions[token]) {
+    delete adminSessions[token];
+    saveAdminSessions();
+  }
+  clearAdminSessionCookie(res);
+  res.json({ success: true });
 });
 
 app.use(express.static('frontend'));
@@ -2613,8 +2756,8 @@ app.post('/admin-api/session-expiration', authMiddleware, (req, res) => {
 });
 
 // C4: Remove fullToken from response
-app.get('/admin-api/guest-sessions', authMiddleware, (req, res) => {
-  const sessions = getGuestSessionRows().map(row => {
+app.get('/admin-api/guest-sessions', authMiddleware, async (req, res) => {
+  const sessions = await Promise.all(getGuestSessionRows().map(async row => {
     const guestEntry = findGuestTokenEntryByGuestId(row.guestId)?.[1];
     const guestType = resolveGuestType(guestEntry);
     return {
@@ -2631,9 +2774,10 @@ app.get('/admin-api/guest-sessions', authMiddleware, (req, res) => {
       devices: guestEntry?.devices || [],
       isExpired: row.active !== 'yes',
       daysRemaining: row.daysRemaining,
-      permissions: guestEntry ? getGuestPermissions(guestEntry) : guestType.permissions
+      permissions: guestEntry ? getGuestPermissions(guestEntry) : guestType.permissions,
+      internet: await describeStoredUnifiClient(guestEntry)
     };
-  });
+  }));
   res.json(sessions);
 });
 
@@ -2690,7 +2834,7 @@ app.post('/admin-api/guest-sessions/:guestId/link-code', authMiddleware, async (
   }
 });
 
-app.post('/admin-api/guest-sessions/:guestId/extend', authMiddleware, (req, res) => {
+app.post('/admin-api/guest-sessions/:guestId/extend', authMiddleware, async (req, res) => {
   const { guestId } = req.params;
   const { days } = req.body;
 
@@ -2705,7 +2849,15 @@ app.post('/admin-api/guest-sessions/:guestId/extend', authMiddleware, (req, res)
   guest.checkoutDate = newCheckout.toISOString();
   saveGuestTokens();
 
-  res.json({ success: true, newCheckoutDate: guest.checkoutDate });
+  let internet = { skipped: true };
+  try {
+    internet = await authorizeStoredUnifiClient(guest);
+  } catch (err) {
+    console.error('UniFi extend failed:', err.message);
+    internet = { ok: false, error: 'Stay extended, but internet access was not updated' };
+  }
+
+  res.json({ success: true, newCheckoutDate: guest.checkoutDate, internet });
 });
 
 app.patch('/admin-api/guest-sessions/:guestId', authMiddleware, (req, res) => {
@@ -2791,7 +2943,18 @@ app.delete('/admin-api/guest-sessions/:guestId/devices', authMiddleware, (req, r
   res.json({ success: true, devicesCleared: true });
 });
 
-app.delete('/admin-api/guest-sessions/:guestId', authMiddleware, (req, res) => {
+app.post('/admin-api/guest-sessions/:guestId/internet/revoke', authMiddleware, async (req, res) => {
+  const entry = findGuestTokenEntryByGuestId(req.params.guestId);
+  if (!entry) return res.status(404).send('Guest not found');
+  try {
+    res.json(await unauthorizeStoredUnifiClient(entry[1]));
+  } catch (err) {
+    console.error('UniFi revoke failed:', err.message);
+    res.status(502).send('Internet access could not be turned off.');
+  }
+});
+
+app.delete('/admin-api/guest-sessions/:guestId', authMiddleware, async (req, res) => {
   const { guestId } = req.params;
 
   const entry = findGuestTokenEntryByGuestId(guestId);
@@ -2799,26 +2962,35 @@ app.delete('/admin-api/guest-sessions/:guestId', authMiddleware, (req, res) => {
     return res.status(404).send('Guest not found');
   }
 
-  const [token] = entry;
+  const [token, guest] = entry;
+  let internet = { skipped: true };
+  try {
+    internet = await unauthorizeStoredUnifiClient(guest);
+  } catch (err) {
+    console.error('UniFi checkout revoke failed:', err.message);
+    internet = { ok: false, error: 'Guest was checked out, but internet access could not be turned off' };
+  }
   delete guestTokens[token];
   saveGuestTokens();
 
-  res.json({ success: true });
+  res.json({ success: true, internet });
 });
 
-app.post('/admin-api/guest-sessions/purge-expired', authMiddleware, (req, res) => {
+app.post('/admin-api/guest-sessions/purge-expired', authMiddleware, async (req, res) => {
   const now = new Date();
-  let removed = 0;
-  Object.entries(guestTokens).forEach(([token, guest]) => {
-    if (new Date(guest.checkoutDate) < now) {
-      delete guestTokens[token];
-      removed += 1;
+  const expired = Object.entries(guestTokens).filter(([, guest]) => new Date(guest.checkoutDate) < now);
+  for (const [token, guest] of expired) {
+    try {
+      await unauthorizeStoredUnifiClient(guest);
+    } catch (err) {
+      console.error('UniFi purge revoke failed:', err.message);
     }
-  });
-  if (removed > 0) {
+    delete guestTokens[token];
+  }
+  if (expired.length > 0) {
     saveGuestTokens();
   }
-  res.json({ success: true, removed });
+  res.json({ success: true, removed: expired.length });
 });
 
 app.get('/admin-api/guests', authMiddleware, (req, res) => {
@@ -3077,7 +3249,7 @@ app.post('/admin-api/guests', authMiddleware, (req, res) => {
   });
 });
 
-app.delete('/admin-api/guests/:guestId', authMiddleware, (req, res) => {
+app.delete('/admin-api/guests/:guestId', authMiddleware, async (req, res) => {
   const { guestId } = req.params;
   const endSession = req.query.endSession === 'true';
 
@@ -3089,17 +3261,24 @@ app.delete('/admin-api/guests/:guestId', authMiddleware, (req, res) => {
   saveGuestData();
 
   let sessionEnded = false;
+  let internet = { skipped: true };
   if (endSession) {
     const entry = findGuestTokenEntryByGuestId(guestId);
     if (entry) {
-      const [token] = entry;
+      const [token, guest] = entry;
+      try {
+        internet = await unauthorizeStoredUnifiClient(guest);
+      } catch (err) {
+        console.error('UniFi history checkout failed:', err.message);
+        internet = { ok: false, error: 'The visit was ended, but internet access could not be turned off' };
+      }
       delete guestTokens[token];
       saveGuestTokens();
       sessionEnded = true;
     }
   }
 
-  res.json({ success: true, sessionEnded });
+  res.json({ success: true, sessionEnded, internet });
 });
 
 app.post('/admin-api/guests/purge-history', authMiddleware, (req, res) => {

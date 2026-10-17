@@ -32,6 +32,8 @@ All notable changes to this project will be documented here.
 - Event create/rename now rejects names that share an upload folder slug with another event (e.g. `Hello World` vs `Hello-World`); merge also refuses when a sibling event already shares the source slug, so admin merge cannot move another event's photos.
 
 ### Added
+- Admin sign-in is a session form with a Sign out button. API calls still accept HTTP Basic Auth. Checking a guest out, ending the visit from registration history, or purging an expired session turns off that phone's UniFi internet access. The guest list shows whether internet is on, and **Turn Off Internet** revokes it without ending the portal visit. Extending a stay updates the UniFi time limit.
+- Room dashboard links open in a new tab from the welcome hub and from the admin room list.
 - After a UniFi registration, **Open in Safari or Chrome** carries the visit into the phone's real browser and authorizes that client for internet access until checkout. The console URL, optional site id, and API key are saved in Admin **Settings** and stay out of git. **Continue in this window** authorizes without leaving the temporary browser.
 - `GET /guest/s/<site>/` accepts the UniFi external-portal redirect and sends the guest to registration. The registration page stores the client MAC and access-point fields in `sessionStorage` for a later authorize call.
 - Guest **text notes for hosts** — `GET/PUT/DELETE /guest/note` with `leaveGuestNote` permission; one editable note per stay stored in `storage.json`; admin list/delete via `/admin-api/guest-notes`; Welcome hub textarea UI and Guests tab in admin.

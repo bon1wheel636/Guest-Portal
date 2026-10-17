@@ -21,7 +21,7 @@
 
     <section class="guest-section" id="smartHomeSection">
       <h2>Smart Home</h2>
-      <p><a id="smartHomeLink" href="#">Go to your Smart Home Controls</a></p>
+      <p><a id="smartHomeLink" href="#" target="_blank" rel="noopener noreferrer">Go to your Smart Home Controls</a></p>
     </section>
 
     <section class="guest-section" id="noteSection">
@@ -312,7 +312,6 @@
         return;
       }
 
-      smartHomeLink.href = guestData.dashboardUrl || '/';
       guestNameSpan.textContent = guestData.name;
 
       if (guestData.checkoutDate) {
@@ -353,6 +352,7 @@
         }
       }
 
+      smartHomeLink.href = guestData.dashboardUrl || '#';
       applyPermissions();
       await loadEventsForUpload();
 

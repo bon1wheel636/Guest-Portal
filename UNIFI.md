@@ -78,7 +78,11 @@ In Guest Portal admin, open **Settings** and save **UniFi Internet**:
 - Site ID. Leave it blank when the console has one site.
 - API key created on the console under **Settings > Control Plane > Integrations**. A key from unifi.ui.com is rejected. The key stays in the server config and is not written into git.
 
-Authorization is `POST /proxy/network/integration/v1/sites/{siteId}/clients/{clientId}/actions` with `action` set to `AUTHORIZE_GUEST_ACCESS`. The time limit matches the guest checkout. Pre-authorization allowances still have to include the proxy, because the real browser loads the handoff before the phone is authorized.
+Authorization is `POST /proxy/network/integration/v1/sites/{siteId}/clients/{clientId}/actions` with `action` set to `AUTHORIZE_GUEST_ACCESS`. The time limit matches the guest checkout. Checking the guest out, or **Turn Off Internet** on that session, sends `UNAUTHORIZE_GUEST_ACCESS`. Extending the stay sends a new authorize with the new checkout. Pre-authorization allowances still have to include the proxy, because the real browser loads the handoff before the phone is authorized.
+
+The console URL is the local address used to open UniFi from the home LAN. It is not the guest network gateway.
+
+Room dashboard links open in a new tab. Guests reach Home Assistant only through its local proxy hostname. A long-lived access token does not sign a guest into the dashboard page. Create the guest user in Home Assistant, leave Administrator off, and keep Kiosk Mode on `user_settings` for that display name. Disable that Home Assistant user to revoke the dashboard.
 
 The guest VLAN and the portal hostname are already decided. They stay in the gitignored site note. Hotspot Password and Voucher admission is not the landing path. The owner enters the console URL, site id, and API key in Admin Settings. Do not ask for the API key in chat, and do not copy it into git. Still ask only for these when they are missing from the gitignored site note:
 
