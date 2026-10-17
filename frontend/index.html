@@ -35,8 +35,8 @@
 
   <div class="container" id="browserHandoff" hidden>
     <h1>Open your browser</h1>
-    <p>Tap the button. Safari or Chrome opens this visit, and then this phone can use the internet. This window can close after that.</p>
-    <a id="openBrowserLink" class="browser-open-link" href="#" target="_blank" rel="noopener">Open in Safari or Chrome</a>
+    <p>Tap the button. Safari or Chrome opens this same visit, so you do not register again. This window can close after that.</p>
+    <a id="openBrowserLink" class="browser-open-link" href="#" rel="noopener">Open in Safari or Chrome</a>
     <button type="button" id="continueHereBtn" class="btn-secondary">Continue in this window</button>
     <p id="handoffError" class="guest-error" hidden></p>
   </div>
@@ -512,8 +512,10 @@
           localStorage.setItem('guestData', JSON.stringify(data.guest));
           sessionStorage.setItem('guestArrival', 'new');
           sessionStorage.setItem('showTutorial', '1');
-          if (data.browserUrl) {
+          if (data.browserUrl && isCaptiveBrowser()) {
             showBrowserHandoff(data.browserUrl);
+          } else if (data.browserUrl) {
+            await stayForInternet();
           } else {
             window.location.href = 'welcome.html';
           }
@@ -544,15 +546,37 @@
       }
     }
 
-    function externalBrowserHref(url) {
+    function isCaptiveBrowser() {
+      const ua = navigator.userAgent || '';
+      if (/CaptiveNetworkSupport/i.test(ua)) return true;
+      if (/; wv\)/.test(ua)) return true;
+      if (/Android \d+(?:\.\d+)?; K\)/i.test(ua)) return true;
+      if (/iPhone|iPad|iPod/.test(ua) && storedUnifiMac()) return true;
+      return false;
+    }
+
+    function androidBrowserIntent(url) {
+      const parsed = new URL(url);
+      const fallback = encodeURIComponent(url);
+      const scheme = parsed.protocol.replace(':', '');
+      return `intent://${parsed.host}${parsed.pathname}#Intent;scheme=${scheme};action=android.intent.action.VIEW;category=android.intent.category.BROWSABLE;S.browser_fallback_url=${fallback};end`;
+    }
+
+    async function stayForInternet() {
       try {
-        const parsed = new URL(url);
-        if (/Android/i.test(navigator.userAgent || '')) {
-          const fallback = encodeURIComponent(url);
-          return `intent://${parsed.host}${parsed.pathname}${parsed.search}#Intent;scheme=${parsed.protocol.replace(':', '')};package=com.android.chrome;S.browser_fallback_url=${fallback};end`;
-        }
-      } catch (err) {}
-      return url;
+        const res = await fetch('/guest/unifi-authorize', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Guest-Token': localStorage.getItem('guestToken') || ''
+          },
+          body: '{}'
+        });
+        if (res.ok) rememberInternetResult(await res.json());
+      } catch (err) {
+        sessionStorage.setItem('unifiInternetError', 'Internet access could not be turned on. Ask your host.');
+      }
+      window.location.href = 'welcome.html';
     }
 
     function rememberInternetResult(internet) {
@@ -574,7 +598,13 @@
       modal.setAttribute('aria-hidden', 'true');
       document.body.classList.remove('registration-modal-open');
       const link = document.getElementById('openBrowserLink');
-      link.href = externalBrowserHref(url);
+      if (/Android/i.test(navigator.userAgent || '')) {
+        link.removeAttribute('target');
+        link.href = androidBrowserIntent(url);
+      } else {
+        link.target = '_blank';
+        link.href = url;
+      }
       document.getElementById('browserHandoff').hidden = false;
     }
 
@@ -606,10 +636,16 @@
     const linkCodeParam = new URLSearchParams(window.location.search).get('linkCode');
     if (linkCodeParam) {
       const code = linkCodeParam.trim().toUpperCase();
+      document.getElementById('mainContainer').hidden = true;
+      document.getElementById('heroView').hidden = true;
       document.getElementById('sessionCode').value = code;
       const heroCode = document.getElementById('heroSessionCode');
       if (heroCode) heroCode.value = code;
-      linkDeviceWithCode(code);
+      linkDeviceWithCode(code).then(opened => {
+        if (!opened) {
+          document.getElementById('mainContainer').hidden = false;
+        }
+      });
     }
   </script>
 </body>
