@@ -2442,23 +2442,35 @@ test_unifi_browser_handoff() {
     response=$(curl -s -X POST "$BASE_URL/register" \
         -H "Content-Type: application/json" \
         -d '{"name":"UniFi Handoff Guest","room":"Room 1","stayDays":1,"clientMac":"1c:71:25:63:e4:24"}')
-    if [[ "$response" == *'"browserUrl"'* && "$response" == *"linkCode="* && "$response" != *"unifiClientMac"* && "$response" != *"1c:71:25:63:e4:24"* ]]; then
+    if [[ "$response" == *'"browserUrl"'* && "$response" == *"/guest/continue/"* && "$response" != *"unifiClientMac"* && "$response" != *"1c:71:25:63:e4:24"* ]]; then
         pass "Registration from UniFi returns a browser handoff URL without the client MAC"
     else
-        fail "Registration from UniFi returns a browser handoff URL without the client MAC" "browserUrl with linkCode and no MAC" "$response"
+        fail "Registration from UniFi returns a browser handoff URL without the client MAC" "browserUrl /guest/continue and no MAC" "$response"
         return
     fi
 
     local code
-    code=$(echo "$response" | sed -n 's/.*linkCode=\([A-Z0-9]*\).*/\1/p')
-    local linked
+    code=$(echo "$response" | sed -n 's|.*/guest/continue/\([A-Z0-9]*\).*|\1|p')
+    local page
+    page=$(curl -s "$BASE_URL/guest/continue/$code")
+    if [[ "$page" == *"Opening your visit"* && "$page" != *"registrationForm"* ]]; then
+        pass "Browser handoff page claims the visit instead of registering again"
+    else
+        fail "Browser handoff page claims the visit instead of registering again" "continue page without registration form" "$page"
+    fi
+    local linked again first_token second_token
     linked=$(curl -s -X POST "$BASE_URL/guest/link-device" \
         -H "Content-Type: application/json" \
         -d "{\"code\":\"$code\"}")
-    if [[ "$linked" == *'"token"'* && "$linked" == *'"skipped":true'* && "$linked" == *'not-configured'* ]]; then
-        pass "Browser handoff links the visit and skips UniFi until the console is configured"
+    again=$(curl -s -X POST "$BASE_URL/guest/link-device" \
+        -H "Content-Type: application/json" \
+        -d "{\"code\":\"$code\"}")
+    first_token=$(echo "$linked" | sed -n 's/.*"token":"\([^"]*\)".*/\1/p')
+    second_token=$(echo "$again" | sed -n 's/.*"token":"\([^"]*\)".*/\1/p')
+    if [[ "$linked" == *'"skipped":true'* && "$linked" == *'not-configured'* && -n "$first_token" && "$first_token" == "$second_token" ]]; then
+        pass "Browser handoff links the same visit more than once"
     else
-        fail "Browser handoff links the visit and skips UniFi until the console is configured" "token plus skipped not-configured" "$linked"
+        fail "Browser handoff links the same visit more than once" "same token and skipped not-configured" "$linked | $again"
     fi
 
     local plain

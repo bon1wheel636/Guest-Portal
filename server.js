@@ -292,6 +292,19 @@ function createDeviceLink(token, guest) {
   return linkCode;
 }
 
+function createBrowserHandoff(token, guest) {
+  const code = crypto.randomBytes(16).toString('hex').toUpperCase();
+  sessionCodes[code] = {
+    type: 'device-link',
+    reuse: true,
+    guestToken: token,
+    guestId: guest.id,
+    expires: Date.now() + getLinkCodeExpirationMs()
+  };
+  saveSessions();
+  return code;
+}
+
 async function authorizeStoredUnifiClient(guest) {
   if (!guest || !guest.unifiClientMac) return { skipped: true };
   if (!config.unifiConsoleUrl || !config.unifiApiKey) {
@@ -1792,6 +1805,15 @@ app.get(['/guest/s/:site', '/guest/s/:site/'], (req, res) => {
   res.redirect(302, unifiGuestLandingTarget(req.query));
 });
 
+// Opened from the captive browser's "Open in Safari or Chrome" button.
+// The page claims the existing visit. It does not show registration.
+app.get('/guest/continue/:code', (req, res) => {
+  if (!/^[A-Za-z0-9]{6,64}$/.test(req.params.code)) {
+    return res.status(404).send('Not found.');
+  }
+  res.sendFile(path.join(__dirname, 'frontend', 'continue.html'));
+});
+
 // ─── Multer Storage Config ──────────────────────────────────────────────────
 
 const storage = multer.diskStorage({
@@ -2065,8 +2087,8 @@ app.post('/register', (req, res) => {
     const stored = guestTokens[registration.token];
     stored.unifiClientMac = clientMac;
     saveGuestTokens();
-    const linkCode = createDeviceLink(registration.token, stored);
-    browserUrl = `${publicBaseUrl(req)}/?linkCode=${encodeURIComponent(linkCode)}`;
+    const linkCode = createBrowserHandoff(registration.token, stored);
+    browserUrl = `${publicBaseUrl(req)}/guest/continue/${linkCode}`;
   }
 
   res.json({
@@ -2157,14 +2179,19 @@ app.post('/guest/link-device', async (req, res) => {
   if (!Array.isArray(guest.devices)) {
     guest.devices = [];
   }
-  guest.devices.push({
-    addedAt: new Date().toISOString(),
-    userAgent: req.get('User-Agent') || 'Unknown'
-  });
-  saveGuestTokens();
+  const userAgent = req.get('User-Agent') || 'Unknown';
+  if (!guest.devices.some(device => device.userAgent === userAgent)) {
+    guest.devices.push({
+      addedAt: new Date().toISOString(),
+      userAgent
+    });
+    saveGuestTokens();
+  }
 
-  delete sessionCodes[code];
-  saveSessions();
+  if (!entry.reuse) {
+    delete sessionCodes[code];
+    saveSessions();
+  }
 
   let internet = { skipped: true };
   try {

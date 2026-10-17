@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Opening your visit</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <div class="container">
+    <h1>Opening your visit</h1>
+    <p id="continueStatus">Taking you to the same guest session.</p>
+  </div>
+  <script>
+    const match = window.location.pathname.match(/\/guest\/continue\/([A-Za-z0-9]+)/);
+    const code = match ? match[1].toUpperCase() : '';
+    const status = document.getElementById('continueStatus');
+
+    function rememberInternet(internet) {
+      if (!internet) return;
+      if (internet.ok) {
+        sessionStorage.setItem('unifiInternetOk', '1');
+        return;
+      }
+      if (internet.ok === false || internet.reason === 'not-configured') {
+        sessionStorage.setItem('unifiInternetError', internet.error || 'Internet access is not on yet. Ask your host.');
+      }
+    }
+
+    async function openVisit() {
+      if (!code) {
+        window.location.replace('/');
+        return;
+      }
+      try {
+        const res = await fetch('/guest/link-device', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ code })
+        });
+        if (!res.ok) {
+          status.textContent = 'This visit link expired. Go back and tap Open in Safari or Chrome again.';
+          return;
+        }
+        const data = await res.json();
+        localStorage.setItem('guestToken', data.token);
+        localStorage.setItem('guestData', JSON.stringify(data.guest));
+        sessionStorage.setItem('guestArrival', 'linked');
+        rememberInternet(data.internet);
+        window.location.replace('/welcome.html');
+      } catch (err) {
+        status.textContent = 'This visit could not be opened. Go back and tap the button again.';
+      }
+    }
+
+    openVisit();
+  </script>
+</body>
+</html>
