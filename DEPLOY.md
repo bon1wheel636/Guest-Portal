@@ -135,7 +135,7 @@ curl -i http://127.0.0.1:3000/guest/rooms
 
 Then open `/admin.html` and confirm **Guest Entry Health** reports ready. If the local checks pass but the FQDN fails, troubleshoot DNS or reverse proxy routing before changing the app.
 
-For UniFi guest WiFi deployments, use the UniFi hotspot password or voucher page as the admission gate and set the Landing Page Custom URL to the Guest Portal. See [UNIFI.md](UNIFI.md) for the Network 10.6 path. See [PROXY.md](PROXY.md) for Nginx Proxy Manager and HTTPS guidance.
+For UniFi guest WiFi, point the hotspot **External Portal Server** at the Guest Portal and allow the proxy in pre-authorization. Leave hotspot Password and Voucher success redirects off so the phone does not close the temporary browser before registration. See [UNIFI.md](UNIFI.md) for the Network 10.6 path. See [PROXY.md](PROXY.md) for Nginx Proxy Manager and HTTPS guidance.
 
 ---
 

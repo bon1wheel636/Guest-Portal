@@ -146,7 +146,7 @@ Planned order after PR #40. Each sprint should get its own handoff doc (`docs/SP
 | 1 | Guest types hardening and test coverage | [docs/SPRINT_GUEST_TYPES_HARDENING.md](docs/SPRINT_GUEST_TYPES_HARDENING.md) | Complete |
 | 2 | Events UX | [docs/SPRINT_EVENTS_UX.md](docs/SPRINT_EVENTS_UX.md) | Complete |
 | 3 | Admin quality-of-life | [docs/SPRINT_ADMIN_QOL.md](docs/SPRINT_ADMIN_QOL.md) | Planned |
-| 4 | UniFi external portal | _(planned — create `docs/SPRINT_UNIFI_PORTAL.md`)_ | Planned (first deployment decided; API credentials still unknown) |
+| 4 | UniFi external portal | _(planned — create `docs/SPRINT_UNIFI_PORTAL.md`)_ | Landing redirect is in place so the captive browser stays open; API authorize still unknown |
 
 ---
 
@@ -220,7 +220,7 @@ Admin panel polish without guest permission or upload path changes. **Responsive
 
 ## Planned sprint: UniFi external portal integration
 
-**Depends on:** the gitignored site note [docs/LOCAL_SITE.md](docs/LOCAL_SITE.md), summarized for agents in [AGENTS.md](AGENTS.md). Keep the current deployment path documented in [UNIFI.md](UNIFI.md): Network 10.6 hotspot password or voucher admission, then the Landing Page **Custom URL** to the internal portal.
+**Depends on:** the gitignored site note [docs/LOCAL_SITE.md](docs/LOCAL_SITE.md), summarized for agents in [AGENTS.md](AGENTS.md). The landing path in [UNIFI.md](UNIFI.md) is the Network 10.6 **External Portal Server** redirect. Guest Portal serves `/guest/s/<site>/` as registration while the phone is unauthorized, so the temporary browser stays open. Authorizing the client for the rest of the internet is still this sprint.
 
 > **Note for agents and implementers:** Read [docs/LOCAL_SITE.md](docs/LOCAL_SITE.md) and [UNIFI.md](UNIFI.md) before asking the owner anything. Versions, the portal hostname, the VLAN map, and the Home Assistant decisions are already recorded there. Do not guess the remaining IPs, the local Home Assistant hostname, the guest display name, the console URL, the API site id, or the API key. Do not copy that note into git.
 
@@ -231,8 +231,10 @@ Still unknown (owner, not in git):
 - Nginx Proxy Manager, Home Assistant, and portal addresses on the home LAN
 - Local Home Assistant hostname and the guest user's display name
 
-- [ ] **External portal flow**
-  - Receive UniFi guest parameters, authorize client via Network Application API, redirect to registration.
+- [x] **External portal landing**
+  - `GET /guest/s/<site>/` redirects to registration and the page stores the UniFi `id` (client MAC), `ap`, `t`, and `ssid` in `sessionStorage` for the authorize step.
+- [ ] **Authorize the client**
+  - After registration, call the Network Integration API so the phone can use the rest of the internet. Keep the guest unauthorized until that call, or the temporary browser closes first.
 - [ ] **Deployment and test documentation**
   - Update [UNIFI.md](UNIFI.md), [DEPLOY.md](DEPLOY.md), and integration tests where feasible.
 - [ ] **Handoff doc and documentation updates**

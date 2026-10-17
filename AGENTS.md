@@ -14,7 +14,7 @@ See [README.md](README.md) for product features, deployment, and local developme
 
 Known decisions, also written up in [UNIFI.md](UNIFI.md) for Network 10.6 and Home Assistant Core 2026.10:
 
-- First deployment is UniFi password or voucher admission, then the hotspot **Custom URL** to the internal Guest Portal. The external Integration API is a later phase.
+- The hotspot landing path is **External Portal Server**, with the proxy in **Pre-Authorization Allowances**, so the phone stays unauthorized and the temporary captive browser stays open on registration. Hotspot Password or Voucher success **Custom URL** authorizes first and the phone closes that browser. A Wi-Fi passphrase on the SSID can stay. The Integration API authorize step is still later; it is what opens the rest of the internet.
 - The portal, Home Assistant, and Nginx Proxy Manager are on the home LAN. Guests reach them only through the proxy on TCP 443 and 80. Home Assistant port 8123 stays closed to the guest VLAN.
 - Guest dashboard links are a local proxy hostname, not Nabu Casa. Create that DNS record when the hostname is chosen. One hostname covers every room path.
 - Do not mark household dashboards admin-only. Kiosk Mode uses `user_settings` for the guest display name only. Do not use `non_admin_settings`.

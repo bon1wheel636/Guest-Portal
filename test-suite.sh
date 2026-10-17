@@ -2391,6 +2391,32 @@ test_index_html() {
     else
         fail "Index page loads" "HTML content" "Empty or error"
     fi
+    if [[ "$response" == *"unifiGuest"* ]]; then
+        pass "Index page keeps the UniFi guest redirect for later authorization"
+    else
+        fail "Index page keeps the UniFi guest redirect for later authorization" "unifiGuest" "Missing handoff script"
+    fi
+}
+
+test_unifi_guest_redirect() {
+    local headers
+    headers=$(curl -s -D - -o /dev/null "$BASE_URL/guest/s/default/?ap=94:2a:6f:d0:30:57&id=1c:71:25:63:e4:24&t=1742398732&url=http%3A%2F%2Fexample.com%2F&ssid=guest")
+    local status location
+    status=$(echo "$headers" | head -n 1)
+    location=$(echo "$headers" | grep -i '^Location:' | tr -d '\r')
+    if [[ "$status" == *"302"* ]] && [[ "$location" == *"id=1c%3A71%3A25%3A63%3Ae4%3A24"* || "$location" == *"id=1c:71:25:63:e4:24"* ]] && [[ "$location" != *"example.com"* ]]; then
+        pass "UniFi /guest/s redirect lands on registration"
+    else
+        fail "UniFi /guest/s redirect lands on registration" "302 to / with client id and without original url" "$status $location"
+    fi
+
+    local bad
+    bad=$(curl -s -o /dev/null -w '%{http_code}' "$BASE_URL/guest/s/..%2Fetc/")
+    if [[ "$bad" == "404" ]]; then
+        pass "UniFi /guest/s rejects a site path outside the slug"
+    else
+        fail "UniFi /guest/s rejects a site path outside the slug" "404" "$bad"
+    fi
 }
 
 test_admin_html() {
@@ -2811,6 +2837,7 @@ test_serialized_json_saver_write_time_snapshot
 test_index_hero_markup
 
 test_index_html
+test_unifi_guest_redirect
 test_admin_html
 test_welcome_html
 test_photo_html
