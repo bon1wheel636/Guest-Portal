@@ -254,6 +254,16 @@ su -s /bin/bash -c 'cd /opt/guest-portal && git pull --ff-only && npm install' g
 systemctl restart guest-portal
 ```
 
+If `updateguest` stops with `Your local changes to the following files would be overwritten by merge: package-lock.json`, the deployed checkout has a lockfile rewritten by `npm install`. That file is generated. Discard it and pull (guest photos under `uploads/` are not touched):
+
+```bash
+su -s /bin/bash -c 'cd /opt/guest-portal && git checkout -- package-lock.json && git pull --ff-only && npm install && git checkout -- package-lock.json' guestportal
+install -m 755 /opt/guest-portal/scripts/updateguest.sh /usr/local/bin/updateguest
+systemctl restart guest-portal
+```
+
+Current `updateguest` does this itself. The commands above are for a container still running the older script, which retried the pull without restoring `package-lock.json`.
+
 Use `setup.sh --update` when you also need to rewrite the systemd service, fix `/etc/guest-portal` ownership, or change the NAS upload path with prompts. Use `updateguest` for routine code updates from the LXC console.
 
 ---

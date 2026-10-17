@@ -120,13 +120,15 @@ refresh_updateguest_command() {
 }
 
 discard_installer_script_changes() {
-  local script
-  local installer_scripts=(scripts/updateguest.sh scripts/setup-prompts.sh scripts/setup-container.sh)
+  local path
+  # package-lock.json is included because npm install rewrites it in the
+  # deployed checkout and the next fast-forward then refuses to merge.
+  local checkout_paths=(scripts/updateguest.sh scripts/setup-prompts.sh scripts/setup-container.sh package-lock.json)
   if [[ ! -d "${var_app_dir}/.git" ]]; then
     return 0
   fi
-  for script in "${installer_scripts[@]}"; do
-    run_as_app_user "cd '${var_app_dir}' && if git ls-files --error-unmatch '${script}' >/dev/null 2>&1; then git checkout -- '${script}'; elif [[ -f '${script}' ]]; then rm -f '${script}'; fi" || true
+  for path in "${checkout_paths[@]}"; do
+    run_as_app_user "cd '${var_app_dir}' && if git ls-files --error-unmatch '${path}' >/dev/null 2>&1; then git checkout -- '${path}'; elif [[ -e '${path}' ]]; then rm -rf '${path}'; fi" || true
   done
 }
 
@@ -141,6 +143,9 @@ refresh_repository_checkout() {
     ensure_git_safe_directory "${var_app_dir}"
     discard_installer_script_changes
     if ! run_as_app_user "cd '${var_app_dir}' && git pull --ff-only"; then
+      echo -e "${INFO}${YW}Local checkout changes blocked git pull. Restoring tracked files and retrying.${CL}"
+      run_as_app_user "cd '${var_app_dir}' && git checkout -- ." || true
+      run_as_app_user "cd '${var_app_dir}' && git clean -fd -e uploads" || true
       discard_installer_script_changes
       if ! run_as_app_user "cd '${var_app_dir}' && git pull --ff-only"; then
         msg_error "Could not git pull in ${var_app_dir}; downloading required helper scripts instead."
@@ -158,6 +163,7 @@ install_node_dependencies() {
   msg_info "Installing Node.js dependencies"
   ensure_git_safe_directory "${var_app_dir}"
   run_as_app_user "cd '${var_app_dir}' && npm install"
+  run_as_app_user "cd '${var_app_dir}' && git checkout -- package-lock.json" || true
   mkdir -p "${var_app_dir}/uploads/backgrounds"
   chown -R "${var_app_user}:${var_app_group}" "${var_app_dir}" /etc/guest-portal
   bootstrap_required_scripts
@@ -232,7 +238,7 @@ if [[ "$UPDATE_MODE" == "true" ]]; then
     msg_info "Updating application code"
     chown -R "${var_app_user}:${var_app_group}" "${var_app_dir}" /etc/guest-portal
     ensure_git_safe_directory "${var_app_dir}"
-    run_as_app_user "cd '${var_app_dir}' && git pull --ff-only && npm install"
+    run_as_app_user "cd '${var_app_dir}' && git checkout -- . && git pull --ff-only && npm install && { git checkout -- package-lock.json || true; }"
     mkdir -p "${var_app_dir}/uploads/backgrounds"
     chown -R "${var_app_user}:${var_app_group}" "${var_app_dir}" /etc/guest-portal
     install_updateguest_command
