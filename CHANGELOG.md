@@ -7,6 +7,7 @@ All notable changes to this project will be documented here.
 ## [Unreleased]
 
 ### Fixed
+- Bump `express` to 4.22.3, `multer` to 2.4.0, `body-parser` to 1.20.8, `qs` to 6.16.1, `proxy-addr` to 2.0.8, and `brace-expansion` to 2.1.7 via `npm audit fix`. Clears the critical `proxy-addr` IPv4-mapped IPv6 spoofing advisory, the multer upload denial-of-service issues, the `qs` array-limit and `isBuffer` issues, and the remaining `brace-expansion` denial-of-service advisories. `npm audit` is clean after the lockfile update.
 - `updateguest` fast-forwards when `npm install` has rewritten `package-lock.json` in the deployed checkout. The retry used to restore only installer scripts, so the pull aborted again on the lockfile and the container stayed on the old commit. Known lockfile and installer drift is discarded before pull; any other tracked files that still block the merge are restored once, while `uploads/` is left in place. `package-lock.json` is restored again after `npm install` so the next update starts from a clean tree. Container setup and `setup.sh --update` do the same restore.
 - Bump transitive `body-parser` to 1.20.6 and `brace-expansion` to 2.1.4 via `npm audit fix` (clears the reported low DoS in Express JSON parsing and high DoS in archiver's glob matching).
 - Multi-file guest uploads that share an original filename (or land in the same millisecond) no longer collide in `.incoming` staging. Staging names now include a random hex segment, and finalize errors only clean up files still in staging so already-stored photos are not deleted.
