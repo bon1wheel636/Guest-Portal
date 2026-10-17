@@ -48,7 +48,7 @@ Recommended flow:
 1. Public DNS provider proves domain ownership for certificates with DNS challenge.
 2. Internal DNS resolves `guestportal.example.com` to the NPM LXC address.
 3. NPM forwards to the Guest Portal LXC on port `3000`.
-4. UniFi guest VLAN firewall allows guests to reach only DNS/DHCP, NPM, and the limited Home Assistant endpoint.
+4. UniFi guest VLAN firewall allows guests to reach DNS and DHCP, plus Nginx Proxy Manager on TCP 443 and 80. Home Assistant is published on that same proxy, so guests do not get a separate path to port 8123. See [UNIFI.md](UNIFI.md).
 
 ## Safety checklist
 

@@ -104,7 +104,7 @@ No new integration tests required unless theme is stored in `config.json` (not p
 **Defer (backlog / later sprints):**
 - Server-persisted admin theme in `config.json` (shared across browsers).
 - Dark mode for guest pages.
-- UniFi external portal ([UNIFI.md](../UNIFI.md) — ask owner for controller details first).
+- UniFi external portal ([UNIFI.md](../UNIFI.md) — read the gitignored site note first; do not re-ask decisions already recorded there).
 
 **Optional stretch (this sprint only):**
 - Respect `prefers-color-scheme: dark` as initial default when `localStorage` is unset.
