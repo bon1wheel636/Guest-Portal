@@ -33,6 +33,14 @@
     </div>
   </div>
 
+  <div class="container" id="browserHandoff" hidden>
+    <h1>Open your browser</h1>
+    <p>Tap the button. Safari or Chrome opens this visit, and then this phone can use the internet. This window can close after that.</p>
+    <a id="openBrowserLink" class="browser-open-link" href="#" target="_blank" rel="noopener">Open in Safari or Chrome</a>
+    <button type="button" id="continueHereBtn" class="btn-secondary">Continue in this window</button>
+    <p id="handoffError" class="guest-error" hidden></p>
+  </div>
+
   <div class="container" id="mainContainer">
     <h1 id="mainHeading">Welcome to the Guest Portal</h1>
     <div id="inlineRegistrationHost">
@@ -154,16 +162,6 @@
 
     fetch('/guest/background').then(res => res.json()).then(data => {
       applyBackground(data);
-      const linkCodeParam = new URLSearchParams(window.location.search).get('linkCode');
-      if (linkCodeParam) {
-        const code = linkCodeParam.trim().toUpperCase();
-        document.getElementById('sessionCode').value = code;
-        document.getElementById('heroSessionCode').value = code;
-        if (hasBackground) {
-          showRegistrationForm({ focus: false });
-        }
-        document.getElementById('sessionCode').focus();
-      }
     }).catch(() => {});
 
     function openRegistrationModal(options = {}) {
@@ -429,6 +427,7 @@
           localStorage.setItem('guestToken', data.token);
           localStorage.setItem('guestData', JSON.stringify(data.guest));
           sessionStorage.setItem('guestArrival', 'linked');
+          rememberInternetResult(data.internet);
           window.location.href = 'welcome.html';
           return true;
         }
@@ -497,6 +496,9 @@
         payload.eventName = eventName;
       }
 
+      const clientMac = storedUnifiMac();
+      if (clientMac) payload.clientMac = clientMac;
+
       try {
         const res = await fetch('/register', {
           method: 'POST',
@@ -510,7 +512,11 @@
           localStorage.setItem('guestData', JSON.stringify(data.guest));
           sessionStorage.setItem('guestArrival', 'new');
           sessionStorage.setItem('showTutorial', '1');
-          window.location.href = 'welcome.html';
+          if (data.browserUrl) {
+            showBrowserHandoff(data.browserUrl);
+          } else {
+            window.location.href = 'welcome.html';
+          }
         } else {
           alert('Registration failed: ' + (await res.text()));
         }
@@ -528,6 +534,83 @@
       e.preventDefault();
       await linkDeviceWithCode(document.getElementById('heroSessionCode').value.trim().toUpperCase());
     });
+
+    function storedUnifiMac() {
+      try {
+        const saved = JSON.parse(sessionStorage.getItem('unifiGuest') || 'null');
+        return saved && typeof saved.id === 'string' ? saved.id : '';
+      } catch (err) {
+        return '';
+      }
+    }
+
+    function externalBrowserHref(url) {
+      try {
+        const parsed = new URL(url);
+        if (/Android/i.test(navigator.userAgent || '')) {
+          const fallback = encodeURIComponent(url);
+          return `intent://${parsed.host}${parsed.pathname}${parsed.search}#Intent;scheme=${parsed.protocol.replace(':', '')};package=com.android.chrome;S.browser_fallback_url=${fallback};end`;
+        }
+      } catch (err) {}
+      return url;
+    }
+
+    function rememberInternetResult(internet) {
+      if (!internet) return;
+      if (internet.ok) {
+        sessionStorage.setItem('unifiInternetOk', '1');
+        return;
+      }
+      if (internet.ok === false || internet.reason === 'not-configured') {
+        sessionStorage.setItem('unifiInternetError', internet.error || 'Internet access is not on yet. Ask your host.');
+      }
+    }
+
+    function showBrowserHandoff(url) {
+      document.getElementById('heroView').hidden = true;
+      document.getElementById('mainContainer').hidden = true;
+      const modal = document.getElementById('registrationModal');
+      modal.hidden = true;
+      modal.setAttribute('aria-hidden', 'true');
+      document.body.classList.remove('registration-modal-open');
+      const link = document.getElementById('openBrowserLink');
+      link.href = externalBrowserHref(url);
+      document.getElementById('browserHandoff').hidden = false;
+    }
+
+    document.getElementById('continueHereBtn').addEventListener('click', async () => {
+      const error = document.getElementById('handoffError');
+      error.hidden = true;
+      try {
+        const res = await fetch('/guest/unifi-authorize', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Guest-Token': localStorage.getItem('guestToken') || ''
+          },
+          body: '{}'
+        });
+        if (!res.ok) {
+          error.textContent = await res.text();
+          error.hidden = false;
+          return;
+        }
+        rememberInternetResult(await res.json());
+        window.location.href = 'welcome.html';
+      } catch (err) {
+        error.textContent = 'Internet access could not be turned on. Ask your host.';
+        error.hidden = false;
+      }
+    });
+
+    const linkCodeParam = new URLSearchParams(window.location.search).get('linkCode');
+    if (linkCodeParam) {
+      const code = linkCodeParam.trim().toUpperCase();
+      document.getElementById('sessionCode').value = code;
+      const heroCode = document.getElementById('heroSessionCode');
+      if (heroCode) heroCode.value = code;
+      linkDeviceWithCode(code);
+    }
   </script>
 </body>
 </html>

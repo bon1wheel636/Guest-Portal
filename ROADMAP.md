@@ -226,15 +226,14 @@ Admin panel polish without guest permission or upload path changes. **Responsive
 
 Still unknown (owner, not in git):
 
-- Console URL and the site id from `GET /v1/sites`
-- API key created on the console under **Settings > Control Plane > Integrations**
+- Console URL, site id, and API key are entered in Admin Settings. Do not ask for the API key in chat.
 - Nginx Proxy Manager, Home Assistant, and portal addresses on the home LAN
 - Local Home Assistant hostname and the guest user's display name
 
 - [x] **External portal landing**
   - `GET /guest/s/<site>/` redirects to registration and the page stores the UniFi `id` (client MAC), `ap`, `t`, and `ssid` in `sessionStorage` for the authorize step.
-- [ ] **Authorize the client**
-  - After registration, call the Network Integration API so the phone can use the rest of the internet. Keep the guest unauthorized until that call, or the temporary browser closes first.
+- [x] **Authorize the client and open the real browser**
+  - Registration stores the UniFi client MAC. **Open in Safari or Chrome** claims the visit in the real browser and calls `AUTHORIZE_GUEST_ACCESS` until checkout. The console URL and API key are saved from Admin Settings.
 - [ ] **Deployment and test documentation**
   - Update [UNIFI.md](UNIFI.md), [DEPLOY.md](DEPLOY.md), and integration tests where feasible.
 - [ ] **Handoff doc and documentation updates**

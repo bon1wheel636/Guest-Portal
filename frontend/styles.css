@@ -32,6 +32,7 @@ label {
 }
 
 input[type="text"],
+input[type="password"],
 input[type="file"],
 select {
   padding: 0.5rem;
@@ -62,6 +63,23 @@ a {
 
 a:hover {
   text-decoration: underline;
+}
+
+.browser-open-link {
+  display: block;
+  margin-top: 1.5rem;
+  padding: 0.9rem;
+  background-color: #0078d4;
+  color: #fff;
+  text-align: center;
+  border-radius: 6px;
+  font-size: 1.05rem;
+}
+
+.browser-open-link:hover {
+  background-color: #005fa3;
+  color: #fff;
+  text-decoration: none;
 }
 
 /* Admin panel */
@@ -624,6 +642,10 @@ a:hover {
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+.hero-view[hidden] {
+  display: none !important;
 }
 
 .hero-overlay {
