@@ -146,7 +146,7 @@ Planned order after PR #40. Each sprint should get its own handoff doc (`docs/SP
 | 1 | Guest types hardening and test coverage | [docs/SPRINT_GUEST_TYPES_HARDENING.md](docs/SPRINT_GUEST_TYPES_HARDENING.md) | Complete |
 | 2 | Events UX | [docs/SPRINT_EVENTS_UX.md](docs/SPRINT_EVENTS_UX.md) | Complete |
 | 3 | Admin quality-of-life | [docs/SPRINT_ADMIN_QOL.md](docs/SPRINT_ADMIN_QOL.md) | Planned |
-| 4 | UniFi external portal | _(planned — create `docs/SPRINT_UNIFI_PORTAL.md`)_ | Planned (needs controller details) |
+| 4 | UniFi external portal | _(planned — create `docs/SPRINT_UNIFI_PORTAL.md`)_ | Planned (first deployment decided; API credentials still unknown) |
 
 ---
 
@@ -220,17 +220,16 @@ Admin panel polish without guest permission or upload path changes. **Responsive
 
 ## Planned sprint: UniFi external portal integration
 
-**Depends on:** controller details from the project owner (see note below). Keep the current deployment path documented in [UNIFI.md](UNIFI.md): UniFi hotspot/voucher admission + post-auth redirect to `/`.
+**Depends on:** the gitignored site note [docs/LOCAL_SITE.md](docs/LOCAL_SITE.md), summarized for agents in [AGENTS.md](AGENTS.md). Keep the current deployment path documented in [UNIFI.md](UNIFI.md): Network 10.6 hotspot password or voucher admission, then the Landing Page **Custom URL** to the internal portal.
 
-> **Note for agents and implementers:** Before starting this sprint, **ask the project owner for the UniFi information** listed in [UNIFI.md](UNIFI.md) § Future external portal integration. The owner has this information available; do not guess controller URLs, site IDs, or API credentials. Store secrets only in local config outside git.
+> **Note for agents and implementers:** Read [docs/LOCAL_SITE.md](docs/LOCAL_SITE.md) and [UNIFI.md](UNIFI.md) before asking the owner anything. Versions, the portal hostname, the VLAN map, and the Home Assistant decisions are already recorded there. Do not guess the remaining IPs, the local Home Assistant hostname, the guest display name, the console URL, the API site id, or the API key. Do not copy that note into git.
 
-Gather (from owner, not in repo):
+Still unknown (owner, not in git):
 
-- UniFi Network Application URL and version
-- Site ID (often `default`)
-- Auth method (local admin API account, API key, or version-specific integration path)
-- Guest WiFi VLAN/subnet and portal FQDN/TLS plan
-- Authorization model (voucher, room code, admin-approved, etc.)
+- Console URL and the site id from `GET /v1/sites`
+- API key created on the console under **Settings > Control Plane > Integrations**
+- Nginx Proxy Manager, Home Assistant, and portal addresses on the home LAN
+- Local Home Assistant hostname and the guest user's display name
 
 - [ ] **External portal flow**
   - Receive UniFi guest parameters, authorize client via Network Application API, redirect to registration.

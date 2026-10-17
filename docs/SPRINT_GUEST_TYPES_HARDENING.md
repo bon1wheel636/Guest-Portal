@@ -119,7 +119,7 @@ Document chosen rule in README or sprint doc; implement if low effort.
 **Defer (see ROADMAP sprint queue):**
 - **Events UX sprint** — admin Events tab (list, create, rename, merge, delete), re-tag upload to different event.
 - **Admin QoL sprint** — dark mode.
-- **UniFi external portal sprint** — Network Application API integration (ask project owner for details in [UNIFI.md](../UNIFI.md)).
+- **UniFi external portal sprint** — Network Integration API, after the hotspot Custom URL deployment. Read [UNIFI.md](../UNIFI.md) and the gitignored site note before asking the owner anything.
 - **Backlog** — event calendar integration.
 
 **Optional stretch (this sprint only):**

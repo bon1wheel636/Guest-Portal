@@ -8,7 +8,18 @@ See [README.md](README.md) for product features, deployment, and local developme
 
 **Admin quality-of-life (planned):** dark mode toggle for `admin.html` — read [docs/SPRINT_ADMIN_QOL.md](docs/SPRINT_ADMIN_QOL.md) at the start of a new session.
 
-**Sprint queue (see [ROADMAP.md](ROADMAP.md)):** ~~hardening~~ → ~~Events UX~~ → [Admin QoL](docs/SPRINT_ADMIN_QOL.md) → UniFi external portal. Before starting the UniFi sprint, **ask the project owner** for the controller details listed in [UNIFI.md](UNIFI.md); the owner has this information available.
+**Sprint queue (see [ROADMAP.md](ROADMAP.md)):** ~~hardening~~ → ~~Events UX~~ → [Admin QoL](docs/SPRINT_ADMIN_QOL.md) → UniFi external portal.
+
+**Live UniFi and Home Assistant site (read this before the UniFi sprint):** [docs/LOCAL_SITE.md](docs/LOCAL_SITE.md). That file is gitignored. It has the UDM Pro and Home Assistant OS versions, the internal portal URL, the VLAN map, and the decisions already made with the owner.
+
+Known decisions, also written up in [UNIFI.md](UNIFI.md) for Network 10.6 and Home Assistant Core 2026.10:
+
+- First deployment is UniFi password or voucher admission, then the hotspot **Custom URL** to the internal Guest Portal. The external Integration API is a later phase.
+- The portal, Home Assistant, and Nginx Proxy Manager are on the home LAN. Guests reach them only through the proxy on TCP 443 and 80. Home Assistant port 8123 stays closed to the guest VLAN.
+- Guest dashboard links are a local proxy hostname, not Nabu Casa. Create that DNS record when the hostname is chosen. One hostname covers every room path.
+- Do not mark household dashboards admin-only. Kiosk Mode uses `user_settings` for the guest display name only. Do not use `non_admin_settings`.
+
+Still ask the owner only for items listed as unknown in the local site note: proxy and host IPs, the local Home Assistant hostname, the guest display name, the console URL, the Integration API site id, and the API key. Do not guess them. Do not copy the local site note into git.
 
 Previous sprint (completed): [docs/SPRINT_EVENTS_UX.md](docs/SPRINT_EVENTS_UX.md) — admin Events tab, registration event picker, gallery re-tag, admin merge UI.
 

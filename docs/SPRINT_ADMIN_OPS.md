@@ -69,7 +69,7 @@ Improve day-to-day host operations after the guest UX sprint: make the admin pan
 5. **Device-link QR** — QR display for link codes; maintain text fallback.
 6. **Docs + release notes** — README, DEPLOY, PROXY if needed, CHANGELOG, ROADMAP checklist updates.
 
-**Defer:** UniFi external portal integration until controller version, auth method, site ID, and authorization model are known.
+**Defer:** UniFi external portal integration. The first deployment is hotspot password or voucher admission. Versions and remaining questions are in [UNIFI.md](../UNIFI.md) and the gitignored site note.
 
 **Optional/defer:** Dark mode toggle unless visual polish becomes higher priority than host workflow improvements.
 

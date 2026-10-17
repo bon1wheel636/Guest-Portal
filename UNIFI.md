@@ -1,32 +1,59 @@
 # UniFi Guest WiFi Deployment Guide
 
-This app should not be the only security boundary for guests. Use UniFi and your firewall to isolate the guest VLAN, then redirect authorized guests to the portal.
+This app should not be the only security boundary for guests. Use UniFi to admit guests, then send the browser to the portal. Validated against UniFi OS 5.1 with Network 10.6 on a UDM Pro, and Home Assistant OS with Core 2026.10.
+
+Live hostnames, VLAN IDs, and subnets stay in the gitignored site note from [AGENTS.md](AGENTS.md). Do not commit them.
 
 ## Recommended first deployment
 
-1. Create a UniFi guest WiFi network on its own VLAN.
-2. Apply firewall rules that block guest access to home LAN devices by default.
-3. Allow guest clients to reach only:
-   - DNS and DHCP
-   - The Guest Portal reverse proxy
-   - The specific Home Assistant dashboard host and port you expose for guests
-4. In UniFi Hotspot Manager, enable the guest portal method you prefer, such as vouchers or a shared password.
-5. Set the post-authorization redirect URL to:
-   - `https://guestportal.example.com/`
-6. In Home Assistant, create a dedicated guest user and dashboard with only the entities guests need.
-7. In Guest Portal admin, configure each room with that limited Home Assistant dashboard URL.
+UniFi hosts the captive portal (password, vouchers, or both). After authorization, UniFi opens the Guest Portal URL. Guest Portal then creates the room session and the upload token.
 
-With this model, UniFi decides who may join the guest network. Guest Portal then creates the room session, stores the guest token in the browser, and requires that token for uploads.
+1. In **Settings > Networks**, create the guest VLAN and turn on **Network Isolation**. That blocks the guest network from every other VLAN, including the home LAN where the portal, Nginx Proxy Manager, and Home Assistant live.
+2. In **Settings > WiFi**, create the SSID, assign that VLAN, turn on **Hotspot Portal > Captive Portal**, and turn on **Client Device Isolation**. On the switch, turn on **Device Isolation (ACL)** for that network.
+3. In **Settings > Security > Firewall**, add one exception. Network 10 uses zone-based firewalls. Allow the guest network to reach DNS and DHCP on its gateway, and TCP 443 plus TCP 80 on the Nginx Proxy Manager address. Leave the portal LXC, Home Assistant port 8123, and the rest of the home LAN closed to guests.
+4. On **Clients > Hotspot > Landing Page**, enable **Password**, **Vouchers**, or both. Set the success **Custom URL** to the internal Guest Portal address (`https://guestportal.example.com/`). Leave **HTTPS Redirection Support** off so phones do not get certificate warnings from the UDM intercepting TLS.
+5. On that same Landing Page, check **Post-Authorization Restrictions**. A private-range block drops traffic to the home LAN even when the firewall allows the proxy. Exempt the Nginx Proxy Manager address.
+6. Add a Host (A) record so guests resolve the portal hostname to the Nginx Proxy Manager address. On Network 10.6 this is **Settings > Policy Table > Create New Policy > DNS**. Guest DHCP already uses the UDM as DNS. Issue the certificate in Nginx Proxy Manager with a DNS challenge. A public A record is not required for an internal name.
+7. Publish Home Assistant through the same proxy under one local hostname, then set each room's dashboard URL to a path on that host. See the Home Assistant section below.
+8. In Guest Portal admin, store that room dashboard URL. The Welcome hub opens it in the guest's browser. The guest still signs in to Home Assistant. The portal does not sign them in.
 
-Use [PROXY.md](PROXY.md) for HTTPS, split DNS, and Nginx Proxy Manager guidance. Use [BACKUP.md](BACKUP.md) for NAS backup and permission checks.
+Use [PROXY.md](PROXY.md) for the Nginx Proxy Manager host, forwarded headers, and upload size. Use [BACKUP.md](BACKUP.md) for NAS backup and permission checks.
 
-## Home Assistant isolation checklist
+Home Assistant dashboard DNS waits until that one hostname exists. One record covers every room. Paths such as `/guest-room/home` are not separate DNS names.
 
-- Use a dedicated Home Assistant guest user.
-- Hide admin, settings, automations, logs, history, and private dashboards.
-- Expose only guest-safe entities such as room lights, climate, media, or locks you explicitly trust guests to control.
-- Prefer HTTPS for the Home Assistant URL.
-- Do not rely on the Guest Portal link as the access control layer; Home Assistant permissions must enforce the boundary.
+## Home Assistant
+
+Guest dashboard links stay on the local hostname. A Nabu Casa remote URL is a public address, so it is not the room dashboard URL. Nabu Casa cloud backups can stay enabled. Turn remote control off when the instance itself should stay off the internet.
+
+The proxy target is Home Assistant on port 8123. Trust the proxy in `configuration.yaml`, using the proxy's home-LAN address:
+
+```yaml
+http:
+  use_x_forwarded_for: true
+  trusted_proxies:
+    - 192.168.0.10
+```
+
+Create the guest login under **Settings > People > Users**. Leave **Administrator** off, and do not attach the login to a Person. A non-administrator cannot open Settings.
+
+Household dashboards stay available to the family. Do not mark them admin-only when other non-administrator accounts need them.
+
+Install the HACS Kiosk Mode integration and scope it to the guest display name (the name shown in Home Assistant, not the login username):
+
+```yaml
+kiosk_mode:
+  user_settings:
+    - users:
+        - "Guest display name"
+      kiosk: true
+      ignore_mobile_settings: true
+```
+
+`non_admin_settings` would hide the sidebar for every non-administrator, including the household. Do not use it for this.
+
+In the guest user's profile, set the default dashboard to the guest dashboard. In Guest Portal, set the room URL to that dashboard's path. Kiosk mode hides the header and sidebar for that login, so the guest sees that dashboard and no menu of the others.
+
+Kiosk mode hides navigation. A guest who types another Home Assistant path can still open it. Stock Home Assistant Core 2026.10 also leaves History, Activity, Energy, and Map reachable by address, and a non-administrator can control entities that are not on the guest dashboard. Keep locks and cameras off the guest dashboard.
 
 ## NAS upload checklist
 
@@ -38,15 +65,16 @@ Use [PROXY.md](PROXY.md) for HTTPS, split DNS, and Nginx Proxy Manager guidance.
 
 ## Future external portal integration
 
-A true UniFi external portal integration would let this app receive UniFi guest parameters, call the UniFi Network Application API to authorize the client, and then redirect to registration.
+An external portal would receive UniFi's redirect, call the Network Integration API to authorize the client, and then open registration. The first deployment above does not need that. UniFi authorizes the client before the browser reaches Guest Portal.
 
-Before implementing that, gather:
+On UniFi OS 5.1 and Network 10.6 the Integration API is the supported path. Create the key on the console under **Settings > Control Plane > Integrations**. A key created at unifi.ui.com is a cloud key and is rejected by the gateway's local API. Read the site id from `GET /v1/sites`. A UDM returns one site. The legacy redirect path still uses `/guest/s/default/`. The Integration API id can differ from that slug.
 
-- UniFi Network Application URL
-- Site ID, often `default`
-- Preferred auth method: local admin API account, API key, or another supported integration path for your controller version
-- Guest WiFi VLAN/subnet
-- Portal FQDN and TLS certificate plan
-- Whether authorization should be voucher-based, room-code-based, or admin-approved
+The external portal redirect looks like `/guest/s/<site>/` with query parameters `ap`, `id` (client MAC), `t`, `url`, and `ssid`. Authorization is `POST /v1/sites/{siteId}/clients/{clientId}/actions` with `action` set to `AUTHORIZE_GUEST_ACCESS`. Pre-authorization allowances apply to this mode, because guests must reach the external portal before UniFi authorizes them.
 
-The current app is ready for the safer first deployment path. External portal support should be added after those controller details are known, because UniFi API behavior differs across Network Application versions.
+The guest VLAN, the portal hostname, and password-or-voucher admission are already decided. They stay in the gitignored site note. Still ask only for these, and keep the answers out of git:
+
+- Console URL
+- Site id returned by `GET /v1/sites`
+- API key created on the console
+- Nginx Proxy Manager, Home Assistant, and portal addresses on the home LAN
+- Local Home Assistant hostname and the guest user's display name
