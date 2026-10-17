@@ -89,6 +89,32 @@
   </div>
 
   <script>
+    (function rememberUnifiGuest() {
+      const params = new URLSearchParams(window.location.search);
+      const mac = /^[0-9a-f]{2}(:[0-9a-f]{2}){5}$/i;
+      const id = params.get('id') || '';
+      if (!mac.test(id)) return;
+      const ap = params.get('ap') || '';
+      const t = params.get('t') || '';
+      const ssid = params.get('ssid') || '';
+      if (ap && !mac.test(ap)) return;
+      if (t && !/^[0-9]{1,16}$/.test(t)) return;
+      if (ssid.length > 64) return;
+      try {
+        sessionStorage.setItem('unifiGuest', JSON.stringify({ id: id.toLowerCase(), ap: ap.toLowerCase(), t, ssid }));
+      } catch (err) {
+        return;
+      }
+      params.delete('ap');
+      params.delete('id');
+      params.delete('t');
+      params.delete('ssid');
+      params.delete('url');
+      const remaining = params.toString();
+      const next = window.location.pathname + (remaining ? `?${remaining}` : '') + window.location.hash;
+      window.history.replaceState(null, '', next);
+    })();
+
     let guestTypes = [];
     let events = [];
     let hasBackground = false;

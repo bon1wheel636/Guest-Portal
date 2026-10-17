@@ -1593,6 +1593,28 @@ app.get('/admin.html', adminPageAuth, (req, res) => {
 
 app.use(express.static('frontend'));
 
+// UniFi external portal redirect. The controller sends unauthorized guests to
+// /guest/s/<site>/?... and the phone's temporary browser stays open only while
+// the client remains unauthorized. Send them to the registration page on /.
+function unifiGuestLandingTarget(query) {
+  const params = new URLSearchParams();
+  const limits = { ap: 32, id: 32, t: 16, ssid: 64 };
+  for (const key of Object.keys(limits)) {
+    const value = query[key];
+    if (typeof value !== 'string' || value.length > limits[key] || /[\r\n]/.test(value)) continue;
+    params.set(key, value);
+  }
+  const qs = params.toString();
+  return qs ? `/?${qs}` : '/';
+}
+
+app.get(['/guest/s/:site', '/guest/s/:site/'], (req, res) => {
+  if (!/^[A-Za-z0-9._-]{1,64}$/.test(req.params.site)) {
+    return res.status(404).send('Not found.');
+  }
+  res.redirect(302, unifiGuestLandingTarget(req.query));
+});
+
 // ─── Multer Storage Config ──────────────────────────────────────────────────
 
 const storage = multer.diskStorage({
