@@ -19,6 +19,7 @@ config.json
 storage.json
 sessions.json
 guest-tokens.json
+admin-sessions.json
 /etc/guest-portal/
 .smbcredentials
 *.pem

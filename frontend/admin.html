@@ -24,12 +24,25 @@
       </form>
     </div>
 
+    <div id="adminLoginForm" style="display:none;">
+      <h2>Admin Sign In</h2>
+      <form id="loginForm">
+        <label for="loginUser">Username</label>
+        <input type="text" id="loginUser" autocomplete="username" required />
+        <label for="loginPass">Password</label>
+        <input type="password" id="loginPass" autocomplete="current-password" required />
+        <p id="loginError" class="admin-error-text" hidden></p>
+        <button type="submit">Sign In</button>
+      </form>
+    </div>
+
     <div id="adminContent" style="display:none;">
       <header class="admin-header">
         <div>
           <h1>Admin Panel</h1>
-          <p class="admin-subtitle">Signed in with browser HTTP Basic Auth. Close the browser tab to end your admin session.</p>
+          <p class="admin-subtitle">Signed in on this browser. Use Sign out when you are finished.</p>
         </div>
+        <button type="button" id="adminSignOut" class="btn-secondary">Sign out</button>
       </header>
 
       <nav class="admin-tabs" role="tablist" aria-label="Admin sections">
@@ -54,7 +67,7 @@
 
       <section class="admin-panel" data-panel="rooms" role="tabpanel">
         <h2>Rooms</h2>
-        <p class="admin-help">Map guest rooms to Home Assistant dashboard URLs.</p>
+        <p class="admin-help">Map guest rooms to Home Assistant dashboard URLs. Guests open the link in a new tab. Use the local proxy hostname, not a Home Assistant IP on port 8123 and not a Nabu Casa address. Home Assistant still asks the guest to sign in until that guest user is set up there. A long-lived access token does not sign the dashboard page in. Disable that Home Assistant user to revoke the dashboard. Kiosk Mode stays limited to that guest's display name.</p>
         <form id="roomForm" class="admin-card">
           <label for="roomName">Room Name:</label>
           <input type="text" id="roomName" required />
@@ -110,7 +123,7 @@
         <div id="adminRegisterResult"></div>
 
         <h2>Guest Sessions</h2>
-        <p class="admin-help">Active stays: extend, change room, clear devices, or check out.</p>
+        <p class="admin-help">Each stay shows whether that phone has internet. Check out turns it off. Turn Off Internet revokes access and leaves the portal visit in place. Extend updates the UniFi time limit.</p>
         <div class="admin-actions">
           <button id="purgeExpiredSessions" class="btn-secondary">Purge Expired Sessions</button>
           <button id="refreshGuestSessions" class="btn-secondary">Refresh</button>
@@ -253,7 +266,7 @@
           <label for="unifiApiKey">API key</label>
           <input type="password" id="unifiApiKey" placeholder="Leave blank to keep the saved key" autocomplete="new-password" />
           <p id="unifiKeyStatus" class="admin-help"></p>
-          <small>Create the key on the console under Settings &gt; Control Plane &gt; Integrations. A key from unifi.ui.com does not work here. The key stays in the server config and is not shown again. The portal accepts the console's private certificate.</small>
+          <small>Use the local address you open to reach the UniFi console from the home LAN. Do not use the guest network gateway. Create the key on the console under Settings &gt; Control Plane &gt; Integrations. A key from unifi.ui.com does not work here. The key stays in the server config and is not shown again. The portal accepts the console's private certificate.</small>
           <button type="submit">Save UniFi connection</button>
         </form>
         <h2>Session Settings</h2>
@@ -301,10 +314,29 @@
       return fetch(url, { credentials: 'same-origin', ...options });
     }
 
+    function internetLabel(internet) {
+      const net = internet || {};
+      if (!net.linked) return 'Internet: no phone linked from the hotspot';
+      if (net.state === 'authorized') {
+        const until = net.expiresAt ? ` until ${new Date(net.expiresAt).toLocaleString()}` : '';
+        return `Internet: on${until}`;
+      }
+      if (net.state === 'unauthorized') return 'Internet: off';
+      if (net.state === 'not-configured') return 'Internet: UniFi connection is not saved';
+      if (net.state === 'not-seen') return 'Internet: phone is not on the guest network';
+      return 'Internet: status unavailable';
+    }
+
     function escapeHtml(text) {
       const div = document.createElement('div');
       div.textContent = text;
       return div.innerHTML;
+    }
+
+    function dashboardAnchor(url) {
+      if (!url || !/^https?:\/\//i.test(url)) return escapeHtml(url || 'No URL');
+      const safe = escapeHtml(url);
+      return `<a href="${safe}" target="_blank" rel="noopener noreferrer">${safe}</a>`;
     }
 
     function statusBadge(ok, label) {
@@ -352,15 +384,52 @@
 
     async function initAdmin() {
       const needsSetup = await checkSetupRequired();
+      const loginBox = document.getElementById('adminLoginForm');
       if (needsSetup) {
         setupBox.style.display = 'block';
+        loginBox.style.display = 'none';
         adminContent.style.display = 'none';
         return;
       }
       setupBox.style.display = 'none';
+      const me = await authFetch('/admin-api/me');
+      if (!me.ok) {
+        loginBox.style.display = 'block';
+        adminContent.style.display = 'none';
+        return;
+      }
+      loginBox.style.display = 'none';
       adminContent.style.display = 'block';
       switchTab('overview');
     }
+
+    document.getElementById('loginForm')?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const error = document.getElementById('loginError');
+      error.hidden = true;
+      const res = await authFetch('/admin-api/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          username: document.getElementById('loginUser').value.trim(),
+          password: document.getElementById('loginPass').value
+        })
+      });
+      if (!res.ok) {
+        error.textContent = res.status === 429
+          ? 'Too many sign-in attempts. Wait a few minutes.'
+          : 'Those sign-in details were not accepted.';
+        error.hidden = false;
+        return;
+      }
+      document.getElementById('loginPass').value = '';
+      initAdmin();
+    });
+
+    document.getElementById('adminSignOut')?.addEventListener('click', async () => {
+      await authFetch('/admin-api/logout', { method: 'POST' });
+      initAdmin();
+    });
 
     document.getElementById('setupForm')?.addEventListener('submit', async (e) => {
       e.preventDefault();
@@ -380,7 +449,7 @@
         if (res.ok) {
           const data = await res.json().catch(() => ({}));
           const savedUsername = data.username || username;
-          alert(`Admin account created for "${savedUsername}". The page will reload and your browser will ask you to sign in with that username.`);
+          alert(`Admin account created for "${savedUsername}". The page will reload so you can sign in.`);
           location.reload();
         } else {
           alert('Setup failed: ' + await res.text());
@@ -834,7 +903,18 @@
         const strong = document.createElement('strong');
         strong.textContent = room.name;
         li.appendChild(strong);
-        li.appendChild(document.createTextNode(': ' + room.dashboardUrl + ' '));
+        li.appendChild(document.createTextNode(': '));
+        if (room.dashboardUrl) {
+          const link = document.createElement('a');
+          link.href = room.dashboardUrl;
+          link.target = '_blank';
+          link.rel = 'noopener noreferrer';
+          link.textContent = room.dashboardUrl;
+          li.appendChild(link);
+          li.appendChild(document.createTextNode(' '));
+        } else {
+          li.appendChild(document.createTextNode('No dashboard URL '));
+        }
         const btn = document.createElement('button');
         btn.textContent = 'Delete';
         btn.className = 'btn-danger-inline';
@@ -884,7 +964,7 @@
       html += `<p><strong>Reverse proxy:</strong> ${escapeHtml(proxyText)} `;
       html += `<small>host: ${escapeHtml(data.reverseProxy.forwardedHost || data.reverseProxy.host || 'unknown')}, proto: ${escapeHtml(data.reverseProxy.forwardedProto || 'none')}</small></p>`;
       html += `<p><strong>Public portal URL:</strong> <code>${escapeHtml(data.portal?.publicUrl || 'Using current request host')}</code></p>`;
-      html += `<p><strong>Admin login:</strong> <code>${escapeHtml(data.admin?.username || 'admin')}</code> <small>(HTTP Basic Auth username for /admin.html)</small></p>`;
+      html += `<p><strong>Admin login:</strong> <code>${escapeHtml(data.admin?.username || 'admin')}</code> <small>(sign-in form on this page)</small></p>`;
       html += `<p><strong>Data:</strong> ${data.data.rooms} room(s), ${data.data.registrationHistory} registration history entr${data.data.registrationHistory === 1 ? 'y' : 'ies'}, ${data.data.guestNotes ?? 0} guest note(s), ${data.data.activeGuestSessions} active guest session(s), ${data.data.expiredGuestSessions} expired session(s), ${data.data.pendingSessionCodes} pending code(s)</p>`;
       if (data.guestEntry) {
         html += '<div class="admin-card">';
@@ -908,7 +988,7 @@
           if (room.checked) {
             result = room.reachable ? `reachable (${room.status || 'no status'})` : `not reachable${room.error ? ': ' + room.error : ''}`;
           }
-          html += `<li>${escapeHtml(room.name)} - ${escapeHtml(result)}<br><small>${escapeHtml(room.dashboardUrl || 'No URL')}</small></li>`;
+          html += `<li>${escapeHtml(room.name)} - ${escapeHtml(result)}<br><small>${dashboardAnchor(room.dashboardUrl)}</small></li>`;
         });
         html += '</ul>';
       } else {
@@ -1083,7 +1163,7 @@
           removeBtn.textContent = 'Remove';
           removeBtn.className = 'btn-danger-inline';
           removeBtn.onclick = async () => {
-            const endSession = g.hasActiveSession && confirm('Also end this guest\'s active session?');
+            const endSession = g.hasActiveSession && confirm('Also end this guest\'s active session and turn off their internet access?');
             const url = `/admin-api/guests/${encodeURIComponent(g.guestId)}?endSession=${endSession ? 'true' : 'false'}`;
             const delRes = await authFetch(url, { method: 'DELETE' });
             if (delRes.ok) {
@@ -1466,6 +1546,7 @@
             html += `<small>Event: <strong>${escapeHtml(guest.eventName)}</strong></small><br>`;
           }
           html += `<small>Checkout: ${new Date(guest.checkoutDate).toLocaleString()} (${daysLeft} days remaining)</small><br>`;
+          html += `<small>${escapeHtml(internetLabel(guest.internet))}</small><br>`;
           html += `<small>Devices (${guest.devices.length}):</small><ul class="admin-device-list">`;
           guest.devices.forEach(device => {
             const ua = device.userAgent || 'Unknown device';
@@ -1573,6 +1654,10 @@
               body: JSON.stringify({ days: parseInt(days, 10) })
             });
             if (extRes.ok) {
+              const body = await extRes.json();
+              if (body.internet && body.internet.ok === false) {
+                alert(body.internet.error);
+              }
               loadGuestSessions();
               if (activeTab === 'overview') loadDeploymentStatus(false);
             } else {
@@ -1581,13 +1666,30 @@
           };
           div.appendChild(extendBtn);
 
+          if (guest.internet && guest.internet.linked && (guest.internet.state === 'authorized' || guest.internet.state === 'unknown')) {
+            const revokeBtn = document.createElement('button');
+            revokeBtn.textContent = 'Turn Off Internet';
+            revokeBtn.className = 'btn-danger-inline';
+            revokeBtn.onclick = async () => {
+              if (!confirm(`Turn off internet for ${guest.name}? Their portal visit stays active.`)) return;
+              const revokeRes = await authFetch(`/admin-api/guest-sessions/${guest.id}/internet/revoke`, { method: 'POST' });
+              if (revokeRes.ok) loadGuestSessions();
+              else alert('Failed to turn off internet: ' + await revokeRes.text());
+            };
+            div.appendChild(revokeBtn);
+          }
+
           const checkoutBtn = document.createElement('button');
           checkoutBtn.textContent = 'Check Out';
           checkoutBtn.className = 'btn-danger-inline';
           checkoutBtn.onclick = async () => {
-            if (!confirm(`Check out ${guest.name}?`)) return;
+            if (!confirm(`Check out ${guest.name}? This also turns off their internet access.`)) return;
             const delRes = await authFetch(`/admin-api/guest-sessions/${guest.id}`, { method: 'DELETE' });
             if (delRes.ok) {
+              const body = await delRes.json();
+              if (body.internet && body.internet.ok === false) {
+                alert(body.internet.error);
+              }
               loadGuestSessions();
               loadGuests();
               if (activeTab === 'overview') loadDeploymentStatus(false);

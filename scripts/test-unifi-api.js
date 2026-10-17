@@ -1,6 +1,6 @@
 const http = require('http');
 const assert = require('assert');
-const { authorizeUnifiGuest, normalizeMac, normalizeConsoleUrl } = require('../unifi-api');
+const { authorizeUnifiGuest, unauthorizeUnifiGuest, describeUnifiGuest, normalizeMac, normalizeConsoleUrl } = require('../unifi-api');
 
 function listen(handler) {
   const server = http.createServer(handler);
@@ -66,6 +66,26 @@ async function main() {
   assert.strictEqual(payload.action, 'AUTHORIZE_GUEST_ACCESS');
   assert.strictEqual(payload.timeLimitMinutes, result.timeLimitMinutes);
   assert.strictEqual(action.url, '/proxy/network/integration/v1/sites/site-1/clients/client-9/actions');
+
+  const revoked = await unauthorizeUnifiGuest({
+    consoleUrl: 'https://gw.example',
+    apiKey: 'test-key-value',
+    siteId: 'site-1',
+    mac: '1c:71:25:63:e4:24',
+    fetchImpl: (url, options) => fetch(url.replace('https://gw.example', base), options)
+  });
+  assert.strictEqual(revoked.state, 'unauthorized');
+  const revokeCall = seen.filter(entry => entry.method === 'POST').pop();
+  assert.strictEqual(JSON.parse(revokeCall.body).action, 'UNAUTHORIZE_GUEST_ACCESS');
+
+  const described = await describeUnifiGuest({
+    consoleUrl: 'https://gw.example',
+    apiKey: 'test-key-value',
+    siteId: 'site-1',
+    mac: '1c:71:25:63:e4:24',
+    fetchImpl: (url, options) => fetch(url.replace('https://gw.example', base), options)
+  });
+  assert.strictEqual(described.state, 'unauthorized');
 
   await new Promise(resolve => server.close(resolve));
   assert.strictEqual(original('https://gw.example'), 'https://gw.example');
