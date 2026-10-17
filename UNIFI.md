@@ -66,18 +66,21 @@ Kiosk mode hides navigation. A guest who types another Home Assistant path can s
 - Back up or download photos before deleting guest folders from the admin panel.
 - Treat uploads as untrusted files even though the app rejects scripts and executable file types.
 
-## Future external portal integration
+## Internet access and the real browser
 
-Guest Portal already accepts the external-portal redirect and shows registration while the phone is unauthorized. Calling the Network Integration API to authorize the client, which is what opens the rest of the internet and lets the temporary browser close, is still a later step. Do not turn hotspot Password or Vouchers back on to grant that internet access. That closes the temporary browser before the guest can use the page.
+Registration from the UniFi redirect stores the client MAC on the guest session. The temporary browser then shows **Open in Safari or Chrome**. That button opens `/?linkCode=...` in the phone's browser. The new browser claims the same visit, and the portal calls the Network Integration API to authorize the client for the rest of the stay. The temporary browser can close after that. **Continue in this window** authorizes without leaving the temporary browser.
 
-On UniFi OS 5.1 and Network 10.6 the Integration API is the supported path. Create the key on the console under **Settings > Control Plane > Integrations**. A key created at unifi.ui.com is a cloud key and is rejected by the gateway's local API. Read the site id from `GET /v1/sites`. A UDM returns one site. The legacy redirect path still uses `/guest/s/default/`. The Integration API id can differ from that slug.
+The phone stays unauthorized until that button, so the temporary browser stays up long enough to tap. Do not turn hotspot Password or Vouchers back on. Those authorize first and close the window.
 
-The external portal redirect looks like `/guest/s/<site>/` with query parameters `ap`, `id` (client MAC), `t`, `url`, and `ssid`. Authorization is `POST /v1/sites/{siteId}/clients/{clientId}/actions` with `action` set to `AUTHORIZE_GUEST_ACCESS`. Pre-authorization allowances apply to this mode, because guests must reach the external portal before UniFi authorizes them.
+In Guest Portal admin, open **Settings** and save **UniFi Internet**:
 
-The guest VLAN and the portal hostname are already decided. They stay in the gitignored site note. Hotspot Password and Voucher admission is not the landing path, because it authorizes the phone before the page loads. Still ask only for these, and keep the answers out of git:
+- Console URL, `https://` plus the gateway address. The portal accepts the console's private certificate.
+- Site ID. Leave it blank when the console has one site.
+- API key created on the console under **Settings > Control Plane > Integrations**. A key from unifi.ui.com is rejected. The key stays in the server config and is not written into git.
 
-- Console URL
-- Site id returned by `GET /v1/sites`
-- API key created on the console
+Authorization is `POST /proxy/network/integration/v1/sites/{siteId}/clients/{clientId}/actions` with `action` set to `AUTHORIZE_GUEST_ACCESS`. The time limit matches the guest checkout. Pre-authorization allowances still have to include the proxy, because the real browser loads the handoff before the phone is authorized.
+
+The guest VLAN and the portal hostname are already decided. They stay in the gitignored site note. Hotspot Password and Voucher admission is not the landing path. The owner enters the console URL, site id, and API key in Admin Settings. Do not ask for the API key in chat, and do not copy it into git. Still ask only for these when they are missing from the gitignored site note:
+
 - Nginx Proxy Manager, Home Assistant, and portal addresses on the home LAN
 - Local Home Assistant hostname and the guest user's display name

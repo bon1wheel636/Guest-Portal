@@ -2391,10 +2391,10 @@ test_index_html() {
     else
         fail "Index page loads" "HTML content" "Empty or error"
     fi
-    if [[ "$response" == *"unifiGuest"* ]]; then
+    if [[ "$response" == *"unifiGuest"* && "$response" == *"browserHandoff"* && "$response" == *"openBrowserLink"* ]]; then
         pass "Index page keeps the UniFi guest redirect for later authorization"
     else
-        fail "Index page keeps the UniFi guest redirect for later authorization" "unifiGuest" "Missing handoff script"
+        fail "Index page keeps the UniFi guest redirect for later authorization" "unifiGuest + browserHandoff" "Missing handoff script"
     fi
 }
 
@@ -2416,6 +2416,57 @@ test_unifi_guest_redirect() {
         pass "UniFi /guest/s rejects a site path outside the slug"
     else
         fail "UniFi /guest/s rejects a site path outside the slug" "404" "$bad"
+    fi
+}
+
+test_unifi_browser_handoff() {
+    local response
+    response=$(curl -s -X POST "$BASE_URL/register" \
+        -H "Content-Type: application/json" \
+        -d '{"name":"UniFi Handoff Guest","room":"Room 1","stayDays":1,"clientMac":"1c:71:25:63:e4:24"}')
+    if [[ "$response" == *'"browserUrl"'* && "$response" == *"linkCode="* && "$response" != *"unifiClientMac"* && "$response" != *"1c:71:25:63:e4:24"* ]]; then
+        pass "Registration from UniFi returns a browser handoff URL without the client MAC"
+    else
+        fail "Registration from UniFi returns a browser handoff URL without the client MAC" "browserUrl with linkCode and no MAC" "$response"
+        return
+    fi
+
+    local code
+    code=$(echo "$response" | sed -n 's/.*linkCode=\([A-Z0-9]*\).*/\1/p')
+    local linked
+    linked=$(curl -s -X POST "$BASE_URL/guest/link-device" \
+        -H "Content-Type: application/json" \
+        -d "{\"code\":\"$code\"}")
+    if [[ "$linked" == *'"token"'* && "$linked" == *'"skipped":true'* && "$linked" == *'not-configured'* ]]; then
+        pass "Browser handoff links the visit and skips UniFi until the console is configured"
+    else
+        fail "Browser handoff links the visit and skips UniFi until the console is configured" "token plus skipped not-configured" "$linked"
+    fi
+
+    local plain
+    plain=$(curl -s -X POST "$BASE_URL/register" \
+        -H "Content-Type: application/json" \
+        -d '{"name":"Direct Guest","room":"Room 1","stayDays":1,"clientMac":"nope"}')
+    if [[ "$plain" == *'"browserUrl":null'* ]]; then
+        pass "Registration without a UniFi MAC stays in the current browser"
+    else
+        fail "Registration without a UniFi MAC stays in the current browser" "browserUrl null" "$plain"
+    fi
+
+    local denied
+    denied=$(curl -s -o /dev/null -w '%{http_code}' "$BASE_URL/admin-api/unifi")
+    if [[ "$denied" == "401" ]]; then
+        pass "UniFi admin settings require authentication"
+    else
+        fail "UniFi admin settings require authentication" "401" "$denied"
+    fi
+}
+
+test_unifi_api_client() {
+    if node scripts/test-unifi-api.js >/tmp/unifi-api-test.log 2>&1; then
+        pass "UniFi authorize client calls the Integration API"
+    else
+        fail "UniFi authorize client calls the Integration API" "mock authorize" "$(cat /tmp/unifi-api-test.log)"
     fi
 }
 
@@ -2838,6 +2889,8 @@ test_index_hero_markup
 
 test_index_html
 test_unifi_guest_redirect
+test_unifi_browser_handoff
+test_unifi_api_client
 test_admin_html
 test_welcome_html
 test_photo_html

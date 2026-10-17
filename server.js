@@ -11,6 +11,13 @@ const bcrypt = require('bcrypt');
 const rateLimit = require('express-rate-limit');
 const archiver = require('archiver');
 const QRCode = require('qrcode');
+const {
+  normalizeMac,
+  normalizeConsoleUrl,
+  normalizeSiteId,
+  normalizeApiKey,
+  authorizeUnifiGuest
+} = require('./unifi-api');
 const app = express();
 
 // ─── Constants & Data Loading ───────────────────────────────────────────────
@@ -265,6 +272,33 @@ ensureStorageDefaults();
 // C2: Use crypto.randomBytes instead of Math.random for secure token generation
 function generateCode() {
   return crypto.randomBytes(3).toString('hex').toUpperCase();
+}
+
+function createDeviceLink(token, guest) {
+  const linkCode = generateCode();
+  sessionCodes[linkCode] = {
+    type: 'device-link',
+    guestToken: token,
+    guestId: guest.id,
+    expires: Date.now() + getLinkCodeExpirationMs()
+  };
+  saveSessions();
+  return linkCode;
+}
+
+async function authorizeStoredUnifiClient(guest) {
+  if (!guest || !guest.unifiClientMac) return { skipped: true };
+  if (!config.unifiConsoleUrl || !config.unifiApiKey) {
+    return { skipped: true, reason: 'not-configured' };
+  }
+  const result = await authorizeUnifiGuest({
+    consoleUrl: config.unifiConsoleUrl,
+    apiKey: config.unifiApiKey,
+    siteId: config.unifiSiteId || '',
+    mac: guest.unifiClientMac,
+    checkoutDate: guest.checkoutDate
+  });
+  return { ok: true, minutes: result.timeLimitMinutes };
 }
 
 function generateToken() {
@@ -1863,6 +1897,7 @@ app.post('/guest/events', (req, res) => {
 
 app.post('/register', (req, res) => {
   const { name, room, stayDays, guestTypeId, eventName } = req.body;
+  const clientMac = normalizeMac(req.body?.clientMac);
 
   if (!guestTypeId) {
     const validationError = validateGuestNameAndRoom(name, room);
@@ -1882,10 +1917,20 @@ app.post('/register', (req, res) => {
     return res.status(400).send(registration.error);
   }
 
+  let browserUrl = null;
+  if (clientMac) {
+    const stored = guestTokens[registration.token];
+    stored.unifiClientMac = clientMac;
+    saveGuestTokens();
+    const linkCode = createDeviceLink(registration.token, stored);
+    browserUrl = `${publicBaseUrl(req)}/?linkCode=${encodeURIComponent(linkCode)}`;
+  }
+
   res.json({
     token: registration.token,
     guest: registration.guest,
-    returningDevice: false
+    returningDevice: false,
+    browserUrl
   });
 });
 
@@ -1950,7 +1995,7 @@ app.post('/guest/link-code', async (req, res) => {
   }
 });
 
-app.post('/guest/link-device', (req, res) => {
+app.post('/guest/link-device', async (req, res) => {
   const { code } = req.body;
   const entry = sessionCodes[code];
 
@@ -1978,11 +2023,34 @@ app.post('/guest/link-device', (req, res) => {
   delete sessionCodes[code];
   saveSessions();
 
+  let internet = { skipped: true };
+  try {
+    internet = await authorizeStoredUnifiClient(guest);
+  } catch (err) {
+    console.error('UniFi authorize failed:', err.message);
+    internet = { ok: false, error: 'Internet access could not be turned on' };
+  }
+
   res.json({
     token: entry.guestToken,
     returningDevice: false,
-    guest: formatGuestResponse(guest)
+    guest: formatGuestResponse(guest),
+    internet
   });
+});
+
+app.post('/guest/unifi-authorize', async (req, res) => {
+  const token = req.body?.token || req.get('X-Guest-Token');
+  const session = getGuestSession(token);
+  if (!session.guest) {
+    return res.status(session.status).send(session.message);
+  }
+  try {
+    res.json(await authorizeStoredUnifiClient(session.guest));
+  } catch (err) {
+    console.error('UniFi authorize failed:', err.message);
+    res.status(502).send('Internet access could not be turned on. Ask your host to check the UniFi connection.');
+  }
 });
 
 // H4: Validate guest token on upload
@@ -2455,6 +2523,36 @@ app.delete('/admin-api/uploads', authMiddleware, (req, res) => {
   } catch (err) {
     console.error('Failed to delete folders:', err);
     res.status(500).send('Failed to delete folders');
+  }
+});
+
+app.get('/admin-api/unifi', authMiddleware, (req, res) => {
+  res.json({
+    consoleUrl: config.unifiConsoleUrl || '',
+    siteId: config.unifiSiteId || '',
+    apiKeyConfigured: Boolean(config.unifiApiKey)
+  });
+});
+
+app.post('/admin-api/unifi', authMiddleware, (req, res) => {
+  try {
+    const consoleUrl = normalizeConsoleUrl(req.body?.consoleUrl);
+    const siteId = normalizeSiteId(req.body?.siteId);
+    const apiKey = normalizeApiKey(req.body?.apiKey);
+    if (consoleUrl) config.unifiConsoleUrl = consoleUrl;
+    else delete config.unifiConsoleUrl;
+    if (siteId) config.unifiSiteId = siteId;
+    else delete config.unifiSiteId;
+    if (apiKey) config.unifiApiKey = apiKey;
+    saveConfig();
+    res.json({
+      success: true,
+      consoleUrl: config.unifiConsoleUrl || '',
+      siteId: config.unifiSiteId || '',
+      apiKeyConfigured: Boolean(config.unifiApiKey)
+    });
+  } catch (err) {
+    res.status(400).send(err.message);
   }
 });
 

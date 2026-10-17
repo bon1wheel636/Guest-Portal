@@ -244,6 +244,18 @@
           <small>Used for QR codes and guest handoff links. Leave blank to use the current request host.</small>
           <button type="submit">Update Portal URL</button>
         </form>
+        <h2>UniFi Internet</h2>
+        <form id="unifiForm" class="admin-card">
+          <label for="unifiConsoleUrl">Console URL</label>
+          <input type="text" id="unifiConsoleUrl" placeholder="https://192.168.1.1" autocomplete="off" />
+          <label for="unifiSiteId">Site ID</label>
+          <input type="text" id="unifiSiteId" placeholder="Leave blank when the console has one site" autocomplete="off" />
+          <label for="unifiApiKey">API key</label>
+          <input type="password" id="unifiApiKey" placeholder="Leave blank to keep the saved key" autocomplete="new-password" />
+          <p id="unifiKeyStatus" class="admin-help"></p>
+          <small>Create the key on the console under Settings &gt; Control Plane &gt; Integrations. A key from unifi.ui.com does not work here. The key stays in the server config and is not shown again. The portal accepts the console's private certificate.</small>
+          <button type="submit">Save UniFi connection</button>
+        </form>
         <h2>Session Settings</h2>
         <form id="expirationForm" class="admin-card">
           <label>Device Link Code Expiration (minutes):</label>
@@ -308,7 +320,7 @@
       guesttypes: () => loadGuestTypesAdmin(),
       events: () => loadEventsAdmin(),
       storage: () => { loadUploadPath(); loadPhotos(); },
-      settings: () => { loadAdminAccountInfo(); loadPortalUrl(); loadExpiration(); }
+      settings: () => { loadAdminAccountInfo(); loadPortalUrl(); loadUnifi(); loadExpiration(); }
     };
 
     function switchTab(tabId) {
@@ -977,6 +989,40 @@
         container.innerHTML = '<p class="admin-error-text">Failed to load admin account details: ' + escapeHtml(err.message) + '</p>';
       }
     }
+
+    async function loadUnifi() {
+      try {
+        const res = await authFetch('/admin-api/unifi');
+        if (!res.ok) return;
+        const data = await res.json();
+        document.getElementById('unifiConsoleUrl').value = data.consoleUrl || '';
+        document.getElementById('unifiSiteId').value = data.siteId || '';
+        document.getElementById('unifiApiKey').value = '';
+        document.getElementById('unifiKeyStatus').textContent = data.apiKeyConfigured
+          ? 'An API key is saved on this server.'
+          : 'No API key is saved yet.';
+      } catch {}
+    }
+
+    document.getElementById('unifiForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const res = await authFetch('/admin-api/unifi', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          consoleUrl: document.getElementById('unifiConsoleUrl').value.trim(),
+          siteId: document.getElementById('unifiSiteId').value.trim(),
+          apiKey: document.getElementById('unifiApiKey').value
+        })
+      });
+      if (res.ok) {
+        document.getElementById('unifiApiKey').value = '';
+        await loadUnifi();
+        alert('UniFi connection saved.');
+      } else {
+        alert('Failed: ' + await res.text());
+      }
+    });
 
     async function loadExpiration() {
       try {

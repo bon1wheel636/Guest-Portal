@@ -14,12 +14,12 @@ See [README.md](README.md) for product features, deployment, and local developme
 
 Known decisions, also written up in [UNIFI.md](UNIFI.md) for Network 10.6 and Home Assistant Core 2026.10:
 
-- The hotspot landing path is **External Portal Server**, with the proxy in **Pre-Authorization Allowances**, so the phone stays unauthorized and the temporary captive browser stays open on registration. Hotspot Password or Voucher success **Custom URL** authorizes first and the phone closes that browser. A Wi-Fi passphrase on the SSID can stay. The Integration API authorize step is still later; it is what opens the rest of the internet.
+- The hotspot landing path is **External Portal Server**, with the proxy in **Pre-Authorization Allowances**, so the phone stays unauthorized through registration. After registration the guest taps **Open in Safari or Chrome**. That handoff authorizes the client with the Network Integration API for the length of the stay. The console URL, site id, and API key are entered in Admin **Settings**, not in git. Hotspot Password or Voucher success **Custom URL** authorizes first and the phone closes the temporary browser. A Wi-Fi passphrase on the SSID can stay.
 - The portal, Home Assistant, and Nginx Proxy Manager are on the home LAN. Guests reach them only through the proxy on TCP 443 and 80. Home Assistant port 8123 stays closed to the guest VLAN.
 - Guest dashboard links are a local proxy hostname, not Nabu Casa. Create that DNS record when the hostname is chosen. One hostname covers every room path.
 - Do not mark household dashboards admin-only. Kiosk Mode uses `user_settings` for the guest display name only. Do not use `non_admin_settings`.
 
-Still ask the owner only for items listed as unknown in the local site note: proxy and host IPs, the local Home Assistant hostname, the guest display name, the console URL, the Integration API site id, and the API key. Do not guess them. Do not copy the local site note into git.
+Still ask the owner only for items listed as unknown in the local site note: proxy and host IPs, the local Home Assistant hostname, and the guest display name. The UniFi console URL, site id, and API key are entered in Admin Settings. Do not ask for the API key in chat. Do not guess the remaining values. Do not copy the local site note into git.
 
 Previous sprint (completed): [docs/SPRINT_EVENTS_UX.md](docs/SPRINT_EVENTS_UX.md) — admin Events tab, registration event picker, gallery re-tag, admin merge UI.
 

@@ -16,6 +16,7 @@
     <h1 id="pageTitle">We're glad you're here</h1>
     <p id="guestGreeting"></p>
     <p id="checkoutInfo" class="guest-muted"></p>
+    <p id="internetStatus" class="guest-muted" hidden></p>
     <p id="guestTypeInfo" class="guest-muted"></p>
 
     <section class="guest-section" id="smartHomeSection">
@@ -357,6 +358,17 @@
 
       const arrival = sessionStorage.getItem('guestArrival');
       applyGreeting(returningDevice, arrival);
+      const internetStatus = document.getElementById('internetStatus');
+      const internetError = sessionStorage.getItem('unifiInternetError');
+      if (sessionStorage.getItem('unifiInternetOk') === '1') {
+        internetStatus.textContent = 'This phone can use the internet.';
+        internetStatus.hidden = false;
+      } else if (internetError) {
+        internetStatus.textContent = internetError;
+        internetStatus.hidden = false;
+      }
+      sessionStorage.removeItem('unifiInternetOk');
+      sessionStorage.removeItem('unifiInternetError');
       maybeShowTutorial(returningDevice, arrival);
       if (permissions.leaveGuestNote) {
         await loadGuestNote();
