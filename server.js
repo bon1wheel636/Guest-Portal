@@ -20,6 +20,7 @@ const {
   unauthorizeUnifiGuest,
   describeUnifiGuest
 } = require('./unifi-api');
+const { checkUrlReachability } = require('./url-check');
 const app = express();
 
 // ─── Constants & Data Loading ───────────────────────────────────────────────
@@ -32,7 +33,6 @@ const guestTokensFile = '/etc/guest-portal/guest-tokens.json';
 const adminSessionsFile = '/etc/guest-portal/admin-sessions.json';
 const MAX_GUEST_UPLOAD_SIZE_BYTES = 50 * 1024 * 1024;
 const MAX_GUEST_UPLOAD_FILES = 10;
-const URL_CHECK_TIMEOUT_MS = 2500;
 const MAX_GUEST_NOTE_LENGTH = 5000;
 // Temporary per-stay folder for multipart uploads. eventName may appear after
 // file parts in the stream, so destination cannot rely on req.body yet.
@@ -1536,47 +1536,6 @@ function getGuestEntryHealth() {
       : 'Guest registration needs attention.',
     checks
   };
-}
-
-async function checkUrlReachability(rawUrl) {
-  if (!rawUrl) return { checked: false, reachable: false, status: null, error: 'No URL configured' };
-
-  let parsed;
-  try {
-    parsed = new URL(rawUrl);
-  } catch {
-    return { checked: true, reachable: false, status: null, error: 'Invalid URL' };
-  }
-
-  if (!['http:', 'https:'].includes(parsed.protocol)) {
-    return { checked: true, reachable: false, status: null, error: 'URL must use http or https' };
-  }
-
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), URL_CHECK_TIMEOUT_MS);
-
-  try {
-    const response = await fetch(parsed.toString(), {
-      method: 'HEAD',
-      redirect: 'manual',
-      signal: controller.signal
-    });
-    return {
-      checked: true,
-      reachable: response.status < 500,
-      status: response.status,
-      error: null
-    };
-  } catch (err) {
-    return {
-      checked: true,
-      reachable: false,
-      status: null,
-      error: err.name === 'AbortError' ? 'Timed out' : err.message
-    };
-  } finally {
-    clearTimeout(timeout);
-  }
 }
 
 function collectStayFolderFiles(stayFolderPath, stayFolderName, uploadsDir) {
