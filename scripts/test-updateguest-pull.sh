@@ -238,6 +238,77 @@ test_diverged_history_is_not_reset() {
   fi
 }
 
+test_cli_help_and_admin_config() {
+  local help status output
+  help="$(bash "${WORKSPACE}/scripts/updateguest.sh" --help)"
+  if [[ "$help" == *"updateguest update -y"* && "$help" == *"updateguest admin clear -y"* ]]; then
+    pass "top-level help lists the menu commands"
+  else
+    fail "top-level help lists the menu commands"
+  fi
+
+  help="$(bash "${WORKSPACE}/scripts/updateguest.sh" update --help)"
+  if [[ "$help" == *"--dry-run"* && "$help" == *"--yes"* ]]; then
+    pass "update help lists update flags"
+  else
+    fail "update help lists update flags"
+  fi
+
+  set +e
+  output="$(bash "${WORKSPACE}/scripts/updateguest.sh" update --not-a-flag 2>&1)"
+  status=$?
+  set -e
+  if [[ "$status" -ne 0 && "$output" == *"Unknown option"* ]]; then
+    pass "unknown update flag fails"
+  else
+    fail "unknown update flag fails (status ${status})"
+  fi
+
+  set +e
+  output="$(bash "${WORKSPACE}/scripts/updateguest.sh" 2>&1 </dev/null)"
+  status=$?
+  set -e
+  if [[ "$status" -ne 0 && "$output" == *"must be run as root"* ]]; then
+    pass "menu without root is rejected"
+  else
+    fail "menu without root is rejected (status ${status}: ${output})"
+  fi
+
+  CONFIG_DIR="${ROOT}/etc-guest"
+  mkdir -p "$CONFIG_DIR"
+  cat > "${CONFIG_DIR}/config.json" <<'EOF'
+{
+  "adminUser": "owner",
+  "adminHash": "oldhash",
+  "unifiApiKey": "secret-key",
+  "portalPublicUrl": "https://guest.example"
+}
+EOF
+  write_admin_account "newadmin" "newhash"
+  local user account key url
+  user="$(read_admin_user)"
+  account="$(admin_account_state)"
+  key="$(CONFIG_FILE="${CONFIG_DIR}/config.json" node -e 'process.stdout.write(JSON.parse(require("fs").readFileSync(process.env.CONFIG_FILE,"utf8")).unifiApiKey)')"
+  url="$(CONFIG_FILE="${CONFIG_DIR}/config.json" node -e 'process.stdout.write(JSON.parse(require("fs").readFileSync(process.env.CONFIG_FILE,"utf8")).portalPublicUrl)')"
+  assert_eq "admin user is replaced" "newadmin" "$user"
+  assert_eq "admin account stays configured" "configured" "$account"
+  assert_eq "UniFi key is kept" "secret-key" "$key"
+  assert_eq "portal URL is kept" "https://guest.example" "$url"
+
+  clear_admin_account >/dev/null
+  user="$(read_admin_user)"
+  account="$(admin_account_state)"
+  key="$(CONFIG_FILE="${CONFIG_DIR}/config.json" node -e 'process.stdout.write(JSON.parse(require("fs").readFileSync(process.env.CONFIG_FILE,"utf8")).unifiApiKey)')"
+  assert_eq "cleared account uses the placeholder user" "admin" "$user"
+  assert_eq "cleared account is unset" "unset" "$account"
+  assert_eq "clear keeps the UniFi key" "secret-key" "$key"
+  if [[ "$(cat "${CONFIG_DIR}/admin-sessions.json")" == "{}" ]]; then
+    pass "admin sessions are cleared"
+  else
+    fail "admin sessions are cleared"
+  fi
+}
+
 test_dry_run_leaves_lockfile() {
   local origin="$ROOT/origin-dry.git"
   local seed="$ROOT/seed-dry"
@@ -260,6 +331,7 @@ main() {
   test_untracked_collision_is_removed
   test_diverged_history_is_not_reset
   test_dry_run_leaves_lockfile
+  test_cli_help_and_admin_config
   echo ""
   echo "Results: ${PASSED} passed, ${FAILED} failed"
   if [[ "$FAILED" -gt 0 ]]; then

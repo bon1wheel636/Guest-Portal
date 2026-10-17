@@ -153,7 +153,9 @@ This tests registration, token-authenticated uploads, admin authentication, sess
 There are **three ways** to set up the admin password:
 
 ### Option 1: Proxmox Setup Script (Production)
-When running `bash setup.sh` on a Proxmox host, you'll be prompted to set the admin username and password. This is the recommended method for production deployments.
+When running `bash setup.sh` on a Proxmox host, you'll be prompted to set the admin username and password. This is the recommended method for a new install.
+
+On a container that already has an admin account, open the portal console and run `updateguest`. Choose **Admin account recovery** to set a new username and password, or to clear the account so `/admin.html` shows the first-run form. That recovery leaves the UniFi key, portal URL, rooms, and guest visits in place. `updateguest admin clear -y` does the clear without the menu.
 
 Useful setup modes:
 ```bash
@@ -168,7 +170,7 @@ Inside the LXC, routine code updates can also use `updateguest` (see [DEPLOY.md]
 ```bash
 bash setup-local.sh
 ```
-This interactive script prompts for admin credentials and creates the configuration files.
+This interactive script prompts for admin credentials and creates the configuration files. It replaces `config.json`, so use it for a local checkout, not for the portal container.
 
 ### Option 3: First-Run Web Setup
 If no admin password is configured, visiting `/admin.html` will show an **Initial Admin Setup** form where you can create the admin account directly in the browser.
