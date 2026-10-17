@@ -57,7 +57,7 @@
 
       <section class="admin-panel active" data-panel="overview" role="tabpanel">
         <h2>Deployment Status</h2>
-        <p class="admin-help">Service health, reverse proxy headers, upload storage, and optional dashboard URL reachability.</p>
+        <p class="admin-help">Service health, reverse proxy headers, upload storage, and optional dashboard URL reachability. Dashboard checks use GET, the same method a browser uses. A sign-in prompt still counts as reachable.</p>
         <div class="admin-actions">
           <button id="refreshDeploymentStatus" class="btn-secondary">Refresh Status</button>
           <button id="checkDashboardUrls" class="btn-success">Check Dashboard URLs</button>
@@ -988,7 +988,15 @@
         data.dashboards.rooms.forEach(room => {
           let result = 'not checked';
           if (room.checked) {
-            result = room.reachable ? `reachable (${room.status || 'no status'})` : `not reachable${room.error ? ': ' + room.error : ''}`;
+            if (!room.reachable) {
+              const why = room.error ? `: ${room.error}` : '';
+              const code = room.status ? ` (${room.status})` : '';
+              result = `not reachable${why}${code}`;
+            } else if (room.authRequired) {
+              result = `reachable, sign-in required (${room.status})`;
+            } else {
+              result = `reachable (${room.status || 'no status'})`;
+            }
           }
           html += `<li>${escapeHtml(room.name)} - ${escapeHtml(result)}<br><small>${dashboardAnchor(room.dashboardUrl)}</small></li>`;
         });

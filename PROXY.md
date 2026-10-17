@@ -59,4 +59,4 @@ Recommended flow:
 - Guest-facing public endpoints live under `/guest/*` (for example `/guest/rooms`, `/guest/background`). Do not require guests to call `/admin-api/*` — some reverse-proxy setups protect that prefix with HTTP Basic Auth.
 - Test `/health`, `/`, `/guest/rooms`, `/welcome.html`, `/photo.html`, and a PDF upload after proxy changes.
 - In `/admin.html`, open **Deployment Status** and confirm HTTPS is detected from forwarded headers.
-- Use **Check Dashboard URLs** to confirm configured Home Assistant dashboard URLs are reachable from the Guest Portal container.
+- Use **Check Dashboard URLs** to confirm configured Home Assistant dashboard URLs are reachable from the Guest Portal container. The check uses GET. A page or redirect counts as reachable, and a sign-in challenge (401 or 403) still counts as reachable. Method not allowed (405) does not.
