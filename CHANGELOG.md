@@ -32,6 +32,7 @@ All notable changes to this project will be documented here.
 - Event create/rename now rejects names that share an upload folder slug with another event (e.g. `Hello World` vs `Hello-World`); merge also refuses when a sibling event already shares the source slug, so admin merge cannot move another event's photos.
 
 ### Added
+- `updateguest` with no arguments opens a maintenance menu: update, admin account recovery, ownership repair, restart, and status. `updateguest update -y` runs the update. `updateguest -y` and `updateguest --dry-run` still update. Admin recovery changes only the sign-in account and leaves UniFi settings, rooms, and guest visits in place.
 - Admin sign-in is a session form with a Sign out button. API calls still accept HTTP Basic Auth. Checking a guest out, ending the visit from registration history, or purging an expired session turns off that phone's UniFi internet access. The guest list shows whether internet is on, and **Turn Off Internet** revokes it without ending the portal visit. Extending a stay updates the UniFi time limit.
 - Room dashboard links open in a new tab from the welcome hub and from the admin room list.
 - After a UniFi registration, **Open in Safari or Chrome** carries the visit into the phone's real browser and authorizes that client for internet access until checkout. The console URL, optional site id, and API key are saved in Admin **Settings** and stay out of git. **Continue in this window** authorizes without leaving the temporary browser.

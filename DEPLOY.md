@@ -67,11 +67,13 @@ Preview only:
 bash -c "$(curl -fsSL https://raw.githubusercontent.com/bon1wheel636/guest-portal/main/scripts/setup-container.sh)" -- --dry-run
 ```
 
-Refresh an existing in-container install:
+Refresh an existing in-container install from the portal console:
 
 ```bash
-updateguest
+updateguest update -y
 ```
+
+`updateguest` with no arguments opens a menu for that update, admin account recovery, ownership repair, a service restart, and status.
 
 or:
 
@@ -215,31 +217,43 @@ bash setup.sh --update <ctid>
 
 ### From inside the Guest Portal LXC
 
-After install or update, the container includes an `updateguest` command:
+After install or update, the container includes an `updateguest` command. On the container console it opens a menu:
 
 ```bash
 updateguest
 ```
 
-Preview the steps without making changes:
+Apply an update without the menu:
 
 ```bash
-updateguest --dry-run
+updateguest update -y
 ```
 
-Skip the confirmation prompt:
+Preview the update without making changes:
 
 ```bash
-updateguest -y
+updateguest update --dry-run
 ```
 
-You can also run it from the Proxmox host without entering the container:
+`updateguest -y` and `updateguest --dry-run` still run the update, so older commands keep working.
+
+Reset a forgotten admin password from the same menu (**Admin account recovery**), or clear the account so `/admin.html` shows the first-run form:
 
 ```bash
-pct exec <ctid> -- updateguest
+updateguest admin clear -y
 ```
 
-`updateguest` will:
+That changes the admin sign-in only. The UniFi key, portal URL, rooms, and guest visits stay. Restarting the service from the menu also clears a sign-in lockout immediately. Waiting 10 minutes clears it too.
+
+You can run the update from the Proxmox host without entering the container:
+
+```bash
+pct exec <ctid> -- updateguest update -y
+```
+
+The menu needs a terminal. Use `pct enter <ctid>` and then `updateguest`.
+
+`updateguest update` will:
 
 1. `git pull --ff-only` in `/opt/guest-portal` as the `guestportal` service user
 2. Run `npm install` as `guestportal`
@@ -314,7 +328,7 @@ See [BACKUP.md](BACKUP.md) for config backup, restore, and NAS permission checks
 - [ ] Confirm service restarts after `systemctl restart guest-portal`
 - [ ] Run remote installer dry-run: `bash -c "$(curl -fsSL .../install.sh)" -- --dry-run`
 - [ ] Use `bash setup.sh --update <ctid>` for existing installs and confirm prompts before changes
-- [ ] Run `updateguest --dry-run` inside the LXC, then `updateguest` for routine code updates
+- [ ] Run `updateguest update --dry-run` inside the LXC, then `updateguest update -y` for routine code updates
 
 ---
 
@@ -323,7 +337,7 @@ See [BACKUP.md](BACKUP.md) for config backup, restore, and NAS permission checks
 | Path | Description |
 |------|-------------|
 | `/opt/guest-portal/` | Application code |
-| `/usr/local/bin/updateguest` | In-container update command |
+| `/usr/local/bin/updateguest` | In-container maintenance menu and update command |
 | `/etc/guest-portal/config.json` | Admin credentials, upload path, settings |
 | `/etc/guest-portal/storage.json` | Rooms and guest data |
 | `/etc/guest-portal/sessions.json` | Active session codes |
