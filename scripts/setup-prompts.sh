@@ -261,6 +261,7 @@ gp_reset_application_code() {
     msg_error "npm install failed in ${gp_app_dir}"
     return 1
   fi
+  su -s /bin/bash -c "cd '${gp_app_dir}' && git checkout -- package-lock.json" "${gp_app_user}" >/dev/null 2>&1 || true
   mkdir -p "${gp_app_dir}/uploads/backgrounds"
   chown -R "${gp_app_user}:${gp_app_group}" "${gp_app_dir}/uploads" "${gp_config_dir}" 2>/dev/null || true
   msg_ok "Node.js dependencies installed"
@@ -274,7 +275,7 @@ gp_update_application_code() {
 
   msg_info "Updating application code"
   chown -R "${gp_app_user}:${gp_app_group}" "${gp_app_dir}" "${gp_config_dir}"
-  su -s /bin/bash -c "cd '${gp_app_dir}' && git pull --ff-only && npm install" "${gp_app_user}"
+  su -s /bin/bash -c "cd '${gp_app_dir}' && git checkout -- . && git pull --ff-only && npm install && { git checkout -- package-lock.json || true; }" "${gp_app_user}"
   mkdir -p "${gp_app_dir}/uploads/backgrounds"
   chown -R "${gp_app_user}:${gp_app_group}" "${gp_app_dir}" "${gp_config_dir}"
   msg_ok "Application code updated"

@@ -332,7 +332,7 @@ update_existing_install() {
         git clone '${var_repo}' '${var_app_dir}'
       fi
       chown -R '${var_app_user}:${var_app_group}' '${var_app_dir}' /etc/guest-portal
-      su -s /bin/bash -c \"cd '${var_app_dir}' && git pull --ff-only && npm install\" '${var_app_user}'
+      su -s /bin/bash -c \"cd '${var_app_dir}' && git checkout -- . && git pull --ff-only && npm install && { git checkout -- package-lock.json || true; }\" '${var_app_user}'
       mkdir -p '${var_app_dir}/uploads/backgrounds'
       chown -R '${var_app_user}:${var_app_group}' '${var_app_dir}' /etc/guest-portal
     " >/dev/null 2>&1
@@ -616,7 +616,7 @@ msg_ok "Cloned repository into container"
 
 msg_info "Installing Node.js dependencies"
 pct exec "$CT_ID" -- bash -c "
-  cd '${var_app_dir}' && npm install >/dev/null 2>&1
+  cd '${var_app_dir}' && npm install >/dev/null 2>&1 && { git checkout -- package-lock.json || true; }
   mkdir -p '${var_app_dir}/uploads/backgrounds'
   chown -R '${var_app_user}:${var_app_group}' '${var_app_dir}' /etc/guest-portal
 " >/dev/null 2>&1
