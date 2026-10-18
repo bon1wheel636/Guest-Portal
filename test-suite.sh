@@ -209,6 +209,61 @@ test_add_room_invalid_url() {
     fi
 }
 
+test_update_room_dashboard_url() {
+    require_admin_creds "Update room dashboard URL" || return
+    local room_name="URL Edit Room"
+    local old_url="http://example.com/old-dashboard"
+    local new_url="https://example.com/new-dashboard"
+    admin_curl -X POST "$BASE_URL/admin-api/rooms" \
+        -H "Content-Type: application/json" \
+        -d "{\"name\":\"$room_name\",\"dashboardUrl\":\"$old_url\"}" > /dev/null
+    local reg
+    reg=$(curl -s -X POST "$BASE_URL/register" \
+        -H "Content-Type: application/json" \
+        -d "{\"name\":\"URL Edit Guest\",\"room\":\"$room_name\",\"stayDays\":1,\"guestTypeId\":\"type_overnight\"}")
+    local token guest_id
+    token=$(echo "$reg" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
+    guest_id=$(echo "$reg" | grep -o '"id":"guest_[^"]*"' | head -1 | cut -d'"' -f4)
+    if [[ "$reg" != *"$old_url"* || -z "$token" ]]; then
+        fail "Update room dashboard URL" "registration stores the current room URL" "$reg"
+        admin_curl -X DELETE "$BASE_URL/admin-api/rooms/URL%20Edit%20Room" > /dev/null || true
+        return
+    fi
+    local bad_code
+    bad_code=$(admin_curl -o /dev/null -w "%{http_code}" -X PATCH "$BASE_URL/admin-api/rooms/URL%20Edit%20Room" \
+        -H "Content-Type: application/json" \
+        -d '{"dashboardUrl":"not-a-url"}')
+    local missing_code
+    missing_code=$(admin_curl -o /dev/null -w "%{http_code}" -X PATCH "$BASE_URL/admin-api/rooms/Missing%20URL%20Room" \
+        -H "Content-Type: application/json" \
+        -d "{\"dashboardUrl\":\"$new_url\"}")
+    local update_code
+    update_code=$(admin_curl -o /dev/null -w "%{http_code}" -X PATCH "$BASE_URL/admin-api/rooms/URL%20Edit%20Room" \
+        -H "Content-Type: application/json" \
+        -d "{\"dashboardUrl\":\"$new_url\"}")
+    local admin_body
+    admin_body=$(admin_curl "$BASE_URL/admin-api/rooms")
+    local validate
+    validate=$(curl -s -X POST "$BASE_URL/guest/validate" \
+        -H "Content-Type: application/json" \
+        -d "{\"token\":\"$token\"}")
+    local public_body
+    public_body=$(curl -s "$BASE_URL/guest/rooms")
+    if [[ "$bad_code" == "400" && "$missing_code" == "404" && "$update_code" == "200" \
+          && "$admin_body" == *"$new_url"* && "$admin_body" != *"$old_url"* \
+          && "$validate" == *"$new_url"* && "$validate" != *"$old_url"* \
+          && "$public_body" == *"$room_name"* && "$public_body" != *"$new_url"* ]]; then
+        pass "Update room dashboard URL"
+    else
+        fail "Update room dashboard URL" "400, 404, 200, new URL on the guest, hidden from public rooms" \
+            "bad=$bad_code missing=$missing_code update=$update_code admin=$admin_body validate=$validate public=$public_body"
+    fi
+    if [[ -n "$guest_id" ]]; then
+        admin_curl -X DELETE "$BASE_URL/admin-api/guest-sessions/$guest_id" > /dev/null || true
+    fi
+    admin_curl -X DELETE "$BASE_URL/admin-api/rooms/URL%20Edit%20Room" > /dev/null || true
+}
+
 test_delete_room() {
     require_admin_creds "Delete room" || return
     local response=$(admin_curl -X DELETE "$BASE_URL/admin-api/rooms/Test%20Suite%20Room")
@@ -2899,6 +2954,7 @@ test_add_room_valid
 test_public_rooms_hide_dashboard_url
 test_add_room_invalid_name
 test_add_room_invalid_url
+test_update_room_dashboard_url
 test_delete_room
 
 test_create_session
