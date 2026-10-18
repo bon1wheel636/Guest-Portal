@@ -36,6 +36,7 @@ All notable changes to this project will be documented here.
 - Event create/rename now rejects names that share an upload folder slug with another event (e.g. `Hello World` vs `Hello-World`); merge also refuses when a sibling event already shares the source slug, so admin merge cannot move another event's photos.
 
 ### Added
+- Landing page **Already registered?** reopens this phone's visit when the UniFi hotspot sent a client MAC, or accepts a device link code. Name-only lookup is not used, so two guests with the same name cannot take each other's stay.
 - Admin **Rooms & Portal** can edit a room's dashboard URL. Guests already in that room get the new link the next time they open the welcome hub.
 - Admin Sign out clears the session cookie on HTTPS and returns to the sign-in form. A password saved by the old browser prompt no longer keeps the page signed in.
 - `updateguest` with no arguments opens a maintenance menu: update, admin account recovery, ownership repair, restart, and status. `updateguest update -y` runs the update. `updateguest -y` and `updateguest --dry-run` still update. Admin recovery changes only the sign-in account and leaves UniFi settings, rooms, and guest visits in place.

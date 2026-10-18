@@ -325,6 +325,48 @@ function sessionCodeEntry(code) {
   return key ? sessionCodes[key] : null;
 }
 
+function findActiveTokenByUnifiMac(mac) {
+  const clientMac = normalizeMac(mac);
+  if (!clientMac) return null;
+  const now = new Date();
+  const matches = Object.entries(guestTokens)
+    .filter(([, guest]) => (
+      guest
+      && normalizeMac(guest.unifiClientMac) === clientMac
+      && new Date(guest.checkoutDate) >= now
+    ))
+    .sort((a, b) => String(b[1].createdAt || '').localeCompare(String(a[1].createdAt || '')));
+  return matches[0] || null;
+}
+
+async function claimGuestVisit(req, token, guest) {
+  if (!Array.isArray(guest.devices)) {
+    guest.devices = [];
+  }
+  const userAgent = req.get('User-Agent') || 'Unknown';
+  const returningDevice = isReturningDevice(guest, userAgent);
+  if (!returningDevice) {
+    guest.devices.push({
+      addedAt: new Date().toISOString(),
+      userAgent
+    });
+    saveGuestTokens();
+  }
+  let internet = { skipped: true };
+  try {
+    internet = await authorizeStoredUnifiClient(guest);
+  } catch (err) {
+    console.error('UniFi authorize failed:', err.message);
+    internet = { ok: false, error: 'Internet access could not be turned on' };
+  }
+  return {
+    token,
+    returningDevice,
+    guest: formatGuestResponse(guest),
+    internet
+  };
+}
+
 function rememberUnifiClient(guest, result) {
   const clientId = normalizeClientId(result && result.clientId);
   const siteId = result && result.siteId ? String(result.siteId) : '';
@@ -2235,38 +2277,30 @@ app.post('/guest/link-device', async (req, res) => {
     return res.status(410).send('Guest session expired');
   }
 
-  if (!Array.isArray(guest.devices)) {
-    guest.devices = [];
-  }
-  const userAgent = req.get('User-Agent') || 'Unknown';
-  if (!guest.devices.some(device => device.userAgent === userAgent)) {
-    guest.devices.push({
-      addedAt: new Date().toISOString(),
-      userAgent
-    });
-    saveGuestTokens();
-  }
-
   if (!entry.reuse) {
     const key = sessionCodeKey(code);
     if (key) delete sessionCodes[key];
     saveSessions();
   }
 
-  let internet = { skipped: true };
-  try {
-    internet = await authorizeStoredUnifiClient(guest);
-  } catch (err) {
-    console.error('UniFi authorize failed:', err.message);
-    internet = { ok: false, error: 'Internet access could not be turned on' };
-  }
+  res.json(await claimGuestVisit(req, entry.guestToken, guest));
+});
 
-  res.json({
-    token: entry.guestToken,
-    returningDevice: false,
-    guest: formatGuestResponse(guest),
-    internet
-  });
+app.post('/guest/resume', async (req, res) => {
+  const clientMac = normalizeMac(req.body?.clientMac);
+  const name = typeof req.body?.name === 'string' ? req.body.name.trim() : '';
+  if (!clientMac) {
+    return res.status(404).send('That visit was not found. Use a device link code from the phone you registered on.');
+  }
+  const found = findActiveTokenByUnifiMac(clientMac);
+  if (!found) {
+    return res.status(404).send('That visit was not found. Use a device link code from the phone you registered on.');
+  }
+  const [token, guest] = found;
+  if (name && guest.name.trim().toLowerCase() !== name.toLowerCase()) {
+    return res.status(404).send('That visit was not found. Use a device link code from the phone you registered on.');
+  }
+  res.json(await claimGuestVisit(req, token, guest));
 });
 
 app.post('/guest/unifi-authorize', async (req, res) => {

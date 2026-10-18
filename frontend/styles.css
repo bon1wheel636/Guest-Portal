@@ -684,6 +684,10 @@ a:hover {
   margin-top: 2.5rem;
 }
 
+.hero-secondary a {
+  color: #fff;
+}
+
 .hero-code-form {
   display: flex;
   gap: 0.5rem;

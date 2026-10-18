@@ -72,6 +72,8 @@ Registration from the UniFi redirect stores the client MAC on the guest session.
 
 The phone stays unauthorized until that button, so the temporary browser stays up long enough to tap. Do not turn hotspot Password or Vouchers back on. Those authorize first and close the window.
 
+**Already registered?** on the landing page reopens this phone's visit when the hotspot sent a client MAC. A name by itself cannot open someone else's stay. Without that MAC, the guest enters a device link code from the phone they registered with.
+
 In Guest Portal admin, open **Settings** and save **UniFi Internet**:
 
 - Console URL, `https://` plus the gateway address. The portal accepts the console's private certificate.
