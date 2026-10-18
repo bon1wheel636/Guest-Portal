@@ -78,7 +78,7 @@ In Guest Portal admin, open **Settings** and save **UniFi Internet**:
 - Site ID. Leave it blank when the console has one site.
 - API key created on the console under **Settings > Control Plane > Integrations**. A key from unifi.ui.com is rejected. The key stays in the server config and is not written into git.
 
-Authorization is `POST /proxy/network/integration/v1/sites/{siteId}/clients/{clientId}/actions` with `action` set to `AUTHORIZE_GUEST_ACCESS`. The time limit matches the guest checkout. Checking the guest out, or **Turn Off Internet** on that session, sends `UNAUTHORIZE_GUEST_ACCESS`. Extending the stay sends a new authorize with the new checkout. Pre-authorization allowances still have to include the proxy, because the real browser loads the handoff before the phone is authorized.
+Authorization is `POST /proxy/network/integration/v1/sites/{siteId}/clients/{clientId}/actions` with `action` set to `AUTHORIZE_GUEST_ACCESS`. The time limit matches the guest checkout. The portal stores that UniFi `clientId` on the stay. Checking the guest out, or **Turn Off Internet**, uses that id and then `UNAUTHORIZE_GUEST_ACCESS`. If UniFi no longer lists the phone, checkout keeps the visit and the admin panel reports that internet was not turned off. Extending the stay sends a new authorize with the new checkout. Pre-authorization allowances still have to include the proxy, because the real browser loads the handoff before the phone is authorized.
 
 The console URL is the local address used to open UniFi from the home LAN. It is not the guest network gateway.
 

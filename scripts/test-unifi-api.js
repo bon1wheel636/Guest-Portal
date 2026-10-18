@@ -11,6 +11,8 @@ function listen(handler) {
 
 async function main() {
   assert.strictEqual(normalizeMac('1C:71:25:63:E4:24'), '1c:71:25:63:e4:24');
+  assert.strictEqual(normalizeMac('1c712563e424'), '1c:71:25:63:e4:24');
+  assert.strictEqual(normalizeMac('1C-71-25-63-E4-24'), '1c:71:25:63:e4:24');
   assert.strictEqual(normalizeMac('not-a-mac'), null);
   assert.strictEqual(normalizeConsoleUrl('https://gw.example:8443/ignore'), 'https://gw.example:8443');
   assert.throws(() => normalizeConsoleUrl('http://gw.example'), /https/);
@@ -26,8 +28,19 @@ async function main() {
         return;
       }
       if (req.url.includes('/clients?')) {
+        const upper = decodeURIComponent(req.url).includes("macAddress.eq('1C:71:25:63:E4:24')");
         res.end(JSON.stringify({
-          data: [{ id: 'client-9', macAddress: '1c:71:25:63:e4:24', access: { type: 'GUEST', authorized: false } }]
+          data: upper
+            ? []
+            : [{ id: 'client-9', macAddress: '1c:71:25:63:e4:24', access: { type: 'GUEST', authorized: false } }]
+        }));
+        return;
+      }
+      if (req.url.endsWith('/clients/client-9')) {
+        res.end(JSON.stringify({
+          id: 'client-9',
+          macAddress: '1c:71:25:63:e4:24',
+          access: { type: 'GUEST', authorized: true }
         }));
         return;
       }
@@ -57,6 +70,7 @@ async function main() {
 
   assert.strictEqual(result.ok, true);
   assert.strictEqual(result.siteId, 'site-1');
+  assert.strictEqual(result.clientId, 'client-9');
   assert.ok(result.timeLimitMinutes >= 119 && result.timeLimitMinutes <= 121);
   assert.strictEqual(seen[0].apiKey, 'test-key-value');
   assert.ok(seen[0].url.includes('/v1/sites?'));
@@ -77,6 +91,52 @@ async function main() {
   assert.strictEqual(revoked.state, 'unauthorized');
   const revokeCall = seen.filter(entry => entry.method === 'POST').pop();
   assert.strictEqual(JSON.parse(revokeCall.body).action, 'UNAUTHORIZE_GUEST_ACCESS');
+
+  const missing = listen((req, res) => {
+    res.end(JSON.stringify({ data: [] }));
+  });
+  const missingServer = await missing;
+  const missingBase = `http://127.0.0.1:${missingServer.address().port}`;
+  await assert.rejects(() => unauthorizeUnifiGuest({
+    consoleUrl: 'https://gw.example',
+    apiKey: 'test-key-value',
+    siteId: 'site-1',
+    mac: '1c:71:25:63:e4:24',
+    fetchImpl: (url, options) => fetch(url.replace('https://gw.example', missingBase), options)
+  }), /not in the UniFi guest list/);
+  await new Promise(resolve => missingServer.close(resolve));
+
+  const byIdSeen = [];
+  const byIdServer = await listen((req, res) => {
+    byIdSeen.push({ method: req.method, url: req.url });
+    if (req.method === 'GET' && req.url.endsWith('/clients/client-9')) {
+      res.statusCode = 404;
+      res.end(JSON.stringify({ message: 'not connected' }));
+      return;
+    }
+    if (req.method === 'POST' && req.url.endsWith('/clients/client-9/actions')) {
+      res.end(JSON.stringify({ grantedAuthorization: true }));
+      return;
+    }
+    if (req.url.includes('/clients?')) {
+      res.end(JSON.stringify({ data: [] }));
+      return;
+    }
+    res.statusCode = 404;
+    res.end(JSON.stringify({ message: 'missing' }));
+  });
+  const byIdBase = `http://127.0.0.1:${byIdServer.address().port}`;
+  const byId = await unauthorizeUnifiGuest({
+    consoleUrl: 'https://gw.example',
+    apiKey: 'test-key-value',
+    siteId: 'site-1',
+    clientId: 'client-9',
+    mac: '1c:71:25:63:e4:24',
+    fetchImpl: (url, options) => fetch(url.replace('https://gw.example', byIdBase), options)
+  });
+  assert.strictEqual(byId.state, 'unauthorized');
+  assert.ok(byIdSeen.some(entry => entry.method === 'POST' && entry.url.endsWith('/clients/client-9/actions')));
+  await new Promise(resolve => byIdServer.close(resolve));
 
   const described = await describeUnifiGuest({
     consoleUrl: 'https://gw.example',

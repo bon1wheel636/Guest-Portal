@@ -11,6 +11,7 @@ All notable changes to this project will be documented here.
 - UniFi and Home Assistant setup notes now match Network 10.6 on UniFi OS 5.1 and Home Assistant Core 2026.10: external portal pre-authorization to the reverse proxy only, local dashboard links, and guest-only Kiosk Mode. Live hostnames and VLAN addresses stay in the gitignored site note.
 
 ### Fixed
+- Admin Check Out now turns off UniFi internet before it ends the visit. A missing client used to count as success, so the portal session disappeared while the phone kept access. Checkout stops if UniFi cannot unauthorize that MAC, and the panel says so.
 - Dashboard URL checks request the page with GET, the same method a browser uses. A HEAD probe was treated as success for any status under 500, so Home Assistant's 405 Method Not Allowed showed as reachable.
 - **Open in Safari or Chrome** keeps the guest session that was just created. The new browser opens `/guest/continue/...` and signs into that visit instead of showing registration again. A phone that is already in Safari or Chrome authorizes in place.
 - Bump `express` to 4.22.3, `multer` to 2.4.0, `body-parser` to 1.20.8, `qs` to 6.16.1, `proxy-addr` to 2.0.8, and `brace-expansion` to 2.1.7 via `npm audit fix`. Clears the critical `proxy-addr` IPv4-mapped IPv6 spoofing advisory, the multer upload denial-of-service issues, the `qs` array-limit and `isBuffer` issues, and the remaining `brace-expansion` denial-of-service advisories. `npm audit` is clean after the lockfile update.

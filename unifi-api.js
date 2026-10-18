@@ -1,11 +1,17 @@
 const https = require('https');
 
-const MAC_ADDRESS = /^[0-9a-f]{2}(:[0-9a-f]{2}){5}$/i;
-
 function normalizeMac(value) {
   if (typeof value !== 'string') return null;
-  const mac = value.trim().toLowerCase();
-  return MAC_ADDRESS.test(mac) ? mac : null;
+  const compact = value.trim().toLowerCase().replace(/[^0-9a-f]/g, '');
+  if (!/^[0-9a-f]{12}$/.test(compact)) return null;
+  return compact.match(/.{2}/g).join(':');
+}
+
+function normalizeClientId(value) {
+  if (value == null || String(value).trim() === '') return '';
+  const id = String(value).trim();
+  if (!/^[A-Za-z0-9._-]{1,80}$/.test(id)) return '';
+  return id;
 }
 
 function normalizeConsoleUrl(raw) {
@@ -143,7 +149,43 @@ async function resolveSiteId({ origin, apiKey, siteId, tlsInsecure, fetchImpl })
   throw new Error('UniFi returned more than one site. Enter the site id in Admin Settings.');
 }
 
-async function findUnifiClient({ consoleUrl, apiKey, siteId, mac, tlsInsecure, fetchImpl }) {
+async function readClientById({ origin, apiKey, siteId, clientId, tlsInsecure, fetchImpl }) {
+  const id = normalizeClientId(clientId);
+  if (!id) return null;
+  try {
+    const client = await unifiRequest({
+      origin,
+      apiKey,
+      path: `/v1/sites/${encodeURIComponent(siteId)}/clients/${encodeURIComponent(id)}`,
+      method: 'GET',
+      tlsInsecure,
+      fetchImpl
+    });
+    return client && client.id ? client : null;
+  } catch {
+    return null;
+  }
+}
+
+async function findClientByMac({ origin, apiKey, siteId, clientMac, tlsInsecure, fetchImpl }) {
+  const candidates = [clientMac, clientMac.toUpperCase()];
+  for (const macFilter of candidates) {
+    const filter = encodeURIComponent(`macAddress.eq('${macFilter}')`);
+    const clientsBody = await unifiRequest({
+      origin,
+      apiKey,
+      path: `/v1/sites/${encodeURIComponent(siteId)}/clients?limit=25&filter=${filter}`,
+      method: 'GET',
+      tlsInsecure,
+      fetchImpl
+    });
+    const client = listFromBody(clientsBody).find(entry => normalizeMac(entry && entry.macAddress) === clientMac);
+    if (client && client.id) return client;
+  }
+  return null;
+}
+
+async function findUnifiClient({ consoleUrl, apiKey, siteId, mac, clientId, tlsInsecure, fetchImpl }) {
   const origin = normalizeConsoleUrl(consoleUrl);
   const clientMac = normalizeMac(mac);
   if (!origin || !apiKey || !clientMac) {
@@ -156,17 +198,26 @@ async function findUnifiClient({ consoleUrl, apiKey, siteId, mac, tlsInsecure, f
     tlsInsecure,
     fetchImpl
   });
-  const filter = encodeURIComponent(`macAddress.eq('${clientMac}')`);
-  const clientsBody = await unifiRequest({
+  const byId = await readClientById({
     origin,
     apiKey,
-    path: `/v1/sites/${encodeURIComponent(resolvedSiteId)}/clients?limit=25&filter=${filter}`,
-    method: 'GET',
+    siteId: resolvedSiteId,
+    clientId,
     tlsInsecure,
     fetchImpl
   });
-  const client = listFromBody(clientsBody).find(entry => normalizeMac(entry && entry.macAddress) === clientMac);
-  return { origin, clientMac, siteId: resolvedSiteId, client: client && client.id ? client : null };
+  if (byId) {
+    return { origin, clientMac, siteId: resolvedSiteId, client: byId };
+  }
+  const client = await findClientByMac({
+    origin,
+    apiKey,
+    siteId: resolvedSiteId,
+    clientMac,
+    tlsInsecure,
+    fetchImpl
+  });
+  return { origin, clientMac, siteId: resolvedSiteId, client };
 }
 
 function clientAccess(client) {
@@ -183,7 +234,7 @@ function clientAccess(client) {
 async function describeUnifiGuest(options) {
   const found = await findUnifiClient(options);
   if (!found.client) return { state: 'not-seen', expiresAt: null, siteId: found.siteId };
-  return { ...clientAccess(found.client), siteId: found.siteId };
+  return { ...clientAccess(found.client), siteId: found.siteId, clientId: found.client.id };
 }
 
 async function authorizeUnifiGuest(options) {
@@ -202,26 +253,30 @@ async function authorizeUnifiGuest(options) {
     tlsInsecure: options.tlsInsecure,
     fetchImpl: options.fetchImpl
   });
-  return { ok: true, timeLimitMinutes, siteId: found.siteId };
+  return { ok: true, timeLimitMinutes, siteId: found.siteId, clientId: found.client.id };
 }
 
 async function unauthorizeUnifiGuest(options) {
   const found = await findUnifiClient(options);
-  if (!found.client) return { ok: true, state: 'not-seen', siteId: found.siteId };
+  const clientId = (found.client && found.client.id) || normalizeClientId(options.clientId);
+  if (!clientId) {
+    throw new Error('This phone is not in the UniFi guest list, so internet could not be turned off');
+  }
   await unifiRequest({
     origin: found.origin,
     apiKey: options.apiKey,
-    path: `/v1/sites/${encodeURIComponent(found.siteId)}/clients/${encodeURIComponent(found.client.id)}/actions`,
+    path: `/v1/sites/${encodeURIComponent(found.siteId)}/clients/${encodeURIComponent(clientId)}/actions`,
     method: 'POST',
     body: { action: 'UNAUTHORIZE_GUEST_ACCESS' },
     tlsInsecure: options.tlsInsecure,
     fetchImpl: options.fetchImpl
   });
-  return { ok: true, state: 'unauthorized', siteId: found.siteId };
+  return { ok: true, state: 'unauthorized', siteId: found.siteId, clientId };
 }
 
 module.exports = {
   normalizeMac,
+  normalizeClientId,
   normalizeConsoleUrl,
   normalizeSiteId,
   normalizeApiKey,

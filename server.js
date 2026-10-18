@@ -13,6 +13,7 @@ const archiver = require('archiver');
 const QRCode = require('qrcode');
 const {
   normalizeMac,
+  normalizeClientId,
   normalizeConsoleUrl,
   normalizeSiteId,
   normalizeApiKey,
@@ -305,18 +306,35 @@ function createBrowserHandoff(token, guest) {
   return code;
 }
 
+function rememberUnifiClient(guest, result) {
+  const clientId = normalizeClientId(result && result.clientId);
+  const siteId = result && result.siteId ? String(result.siteId) : '';
+  let changed = false;
+  if (clientId && guest.unifiClientId !== clientId) {
+    guest.unifiClientId = clientId;
+    changed = true;
+  }
+  if (siteId && guest.unifiSiteId !== siteId) {
+    guest.unifiSiteId = siteId;
+    changed = true;
+  }
+  if (changed) saveGuestTokens();
+}
+
 async function authorizeStoredUnifiClient(guest) {
   if (!guest || !guest.unifiClientMac) return { skipped: true };
-  if (!config.unifiConsoleUrl || !config.unifiApiKey) {
+  const connection = unifiConnection();
+  if (!connection) {
     return { skipped: true, reason: 'not-configured' };
   }
   const result = await authorizeUnifiGuest({
-    consoleUrl: config.unifiConsoleUrl,
-    apiKey: config.unifiApiKey,
-    siteId: config.unifiSiteId || '',
+    ...connection,
+    siteId: guest.unifiSiteId || connection.siteId,
+    clientId: guest.unifiClientId || '',
     mac: guest.unifiClientMac,
     checkoutDate: guest.checkoutDate
   });
+  rememberUnifiClient(guest, result);
   return { ok: true, minutes: result.timeLimitMinutes };
 }
 
@@ -325,7 +343,8 @@ function unifiConnection() {
   return {
     consoleUrl: config.unifiConsoleUrl,
     apiKey: config.unifiApiKey,
-    siteId: config.unifiSiteId || ''
+    siteId: config.unifiSiteId || '',
+    tlsInsecure: true
   };
 }
 
@@ -333,7 +352,13 @@ async function unauthorizeStoredUnifiClient(guest) {
   if (!guest || !guest.unifiClientMac) return { skipped: true, reason: 'not-linked' };
   const connection = unifiConnection();
   if (!connection) return { skipped: true, reason: 'not-configured' };
-  const result = await unauthorizeUnifiGuest({ ...connection, mac: guest.unifiClientMac });
+  const result = await unauthorizeUnifiGuest({
+    ...connection,
+    siteId: guest.unifiSiteId || connection.siteId,
+    clientId: guest.unifiClientId || '',
+    mac: guest.unifiClientMac
+  });
+  rememberUnifiClient(guest, result);
   return { ok: true, state: result.state };
 }
 
@@ -342,7 +367,13 @@ async function describeStoredUnifiClient(guest) {
   const connection = unifiConnection();
   if (!connection) return { linked: true, state: 'not-configured' };
   try {
-    const result = await describeUnifiGuest({ ...connection, mac: guest.unifiClientMac });
+    const result = await describeUnifiGuest({
+      ...connection,
+      siteId: guest.unifiSiteId || connection.siteId,
+      clientId: guest.unifiClientId || '',
+      mac: guest.unifiClientMac
+    });
+    rememberUnifiClient(guest, result);
     return { linked: true, state: result.state, expiresAt: result.expiresAt };
   } catch (err) {
     console.error('UniFi status failed:', err.message);
@@ -3006,7 +3037,7 @@ app.delete('/admin-api/guest-sessions/:guestId', authMiddleware, async (req, res
     internet = await unauthorizeStoredUnifiClient(guest);
   } catch (err) {
     console.error('UniFi checkout revoke failed:', err.message);
-    internet = { ok: false, error: 'Guest was checked out, but internet access could not be turned off' };
+    return res.status(502).send('Internet access could not be turned off. The visit was not checked out.');
   }
   delete guestTokens[token];
   saveGuestTokens();
@@ -3022,6 +3053,7 @@ app.post('/admin-api/guest-sessions/purge-expired', authMiddleware, async (req, 
       await unauthorizeStoredUnifiClient(guest);
     } catch (err) {
       console.error('UniFi purge revoke failed:', err.message);
+      continue;
     }
     delete guestTokens[token];
   }
@@ -3291,12 +3323,10 @@ app.delete('/admin-api/guests/:guestId', authMiddleware, async (req, res) => {
   const { guestId } = req.params;
   const endSession = req.query.endSession === 'true';
 
-  const beforeCount = (guestData.guests || []).length;
-  guestData.guests = (guestData.guests || []).filter(g => g.guestId !== guestId);
-  if (guestData.guests.length === beforeCount) {
+  const historyExists = (guestData.guests || []).some(g => g.guestId === guestId);
+  if (!historyExists) {
     return res.status(404).send('Registration history entry not found');
   }
-  saveGuestData();
 
   let sessionEnded = false;
   let internet = { skipped: true };
@@ -3308,13 +3338,16 @@ app.delete('/admin-api/guests/:guestId', authMiddleware, async (req, res) => {
         internet = await unauthorizeStoredUnifiClient(guest);
       } catch (err) {
         console.error('UniFi history checkout failed:', err.message);
-        internet = { ok: false, error: 'The visit was ended, but internet access could not be turned off' };
+        return res.status(502).send('Internet access could not be turned off. The visit was not ended.');
       }
       delete guestTokens[token];
       saveGuestTokens();
       sessionEnded = true;
     }
   }
+
+  guestData.guests = (guestData.guests || []).filter(g => g.guestId !== guestId);
+  saveGuestData();
 
   res.json({ success: true, sessionEnded, internet });
 });
