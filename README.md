@@ -87,7 +87,7 @@ bash setup.sh
 - A Node.js LXC for the backend server
 - A systemd service for automatic restarts and boot persistence
 - DHCP or static IP network configuration
-- Smart Home dashboard links per room
+- Smart Home dashboard links per room, opened on the portal hostname so guests do not see the Home Assistant address
 - Secure admin password hashing (bcrypt)
 - NAS storage setup (optional):
   1. **NFS mount** — auto-configures NFS mount point with fstab entry
@@ -114,6 +114,7 @@ bash setup.sh
 |------|------|-------------|
 | Guest Registration | `/` | Room selection, stay length, device linking |
 | Guest Welcome Hub | `/welcome.html` | Stay hub: greeting, Smart Home, upload, device linking |
+| Guest Smart Home | `/guest/home` | Proxied room dashboard with kiosk kept on |
 | My Photos | `/photo.html` | Guest gallery for uploads during the current stay |
 | Admin Panel | `/admin.html` | Deployment status, room/session/guest management, settings |
 

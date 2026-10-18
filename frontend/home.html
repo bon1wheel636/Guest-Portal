@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Smart Home</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body class="home-shell">
+  <header class="home-shell-bar">
+    <a href="/welcome.html">Back to welcome</a>
+    <span>Smart Home</span>
+  </header>
+  <p id="homeStatus" class="home-shell-status">Opening your room controls…</p>
+  <iframe id="homeFrame" class="home-shell-frame" title="Room controls" hidden sandbox="allow-scripts allow-same-origin allow-forms allow-modals"></iframe>
+  <script>
+    const status = document.getElementById('homeStatus');
+    const frame = document.getElementById('homeFrame');
+    const guestToken = localStorage.getItem('guestToken');
+
+    async function openDashboard() {
+      if (!guestToken) {
+        window.location.href = 'index.html';
+        return;
+      }
+      try {
+        const res = await fetch('/guest/home-session', {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Guest-Token': guestToken
+          }
+        });
+        if (res.status === 401 || res.status === 410 || res.status === 403) {
+          window.location.href = 'index.html';
+          return;
+        }
+        if (!res.ok) {
+          const text = await res.text();
+          status.textContent = text || 'Smart Home is not available for this stay.';
+          return;
+        }
+        const data = await res.json();
+        frame.src = data.embedPath || '/guest/ha';
+        frame.hidden = false;
+        status.hidden = true;
+      } catch (err) {
+        console.error('Dashboard session failed:', err);
+        status.textContent = 'Unable to open Smart Home. Return to welcome and try again.';
+      }
+    }
+
+    openDashboard();
+  </script>
+</body>
+</html>

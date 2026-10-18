@@ -16,7 +16,7 @@ UniFi sends the phone to Guest Portal before it authorizes the client. The phone
 6. On that same Landing Page, check **Post-Authorization Restrictions**. A private-range block drops traffic to the home LAN even after a later authorization. Exempt the Nginx Proxy Manager address.
 7. Add a Host (A) record so guests resolve the portal hostname to the Nginx Proxy Manager address. On Network 10.6 this is **Settings > Policy Table > Create New Policy > DNS**. Guest DHCP already uses the UDM as DNS. Issue the certificate in Nginx Proxy Manager with a DNS challenge. A public A record is not required for an internal name.
 8. Publish Home Assistant through the same proxy under one local hostname, then set each room's dashboard URL to a path on that host. See the Home Assistant section below.
-9. In Guest Portal admin, store that room dashboard URL. The Welcome hub opens it in the guest's browser. The guest still signs in to Home Assistant. The portal does not sign them in.
+9. In Guest Portal admin, store that room dashboard URL. The Welcome hub opens `/guest/home` on the portal hostname. The portal proxies only that dashboard and keeps kiosk on, so the guest does not see the Home Assistant address or other Home Assistant pages. The guest still signs in to Home Assistant. The portal does not sign them in.
 
 A phone that already passed the hotspot password is still authorized, so UniFi will not open the temporary browser again. Forget that Wi-Fi network on the phone, or unauthorize the client in UniFi, then join again.
 
@@ -56,7 +56,7 @@ kiosk_mode:
 
 In the guest user's profile, set the default dashboard to the guest dashboard. In Guest Portal, set the room URL to that dashboard's path. Kiosk mode hides the header and sidebar for that login, so the guest sees that dashboard and no menu of the others.
 
-Kiosk mode hides navigation. A guest who types another Home Assistant path can still open it. Stock Home Assistant Core 2026.10 also leaves History, Activity, Energy, and Map reachable by address, and a non-administrator can control entities that are not on the guest dashboard. Keep locks and cameras off the guest dashboard.
+Kiosk mode hides navigation. The portal Smart Home page (`/guest/home`) proxies only the assigned dashboard and sends other Home Assistant UI paths back to that dashboard with kiosk query parameters restored. Guests who open the real Home Assistant hostname in the address bar can still leave kiosk. Keep that hostname off the guest VLAN when guests should only reach Home Assistant through the portal. A non-administrator can still control entities their Home Assistant user is allowed to use. Keep locks and cameras off the guest dashboard.
 
 ## NAS upload checklist
 
@@ -84,7 +84,7 @@ Authorization is `POST /proxy/network/integration/v1/sites/{siteId}/clients/{cli
 
 The console URL is the local address used to open UniFi from the home LAN. It is not the guest network gateway.
 
-Room dashboard links open in a new tab. Guests reach Home Assistant only through its local proxy hostname. A long-lived access token does not sign a guest into the dashboard page. Create the guest user in Home Assistant, leave Administrator off, and keep Kiosk Mode on `user_settings` for that display name. Disable that Home Assistant user to revoke the dashboard.
+Room dashboard links open `/guest/home` in a new tab on the portal hostname. The portal fetches Home Assistant from the home LAN and does not put that address in the guest browser. A long-lived access token does not sign a guest into the dashboard page. Create the guest user in Home Assistant, leave Administrator off, and keep Kiosk Mode on `user_settings` for that display name. Disable that Home Assistant user to revoke the dashboard.
 
 The guest VLAN and the portal hostname are already decided. They stay in the gitignored site note. Hotspot Password and Voucher admission is not the landing path. The owner enters the console URL, site id, and API key in Admin Settings. Do not ask for the API key in chat, and do not copy it into git. Still ask only for these when they are missing from the gitignored site note:
 

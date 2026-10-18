@@ -22,6 +22,14 @@ const {
   describeUnifiGuest
 } = require('./unifi-api');
 const { checkUrlReachability } = require('./url-check');
+const {
+  COOKIE_NAME: DASH_COOKIE_NAME,
+  GUEST_HOME_PATH,
+  EMBED_PATH,
+  looksLikeDashboardTraffic,
+  handleDashboardRequest,
+  handleDashboardUpgrade
+} = require('./dashboard-proxy');
 const app = express();
 
 // ─── Constants & Data Loading ───────────────────────────────────────────────
@@ -710,7 +718,7 @@ function formatGuestResponse(guest) {
     id: guest.id,
     name: guest.name,
     room: guest.room || '',
-    dashboardUrl: permissions.smartHomeControls ? dashboardUrlForGuest(guest) : null,
+    dashboardUrl: permissions.smartHomeControls && dashboardUrlForGuest(guest) ? GUEST_HOME_PATH : null,
     checkoutDate: guest.checkoutDate,
     guestTypeId: guest.guestTypeId || guestType.id,
     guestTypeName: missingType ? 'Unknown (restricted)' : guestType.name,
@@ -1654,7 +1662,8 @@ function getGuestEntryHealth() {
     { path: '/', ok: fs.existsSync(path.join(frontendDir, 'index.html')), detail: 'Guest registration page is present' },
     { path: '/guest/rooms', ok: Array.isArray(rooms), detail: `${rooms.length} room${rooms.length === 1 ? '' : 's'} available` },
     { path: '/welcome.html', ok: fs.existsSync(path.join(frontendDir, 'welcome.html')), detail: 'Guest welcome hub is present' },
-    { path: '/photo.html', ok: fs.existsSync(path.join(frontendDir, 'photo.html')), detail: 'Guest photo gallery is present' }
+    { path: '/photo.html', ok: fs.existsSync(path.join(frontendDir, 'photo.html')), detail: 'Guest photo gallery is present' },
+    { path: GUEST_HOME_PATH, ok: fs.existsSync(path.join(frontendDir, 'home.html')), detail: 'Guest Smart Home shell is present' }
   ];
   const roomsConfigured = rooms.length > 0;
   const endpointsOk = checks.every(check => check.ok);
@@ -1724,7 +1733,17 @@ app.use(express.json());
 // H1: Rate limiter BEFORE static files and routes
 const limiter = rateLimit({
   windowMs: 60 * 1000,
-  max: 200
+  max: 200,
+  skip: (req) => {
+    const pathname = req.path || '';
+    if (pathname === GUEST_HOME_PATH || pathname === '/guest/home-session' || pathname === EMBED_PATH) {
+      return true;
+    }
+    const cookie = req.headers.cookie || '';
+    const hasDashCookie = cookie.split(';').some(part => part.trim().startsWith(`${DASH_COOKIE_NAME}=`));
+    const hasGuestHeader = Boolean(req.get('X-Guest-Token'));
+    return (hasDashCookie || hasGuestHeader) && looksLikeDashboardTraffic(pathname);
+  }
 });
 app.use(limiter);
 
@@ -1736,7 +1755,7 @@ function clientAddress(req) {
 }
 
 function readCookie(req, name) {
-  const header = req.get('Cookie') || '';
+  const header = (req.get && req.get('Cookie')) || req.headers.cookie || '';
   for (const part of header.split(';')) {
     const separator = part.indexOf('=');
     if (separator === -1) continue;
@@ -1785,6 +1804,34 @@ function clearAdminSessionCookie(res) {
   // Secure when the proxy forwarded https, so expire both forms.
   const expired = 'adminSession=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0';
   res.setHeader('Set-Cookie', [expired, `${expired}; Secure`]);
+}
+
+function guestDashboardContext(req) {
+  const token = readCookie(req, DASH_COOKIE_NAME) || req.get?.('X-Guest-Token') || req.headers['x-guest-token'] || '';
+  const session = getGuestSession(token);
+  if (!session.guest) return session;
+  if (!getGuestPermissions(session.guest).smartHomeControls) {
+    return { status: 403, message: 'Smart Home is not available for your guest type' };
+  }
+  const dashboardUrl = dashboardUrlForGuest(session.guest);
+  if (!dashboardUrl) {
+    return { status: 404, message: 'No dashboard is assigned' };
+  }
+  return { guest: session.guest, dashboardUrl, token };
+}
+
+function setDashCookie(res, req, token) {
+  const forwarded = (req.get('X-Forwarded-Proto') || '').split(',')[0].trim();
+  const secure = forwarded === 'https' || req.secure;
+  const parts = [
+    `${DASH_COOKIE_NAME}=${encodeURIComponent(token)}`,
+    'HttpOnly',
+    'SameSite=Lax',
+    'Path=/',
+    'Max-Age=43200'
+  ];
+  if (secure) parts.push('Secure');
+  res.setHeader('Set-Cookie', parts.join('; '));
 }
 
 function tooManyLoginFailures(address) {
@@ -2221,6 +2268,26 @@ app.post('/guest/validate', (req, res) => {
     returningDevice: isReturningDevice(guest, req.get('User-Agent')),
     guest: guestPayload
   });
+});
+
+app.post('/guest/home-session', (req, res) => {
+  const token = req.body?.token || req.get('X-Guest-Token');
+  const session = getGuestSession(token);
+  if (!session.guest) {
+    return res.status(session.status || 401).send(session.message || 'Valid guest session required');
+  }
+  if (!getGuestPermissions(session.guest).smartHomeControls) {
+    return res.status(403).send('Smart Home is not available for your guest type');
+  }
+  if (!dashboardUrlForGuest(session.guest)) {
+    return res.status(404).send('No dashboard is assigned');
+  }
+  setDashCookie(res, req, token);
+  res.json({ ok: true, embedPath: EMBED_PATH });
+});
+
+app.get(GUEST_HOME_PATH, (req, res) => {
+  res.sendFile(path.join(__dirname, 'frontend', 'home.html'));
 });
 
 app.post('/guest/link-code', async (req, res) => {
@@ -3449,8 +3516,35 @@ app.delete('/admin-api/sessions/:code', authMiddleware, (req, res) => {
 
 // ─── Start Server ───────────────────────────────────────────────────────────
 
+app.use((req, res, next) => {
+  const pathname = req.path || '';
+  if (pathname === GUEST_HOME_PATH) return next();
+  if (pathname === EMBED_PATH) {
+    return handleDashboardRequest(req, res, guestDashboardContext(req));
+  }
+  if (!looksLikeDashboardTraffic(pathname)) return next();
+  const context = guestDashboardContext(req);
+  if (!context.guest) return next();
+  return handleDashboardRequest(req, res, context);
+});
+
 const server = app.listen(port, () => {
   console.log(`Guest Portal backend is running at http://localhost:${port}`);
+});
+
+server.on('upgrade', (req, socket, head) => {
+  let pathname = '/';
+  try {
+    pathname = new URL(req.url, 'http://portal.local').pathname;
+  } catch {
+    socket.destroy();
+    return;
+  }
+  if (pathname !== '/api/websocket' && !pathname.startsWith('/api/')) {
+    socket.destroy();
+    return;
+  }
+  handleDashboardUpgrade(req, socket, head, guestDashboardContext(req));
 });
 
 // L4: Graceful shutdown — close server and flush pending writes
