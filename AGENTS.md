@@ -31,7 +31,7 @@ Track high-level items in [ROADMAP.md](ROADMAP.md) under **Sprint queue**.
 
 ### Service & how to run
 - Single service: `npm start` (runs `node server.js`) listening on `http://localhost:3000`. There is no separate dev/watch mode and no build step. After editing `server.js` you must restart the process for changes to take effect (no hot reload).
-- Frontend pages: `/` (guest registration), `/welcome.html` (guest hub — uploads, text notes, device linking), `/photo.html` (guest photo gallery), `/admin.html` (admin panel). Static files are edited live and just need a browser refresh.
+- Frontend pages: `/` (guest registration), `/welcome.html` (guest hub — uploads, text notes, device linking), `/guest/home` (proxied room dashboard), `/photo.html` (guest photo gallery), `/admin.html` (admin panel). Static files are edited live and just need a browser refresh. Guests never receive the stored Home Assistant URL; Smart Home opens `/guest/home`.
 - Guest notes: `GET/PUT/DELETE /guest/note` (requires `X-Guest-Token` and `leaveGuestNote` permission); admin `GET/DELETE /admin-api/guest-notes`. Notes persist in `storage.json` under `guestNotes[]`.
 
 ### Config lives outside the repo (non-obvious)

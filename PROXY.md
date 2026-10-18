@@ -60,3 +60,4 @@ Recommended flow:
 - Test `/health`, `/`, `/guest/rooms`, `/welcome.html`, `/photo.html`, and a PDF upload after proxy changes.
 - In `/admin.html`, open **Deployment Status** and confirm HTTPS is detected from forwarded headers.
 - Use **Check Dashboard URLs** to confirm configured Home Assistant dashboard URLs are reachable from the Guest Portal container. The check uses GET. A page or redirect counts as reachable, and a sign-in challenge (401 or 403) still counts as reachable. Method not allowed (405) does not.
+- Guest Smart Home uses `/guest/home` on the portal hostname. The container fetches the stored dashboard URL, so Home Assistant only needs to be reachable from the portal LXC. Guests do not need a separate browser path to the Home Assistant hostname.

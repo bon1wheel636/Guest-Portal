@@ -67,7 +67,7 @@
 
       <section class="admin-panel" data-panel="rooms" role="tabpanel">
         <h2>Rooms</h2>
-        <p class="admin-help">Map guest rooms to Home Assistant dashboard URLs. Guests open the link in a new tab. Use the local proxy hostname, not a Home Assistant IP on port 8123 and not a Nabu Casa address. Home Assistant still asks the guest to sign in until that guest user is set up there. A long-lived access token does not sign the dashboard page in. Disable that Home Assistant user to revoke the dashboard. Kiosk Mode stays limited to that guest's display name. Edit changes the URL for that room. Guests already in the room see the new link the next time they open the welcome hub.</p>
+        <p class="admin-help">Map guest rooms to Home Assistant dashboard URLs. Guests open a portal page (<code>/guest/home</code>) that proxies only that dashboard with kiosk kept on, so they do not see the Home Assistant address or other pages. Store the local proxy hostname, not a Home Assistant IP on port 8123 and not a Nabu Casa address. Home Assistant still asks the guest to sign in until that guest user is set up there. A long-lived access token does not sign the dashboard page in. Disable that Home Assistant user to revoke the dashboard. Kiosk Mode stays limited to that guest's display name. Edit changes the URL for that room. Guests already in the room get the new dashboard the next time they open Smart Home.</p>
         <form id="roomForm" class="admin-card">
           <h3 id="roomFormTitle">Add Room</h3>
           <label for="roomName">Room Name:</label>

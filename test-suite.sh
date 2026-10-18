@@ -224,8 +224,8 @@ test_update_room_dashboard_url() {
     local token guest_id
     token=$(echo "$reg" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
     guest_id=$(echo "$reg" | grep -o '"id":"guest_[^"]*"' | head -1 | cut -d'"' -f4)
-    if [[ "$reg" != *"$old_url"* || -z "$token" ]]; then
-        fail "Update room dashboard URL" "registration stores the current room URL" "$reg"
+    if [[ "$reg" != *'"dashboardUrl":"/guest/home"'* || "$reg" == *"$old_url"* || -z "$token" ]]; then
+        fail "Update room dashboard URL" "registration returns portal /guest/home, not the stored Home Assistant URL" "$reg"
         admin_curl -X DELETE "$BASE_URL/admin-api/rooms/URL%20Edit%20Room" > /dev/null || true
         return
     fi
@@ -251,11 +251,11 @@ test_update_room_dashboard_url() {
     public_body=$(curl -s "$BASE_URL/guest/rooms")
     if [[ "$bad_code" == "400" && "$missing_code" == "404" && "$update_code" == "200" \
           && "$admin_body" == *"$new_url"* && "$admin_body" != *"$old_url"* \
-          && "$validate" == *"$new_url"* && "$validate" != *"$old_url"* \
+          && "$validate" == *'"dashboardUrl":"/guest/home"'* && "$validate" != *"$new_url"* && "$validate" != *"$old_url"* \
           && "$public_body" == *"$room_name"* && "$public_body" != *"$new_url"* ]]; then
         pass "Update room dashboard URL"
     else
-        fail "Update room dashboard URL" "400, 404, 200, new URL on the guest, hidden from public rooms" \
+        fail "Update room dashboard URL" "400, 404, 200, admin has new URL, guest sees /guest/home" \
             "bad=$bad_code missing=$missing_code update=$update_code admin=$admin_body validate=$validate public=$public_body"
     fi
     if [[ -n "$guest_id" ]]; then
@@ -2744,6 +2744,86 @@ test_unifi_api_client() {
     fi
 }
 
+test_dashboard_proxy_rules() {
+    if node scripts/test-dashboard-proxy.js >/tmp/dashboard-proxy-test.log 2>&1; then
+        pass "Dashboard proxy path rules"
+    else
+        fail "Dashboard proxy path rules" "classify blocked/asset/page" "$(cat /tmp/dashboard-proxy-test.log)"
+    fi
+}
+
+test_dashboard_proxy_home() {
+    require_admin_creds "Dashboard proxy hides Home Assistant URL" || return
+    local port_file="/tmp/guest-portal-mock-ha.port"
+    rm -f "$port_file"
+    node -e '
+      const fs = require("fs");
+      const http = require("http");
+      const server = http.createServer((req, res) => {
+        res.writeHead(200, { "Content-Type": "text/html" });
+        const label = req.url.startsWith("/history") ? "HISTORY_PAGE " : "DASHBOARD_OK ";
+        res.end(label + req.url);
+      });
+      server.listen(0, "127.0.0.1", () => {
+        fs.writeFileSync(process.argv[1], String(server.address().port));
+      });
+    ' "$port_file" &
+    local mock_pid=$!
+    local mock_port=""
+    for _ in 1 2 3 4 5 6 7 8 9 10; do
+        if [[ -s "$port_file" ]]; then
+            mock_port=$(cat "$port_file")
+            break
+        fi
+        sleep 0.1
+    done
+    if [[ -z "$mock_port" ]]; then
+        kill "$mock_pid" 2>/dev/null || true
+        fail "Dashboard proxy hides Home Assistant URL" "mock Home Assistant port" "mock did not start"
+        return
+    fi
+    local dash_url="http://127.0.0.1:${mock_port}/lovelace/guest-room?kiosk"
+    admin_curl -X POST "$BASE_URL/admin-api/rooms" \
+        -H "Content-Type: application/json" \
+        -d "{\"name\":\"Proxy Dash Room\",\"dashboardUrl\":\"$dash_url\"}" > /dev/null
+    local response=$(curl -s -X POST "$BASE_URL/register" \
+        -H "Content-Type: application/json" \
+        -d '{"name":"Proxy Dash Guest","room":"Proxy Dash Room","stayDays":2,"guestTypeId":"type_overnight"}')
+    local token=$(echo "$response" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
+    local guest_id=$(echo "$response" | grep -o '"id":"guest_[^"]*"' | head -1 | cut -d'"' -f4)
+    if [[ -z "$token" || "$response" == *"127.0.0.1"* || "$response" != *'"dashboardUrl":"/guest/home"'* ]]; then
+        kill "$mock_pid" 2>/dev/null || true
+        fail "Dashboard proxy hides Home Assistant URL" "register returns /guest/home" "$response"
+        return
+    fi
+    local session=$(curl -s -D - -o /tmp/home-session.body -X POST "$BASE_URL/guest/home-session" \
+        -H "Content-Type: application/json" \
+        -H "X-Guest-Token: $token")
+    local cookie=$(echo "$session" | grep -i '^set-cookie:' | head -1 | sed 's/[Cc]ookie: //' | cut -d';' -f1)
+    local embed=$(curl -s -o /dev/null -w "%{http_code} %{redirect_url}" -H "X-Guest-Token: $token" "$BASE_URL/guest/ha")
+    local page=$(curl -s -H "X-Guest-Token: $token" "$BASE_URL/lovelace/guest-room?kiosk")
+    local blocked_code=$(curl -s -o /dev/null -w "%{http_code}" -H "X-Guest-Token: $token" "$BASE_URL/history")
+    local blocked_loc=$(curl -s -o /dev/null -w "%{redirect_url}" -H "X-Guest-Token: $token" "$BASE_URL/history")
+    local other_loc=$(curl -s -o /dev/null -w "%{redirect_url}" -H "X-Guest-Token: $token" "$BASE_URL/lovelace/other-room")
+    local anon_history=$(curl -s -o /dev/null -w "%{http_code}" "$BASE_URL/history")
+    kill "$mock_pid" 2>/dev/null || true
+    if [[ -n "$guest_id" ]]; then
+        admin_curl -X DELETE "$BASE_URL/admin-api/guest-sessions/$guest_id" > /dev/null
+    fi
+    admin_curl -X DELETE "$BASE_URL/admin-api/rooms/Proxy%20Dash%20Room" > /dev/null
+    if [[ "$session" == *"gpDash="* && "$embed" == "302 "*"/lovelace/guest-room?kiosk"* \
+          && "$page" == *"DASHBOARD_OK /lovelace/guest-room?kiosk"* \
+          && "$blocked_code" == "302" && "$blocked_loc" == *"/lovelace/guest-room?kiosk"* \
+          && "$other_loc" == *"/lovelace/guest-room?kiosk"* \
+          && "$anon_history" != "200" && -n "$cookie" ]]; then
+        pass "Dashboard proxy hides Home Assistant URL"
+    else
+        fail "Dashboard proxy hides Home Assistant URL" \
+            "cookie, embed 302, dashboard body, blocked paths redirect, anon history not 200" \
+            "session=$session embed=$embed page=$page blocked=$blocked_code $blocked_loc other=$other_loc anon=$anon_history"
+    fi
+}
+
 test_admin_html() {
     require_admin_creds "Admin page loads with Basic Auth" || return
     local response=$(admin_curl "$BASE_URL/admin.html")
@@ -2756,10 +2836,10 @@ test_admin_html() {
 
 test_welcome_html() {
     local response=$(curl -s "$BASE_URL/welcome.html")
-    if [[ "$response" == *"smartHomeLink"* && "$response" == *'target="_blank"'* ]]; then
-        pass "Welcome hub opens the room dashboard in a new tab"
+    if [[ "$response" == *"smartHomeLink"* && "$response" == *'target="_blank"'* && "$response" == *"/guest/home"* ]]; then
+        pass "Welcome hub opens Smart Home on the portal hostname"
     else
-        fail "Welcome hub opens the room dashboard in a new tab" "smartHomeLink target=_blank" "Missing new-tab link"
+        fail "Welcome hub opens Smart Home on the portal hostname" "smartHomeLink target=_blank /guest/home" "Missing portal dashboard link"
     fi
     if [[ "$response" == *"Upload"* && "$response" == *"My Photos"* ]]; then
         pass "Welcome hub page loads"
@@ -3002,12 +3082,14 @@ test_guest_entry_smoke_routes() {
     local rooms_code=$(curl -s -o /dev/null -w "%{http_code}" "$BASE_URL/guest/rooms")
     local welcome_code=$(curl -s -o /dev/null -w "%{http_code}" "$BASE_URL/welcome.html")
     local photo_code=$(curl -s -o /dev/null -w "%{http_code}" "$BASE_URL/photo.html")
+    local home_code=$(curl -s -o /dev/null -w "%{http_code}" "$BASE_URL/guest/home")
 
     [[ "$health_code" == "200" ]] || failed+="/health=$health_code "
     [[ "$index_code" == "200" ]] || failed+="/=$index_code "
     [[ "$rooms_code" == "200" ]] || failed+="/guest/rooms=$rooms_code "
     [[ "$welcome_code" == "200" ]] || failed+="/welcome.html=$welcome_code "
     [[ "$photo_code" == "200" ]] || failed+="/photo.html=$photo_code "
+    [[ "$home_code" == "200" ]] || failed+="/guest/home=$home_code "
 
     if [[ -z "$failed" ]]; then
         pass "Guest entry smoke routes return 200"
@@ -3019,7 +3101,7 @@ test_guest_entry_smoke_routes() {
 test_frontend_script_syntax() {
     local tmp_dir
     tmp_dir=$(mktemp -d)
-    python3 - "$tmp_dir" frontend/index.html frontend/welcome.html frontend/photo.html frontend/admin.html <<'PY'
+    python3 - "$tmp_dir" frontend/index.html frontend/welcome.html frontend/photo.html frontend/admin.html frontend/home.html <<'PY'
 import pathlib
 import sys
 from html.parser import HTMLParser
@@ -3174,6 +3256,8 @@ test_unifi_guest_redirect
 test_unifi_browser_handoff
 test_guest_resume
 test_unifi_api_client
+test_dashboard_proxy_rules
+test_dashboard_proxy_home
 test_admin_html
 test_welcome_html
 test_photo_html

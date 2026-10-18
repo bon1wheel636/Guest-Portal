@@ -860,3 +860,36 @@ body.registration-modal-open {
   opacity: 0.55;
 }
 
+.home-shell {
+  margin: 0;
+  background: #111;
+  min-height: 100vh;
+}
+
+.home-shell-bar {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.6rem 1rem;
+  background: #1b1b1b;
+  color: #f4f4f4;
+  font-size: 0.95rem;
+}
+
+.home-shell-bar a {
+  color: #8ec8ff;
+}
+
+.home-shell-status {
+  margin: 1.5rem;
+  color: #f4f4f4;
+}
+
+.home-shell-frame {
+  display: block;
+  width: 100%;
+  height: calc(100vh - 2.6rem);
+  border: 0;
+  background: #fff;
+}
+
