@@ -2518,6 +2518,11 @@ test_index_html() {
     else
         fail "Index page keeps the UniFi guest redirect for later authorization" "unifiGuest + browserHandoff" "Missing handoff script"
     fi
+    if [[ "$response" == *"Already registered?"* && "$response" == *"/guest/resume"* ]]; then
+        pass "Index page includes Already registered recovery"
+    else
+        fail "Index page includes Already registered recovery" "Already registered + /guest/resume" "Missing recover UI"
+    fi
 }
 
 test_unifi_guest_redirect() {
@@ -2606,6 +2611,43 @@ test_unifi_browser_handoff() {
         pass "UniFi admin settings require authentication"
     else
         fail "UniFi admin settings require authentication" "401" "$denied"
+    fi
+}
+
+test_guest_resume() {
+    local response
+    response=$(curl -s -X POST "$BASE_URL/register" \
+        -H "Content-Type: application/json" \
+        -d '{"name":"Resume Guest","room":"Room 1","stayDays":1,"guestTypeId":"type_overnight","clientMac":"aa:bb:cc:dd:ee:01"}')
+    local token
+    token=$(echo "$response" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("token") or "")')
+    if [[ -z "$token" ]]; then
+        fail "Resume guest registration" "token" "$response"
+        return
+    fi
+    local resumed
+    resumed=$(curl -s -X POST "$BASE_URL/guest/resume" \
+        -H "Content-Type: application/json" \
+        -d '{"clientMac":"AA-BB-CC-DD-EE-01"}')
+    local resumed_token
+    resumed_token=$(echo "$resumed" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("token") or "")')
+    local wrong_name
+    wrong_name=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$BASE_URL/guest/resume" \
+        -H "Content-Type: application/json" \
+        -d '{"clientMac":"aa:bb:cc:dd:ee:01","name":"Someone Else"}')
+    local no_mac
+    no_mac=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$BASE_URL/guest/resume" \
+        -H "Content-Type: application/json" \
+        -d '{"name":"Resume Guest","room":"Room 1"}')
+    local missing
+    missing=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$BASE_URL/guest/resume" \
+        -H "Content-Type: application/json" \
+        -d '{"clientMac":"aa:bb:cc:dd:ee:99"}')
+    if [[ "$resumed_token" == "$token" && "$wrong_name" == "404" && "$no_mac" == "404" && "$missing" == "404" ]]; then
+        pass "Already registered resume uses this phone MAC"
+    else
+        fail "Already registered resume uses this phone MAC" "same token, 404 without MAC or wrong name" \
+            "token_match=$([[ "$resumed_token" == "$token" ]] && echo yes || echo no) wrong=$wrong_name no_mac=$no_mac missing=$missing"
     fi
 }
 
@@ -3044,6 +3086,7 @@ test_index_hero_markup
 test_index_html
 test_unifi_guest_redirect
 test_unifi_browser_handoff
+test_guest_resume
 test_unifi_api_client
 test_admin_html
 test_welcome_html

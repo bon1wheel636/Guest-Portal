@@ -13,6 +13,7 @@
       <h1 class="hero-title">Welcome</h1>
       <button type="button" id="heroRegisterBtn" class="hero-register-btn">Register</button>
       <div class="hero-secondary">
+        <p><a href="#already-registered" id="heroAlreadyRegistered">Already registered?</a></p>
         <p>Have a device link code?</p>
         <form id="heroCodeForm" class="hero-code-form">
           <input type="text" id="heroSessionCode" placeholder="Enter Code" required />
@@ -41,8 +42,23 @@
     <p id="handoffError" class="guest-error" hidden></p>
   </div>
 
+  <div class="container" id="recoverView" hidden>
+    <h1>Already registered</h1>
+    <p>If this is the phone that joined the guest Wi-Fi, open that visit. Otherwise enter the device link code from the phone you registered with.</p>
+    <p id="recoverStatus" class="guest-muted"></p>
+    <p id="recoverError" class="guest-error" hidden></p>
+    <button type="button" id="recoverUsePhoneBtn">Open my visit on this phone</button>
+    <form id="recoverCodeForm">
+      <label for="recoverSessionCode">Device link code</label>
+      <input type="text" id="recoverSessionCode" placeholder="Enter Code" autocomplete="one-time-code" />
+      <button type="submit">Open visit</button>
+    </form>
+    <button type="button" id="recoverBackBtn" class="btn-secondary">Back to registration</button>
+  </div>
+
   <div class="container" id="mainContainer">
     <h1 id="mainHeading">Welcome to the Guest Portal</h1>
+    <p class="guest-muted"><a href="#already-registered" id="alreadyRegisteredLink">Already registered?</a></p>
     <div id="inlineRegistrationHost">
       <form id="registrationForm">
         <label for="guestType">Guest Type</label>
@@ -409,7 +425,7 @@
             if (data.valid) {
               localStorage.setItem('guestData', JSON.stringify(data.guest));
               window.location.href = 'welcome.html';
-              return;
+              return true;
             }
           }
           localStorage.removeItem('guestToken');
@@ -422,10 +438,41 @@
       const guestData = JSON.parse(localStorage.getItem('guestData'));
       if (guestData?.name && !guestToken) {
         window.location.href = 'welcome.html';
+        return true;
       }
+      return false;
     }
     if (!pendingContinueCode) {
-      checkExistingSession();
+      checkExistingSession().then(opened => {
+        if (!opened && storedUnifiMac()) {
+          resumeVisitOnThisPhone();
+        }
+      });
+    }
+
+    function applyLinkedVisit(data, arrival) {
+      localStorage.setItem('guestToken', data.token);
+      localStorage.setItem('guestData', JSON.stringify(data.guest));
+      sessionStorage.setItem('guestArrival', arrival);
+      rememberInternetResult(data.internet);
+      window.location.href = 'welcome.html';
+    }
+
+    async function resumeVisitOnThisPhone() {
+      const clientMac = storedUnifiMac();
+      if (!clientMac) return false;
+      try {
+        const res = await fetch('/guest/resume', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ clientMac })
+        });
+        if (!res.ok) return false;
+        applyLinkedVisit(await res.json(), 'linked');
+        return true;
+      } catch (err) {
+        return false;
+      }
     }
 
     async function linkDeviceWithCode(code) {
@@ -437,12 +484,7 @@
         });
 
         if (res.ok) {
-          const data = await res.json();
-          localStorage.setItem('guestToken', data.token);
-          localStorage.setItem('guestData', JSON.stringify(data.guest));
-          sessionStorage.setItem('guestArrival', 'linked');
-          rememberInternetResult(data.internet);
-          window.location.href = 'welcome.html';
+          applyLinkedVisit(await res.json(), 'linked');
           return true;
         }
 
@@ -559,6 +601,55 @@
         return '';
       }
     }
+
+    function showRecoverView() {
+      document.getElementById('heroView').hidden = true;
+      document.getElementById('mainContainer').hidden = true;
+      document.getElementById('browserHandoff').hidden = true;
+      const modal = document.getElementById('registrationModal');
+      modal.hidden = true;
+      modal.setAttribute('aria-hidden', 'true');
+      document.body.classList.remove('registration-modal-open');
+      document.getElementById('recoverView').hidden = false;
+      document.getElementById('recoverError').hidden = true;
+      const hasMac = Boolean(storedUnifiMac());
+      document.getElementById('recoverUsePhoneBtn').hidden = !hasMac;
+      document.getElementById('recoverStatus').textContent = hasMac
+        ? 'This phone joined guest Wi-Fi. Open that visit, or enter a device link code.'
+        : 'Enter the device link code from the phone you registered with. A name by itself cannot reopen a visit.';
+    }
+
+    document.getElementById('alreadyRegisteredLink')?.addEventListener('click', event => {
+      event.preventDefault();
+      showRecoverView();
+    });
+    document.getElementById('heroAlreadyRegistered')?.addEventListener('click', event => {
+      event.preventDefault();
+      showRecoverView();
+    });
+    document.getElementById('recoverBackBtn')?.addEventListener('click', () => {
+      document.getElementById('recoverView').hidden = true;
+      document.getElementById('mainContainer').hidden = false;
+    });
+    document.getElementById('recoverUsePhoneBtn')?.addEventListener('click', async () => {
+      const error = document.getElementById('recoverError');
+      error.hidden = true;
+      const opened = await resumeVisitOnThisPhone();
+      if (!opened) {
+        error.textContent = 'No visit is linked to this phone. Enter a device link code, or register.';
+        error.hidden = false;
+      }
+    });
+    document.getElementById('recoverCodeForm')?.addEventListener('submit', async event => {
+      event.preventDefault();
+      const error = document.getElementById('recoverError');
+      error.hidden = true;
+      const opened = await linkDeviceWithCode(document.getElementById('recoverSessionCode').value.trim().toUpperCase());
+      if (!opened) {
+        error.textContent = 'That code did not open a visit.';
+        error.hidden = false;
+      }
+    });
 
     function isCaptiveBrowser() {
       const ua = navigator.userAgent || '';
