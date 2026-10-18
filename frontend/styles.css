@@ -87,6 +87,10 @@ a:hover {
   max-width: 960px;
 }
 
+.admin-container input[readonly] {
+  background: #f3f4f6;
+}
+
 .admin-header {
   margin-bottom: 1.5rem;
 }

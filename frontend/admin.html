@@ -67,13 +67,15 @@
 
       <section class="admin-panel" data-panel="rooms" role="tabpanel">
         <h2>Rooms</h2>
-        <p class="admin-help">Map guest rooms to Home Assistant dashboard URLs. Guests open the link in a new tab. Use the local proxy hostname, not a Home Assistant IP on port 8123 and not a Nabu Casa address. Home Assistant still asks the guest to sign in until that guest user is set up there. A long-lived access token does not sign the dashboard page in. Disable that Home Assistant user to revoke the dashboard. Kiosk Mode stays limited to that guest's display name.</p>
+        <p class="admin-help">Map guest rooms to Home Assistant dashboard URLs. Guests open the link in a new tab. Use the local proxy hostname, not a Home Assistant IP on port 8123 and not a Nabu Casa address. Home Assistant still asks the guest to sign in until that guest user is set up there. A long-lived access token does not sign the dashboard page in. Disable that Home Assistant user to revoke the dashboard. Kiosk Mode stays limited to that guest's display name. Edit changes the URL for that room. Guests already in the room see the new link the next time they open the welcome hub.</p>
         <form id="roomForm" class="admin-card">
+          <h3 id="roomFormTitle">Add Room</h3>
           <label for="roomName">Room Name:</label>
           <input type="text" id="roomName" required />
           <label for="dashboardUrl">Dashboard URL:</label>
           <input type="text" id="dashboardUrl" required />
-          <button type="submit">Save Room</button>
+          <button type="submit" id="roomSaveBtn">Save Room</button>
+          <button type="button" id="roomCancelBtn" class="btn-secondary" hidden>Cancel</button>
         </form>
         <h3>Current Rooms</h3>
         <ul id="roomList" class="admin-list"></ul>
@@ -917,7 +919,14 @@
         } else {
           li.appendChild(document.createTextNode('No dashboard URL '));
         }
+        const editBtn = document.createElement('button');
+        editBtn.type = 'button';
+        editBtn.textContent = 'Edit';
+        editBtn.className = 'btn-secondary';
+        editBtn.onclick = () => editRoom(room);
+        li.appendChild(editBtn);
         const btn = document.createElement('button');
+        btn.type = 'button';
         btn.textContent = 'Delete';
         btn.className = 'btn-danger-inline';
         btn.onclick = () => deleteRoom(room.name);
@@ -926,22 +935,49 @@
       });
     }
 
+    function resetRoomForm() {
+      document.getElementById('roomForm').reset();
+      document.getElementById('roomName').readOnly = false;
+      document.getElementById('roomFormTitle').textContent = 'Add Room';
+      document.getElementById('roomSaveBtn').textContent = 'Save Room';
+      document.getElementById('roomCancelBtn').hidden = true;
+    }
+
+    function editRoom(room) {
+      document.getElementById('roomName').value = room.name;
+      document.getElementById('roomName').readOnly = true;
+      document.getElementById('dashboardUrl').value = room.dashboardUrl || '';
+      document.getElementById('roomFormTitle').textContent = 'Update dashboard URL';
+      document.getElementById('roomSaveBtn').textContent = 'Update URL';
+      document.getElementById('roomCancelBtn').hidden = false;
+      document.getElementById('dashboardUrl').focus();
+    }
+
     async function deleteRoom(name) {
       await authFetch('/admin-api/rooms/' + encodeURIComponent(name), { method: 'DELETE' });
+      if (document.getElementById('roomName').readOnly && document.getElementById('roomName').value === name) {
+        resetRoomForm();
+      }
       loadRooms();
     }
 
+    document.getElementById('roomCancelBtn').addEventListener('click', resetRoomForm);
+
     document.getElementById('roomForm').addEventListener('submit', async e => {
       e.preventDefault();
-      await authFetch('/admin-api/rooms', {
-        method: 'POST',
+      const editing = document.getElementById('roomName').readOnly;
+      const name = document.getElementById('roomName').value.trim();
+      const dashboardUrl = document.getElementById('dashboardUrl').value.trim();
+      const res = await authFetch(editing ? '/admin-api/rooms/' + encodeURIComponent(name) : '/admin-api/rooms', {
+        method: editing ? 'PATCH' : 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: document.getElementById('roomName').value,
-          dashboardUrl: document.getElementById('dashboardUrl').value
-        })
+        body: JSON.stringify(editing ? { dashboardUrl } : { name, dashboardUrl })
       });
-      document.getElementById('roomForm').reset();
+      if (!res.ok) {
+        alert('Failed to save room: ' + await res.text());
+        return;
+      }
+      resetRoomForm();
       loadRooms();
     });
 

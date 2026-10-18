@@ -618,7 +618,7 @@ function formatGuestResponse(guest) {
     id: guest.id,
     name: guest.name,
     room: guest.room || '',
-    dashboardUrl: permissions.smartHomeControls ? (guest.dashboardUrl || null) : null,
+    dashboardUrl: permissions.smartHomeControls ? dashboardUrlForGuest(guest) : null,
     checkoutDate: guest.checkoutDate,
     guestTypeId: guest.guestTypeId || guestType.id,
     guestTypeName: missingType ? 'Unknown (restricted)' : guestType.name,
@@ -908,6 +908,46 @@ function getGuestStayFolder(guest) {
 function resolveRoomDashboard(roomName) {
   const roomData = guestData.rooms.find(r => r.name === roomName);
   return roomData ? roomData.dashboardUrl : null;
+}
+
+function dashboardUrlForGuest(guest) {
+  if (guest.room) {
+    const live = resolveRoomDashboard(guest.room);
+    if (live) return live;
+  }
+  return guest.dashboardUrl || null;
+}
+
+function normalizeDashboardUrl(dashboardUrl) {
+  if (!dashboardUrl || typeof dashboardUrl !== 'string' || dashboardUrl.trim().length === 0 || dashboardUrl.length > 500) {
+    return { error: 'Invalid dashboard URL' };
+  }
+  const trimmed = dashboardUrl.trim();
+  try {
+    const parsed = new URL(trimmed);
+    if (!['http:', 'https:'].includes(parsed.protocol)) {
+      return { error: 'Dashboard URL must use http or https' };
+    }
+  } catch {
+    return { error: 'Invalid dashboard URL format' };
+  }
+  return { url: trimmed };
+}
+
+function setRoomDashboardUrl(name, dashboardUrl) {
+  const index = guestData.rooms.findIndex(r => r.name === name);
+  if (index < 0) return false;
+  guestData.rooms[index].dashboardUrl = dashboardUrl;
+  saveGuestData();
+  let tokensChanged = false;
+  Object.values(guestTokens).forEach(guest => {
+    if (guest && guest.room === name && guest.dashboardUrl !== dashboardUrl) {
+      guest.dashboardUrl = dashboardUrl;
+      tokensChanged = true;
+    }
+  });
+  if (tokensChanged) saveGuestTokens();
+  return true;
 }
 
 function findGuestTokenEntryByGuestId(guestId) {
@@ -2442,21 +2482,25 @@ app.post('/admin-api/rooms', authMiddleware, (req, res) => {
   if (!name || typeof name !== 'string' || name.length > 100 || /[^\w\s-]/.test(name)) {
     return res.status(400).send('Invalid room name');
   }
-  if (!dashboardUrl || typeof dashboardUrl !== 'string' || dashboardUrl.length > 500) {
-    return res.status(400).send('Invalid dashboard URL');
-  }
-  try {
-    const parsedDashboardUrl = new URL(dashboardUrl);
-    if (!['http:', 'https:'].includes(parsedDashboardUrl.protocol)) {
-      return res.status(400).send('Dashboard URL must use http or https');
-    }
-  } catch {
-    return res.status(400).send('Invalid dashboard URL format');
-  }
+  const parsed = normalizeDashboardUrl(dashboardUrl);
+  if (parsed.error) return res.status(400).send(parsed.error);
   const index = guestData.rooms.findIndex(r => r.name === name);
-  if (index >= 0) guestData.rooms[index].dashboardUrl = dashboardUrl;
-  else guestData.rooms.push({ name, dashboardUrl });
-  saveGuestData();
+  if (index >= 0) setRoomDashboardUrl(name, parsed.url);
+  else {
+    guestData.rooms.push({ name, dashboardUrl: parsed.url });
+    saveGuestData();
+  }
+  res.sendStatus(200);
+});
+
+app.patch('/admin-api/rooms/:name', authMiddleware, (req, res) => {
+  const name = req.params.name;
+  if (!guestData.rooms.some(r => r.name === name)) {
+    return res.status(404).send('Room not found');
+  }
+  const parsed = normalizeDashboardUrl(req.body && req.body.dashboardUrl);
+  if (parsed.error) return res.status(400).send(parsed.error);
+  setRoomDashboardUrl(name, parsed.url);
   res.sendStatus(200);
 });
 
