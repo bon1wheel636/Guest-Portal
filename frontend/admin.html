@@ -1735,12 +1735,16 @@
               const body = await delRes.json();
               if (body.internet && body.internet.ok === false) {
                 alert(body.internet.error);
+              } else if (body.internet && body.internet.skipped && body.internet.reason === 'not-configured') {
+                alert('The visit was checked out. UniFi is not saved in Settings, so internet access was not changed.');
+              } else if (body.internet && body.internet.skipped && body.internet.reason === 'not-linked') {
+                alert('The visit was checked out. This stay has no phone linked from the hotspot, so internet access was not changed.');
               }
               loadGuestSessions();
               loadGuests();
               if (activeTab === 'overview') loadDeploymentStatus(false);
             } else {
-              alert('Failed to check out guest');
+              alert('Failed to check out guest: ' + await delRes.text());
             }
           };
           div.appendChild(checkoutBtn);
