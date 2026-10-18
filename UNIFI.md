@@ -68,7 +68,7 @@ Kiosk mode hides navigation. A guest who types another Home Assistant path can s
 
 ## Internet access and the real browser
 
-Registration from the UniFi redirect stores the client MAC on the guest session. In the temporary captive browser, **Open in Safari or Chrome** opens `/guest/continue/...` for that same visit. The phone does not register again. The new browser claims the visit, and the portal calls the Network Integration API to authorize the client for the rest of the stay. The temporary browser can close after that. A phone that is already in Safari or Chrome skips that button and authorizes in place. **Continue in this window** authorizes without leaving the temporary browser.
+Registration from the UniFi redirect stores the client MAC on the guest session. In the temporary captive browser, **Open in Safari or Chrome** opens `/guest/continue/<code>?c=<code>` for that same visit. The phone does not register again. If the captive window drops the path, `?c=` still signs the real browser into that stay. Set **Public Portal URL** to the HTTPS hostname so that link does not use the proxy IP. The new browser claims the visit, and the portal calls the Network Integration API to authorize the client for the rest of the stay. The temporary browser can close after that. A phone that is already in Safari or Chrome skips that button and authorizes in place. **Continue in this window** authorizes without leaving the temporary browser.
 
 The phone stays unauthorized until that button, so the temporary browser stays up long enough to tap. Do not turn hotspot Password or Vouchers back on. Those authorize first and close the window.
 
