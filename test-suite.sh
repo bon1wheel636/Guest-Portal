@@ -975,6 +975,20 @@ test_guest_types_public() {
         pass "Public guest types endpoint"
     else
         fail "Public guest types endpoint" "enabled guest types" "$response"
+        return
+    fi
+    local flags=$(echo "$response" | python3 -c "
+import json, sys
+types = json.load(sys.stdin)
+by_id = {t['id']: t for t in types}
+print('personal', by_id.get('type_day_personal', {}).get('requiresEvent'))
+print('overnight', by_id.get('type_overnight', {}).get('requiresEvent'))
+print('business', by_id.get('type_day_business', {}).get('requiresEvent'))
+")
+    if echo "$flags" | grep -q '^personal True$' && echo "$flags" | grep -q '^overnight False$' && echo "$flags" | grep -q '^business False$'; then
+        pass "Public guest types expose requiresEvent"
+    else
+        fail "Public guest types expose requiresEvent" "personal True / overnight False / business False" "$flags"
     fi
 }
 
@@ -1404,6 +1418,77 @@ print(int((checkout - now).total_seconds() / 3600))
         pass "Day personal checkout is about 8 hours out"
     else
         fail "Day personal checkout is about 8 hours out" "7-9 hours" "${checkout_ms}h"
+    fi
+}
+
+test_day_personal_requires_event_toggle() {
+    # Default Day Visitor — Personal requires an event. Hosts can turn that
+    # off per type so guests who are just visiting can skip the picker.
+    local missing_body=$(curl -s -X POST "$BASE_URL/register" \
+        -H "Content-Type: application/json" \
+        -d '{"name":"Just Visiting Rejected","guestTypeId":"type_day_personal"}')
+    if [[ "$missing_body" == *"Event name is required for this guest type"* ]]; then
+        pass "Day personal rejects registration without an event"
+    else
+        fail "Day personal rejects registration without an event" "Event name is required for this guest type" "$missing_body"
+        return
+    fi
+
+    require_admin_creds "Day personal requiresEvent toggle" || return
+    local types=$(admin_curl "$BASE_URL/admin-api/guest-types")
+    local optional_body=$(echo "$types" | python3 -c "
+import json, sys
+types = json.load(sys.stdin)
+t = next(x for x in types if x['id'] == 'type_day_personal')
+print(json.dumps({
+    'name': t['name'],
+    'description': t.get('description', ''),
+    'visitMode': t['visitMode'],
+    'defaultDayVisitHours': t.get('defaultDayVisitHours', 8),
+    'requiresRoom': t.get('requiresRoom', False),
+    'requiresEvent': False,
+    'enabled': t.get('enabled', True),
+    'permissions': t['permissions']
+}))
+")
+    local restore_body=$(echo "$types" | python3 -c "
+import json, sys
+types = json.load(sys.stdin)
+t = next(x for x in types if x['id'] == 'type_day_personal')
+print(json.dumps({
+    'name': t['name'],
+    'description': t.get('description', ''),
+    'visitMode': t['visitMode'],
+    'defaultDayVisitHours': t.get('defaultDayVisitHours', 8),
+    'requiresRoom': t.get('requiresRoom', False),
+    'requiresEvent': True,
+    'enabled': t.get('enabled', True),
+    'permissions': t['permissions']
+}))
+")
+    admin_curl -X PATCH "$BASE_URL/admin-api/guest-types/type_day_personal" \
+        -H "Content-Type: application/json" \
+        -d "$optional_body" > /dev/null
+
+    local response=$(curl -s -X POST "$BASE_URL/register" \
+        -H "Content-Type: application/json" \
+        -d '{"name":"Just Visiting Guest","guestTypeId":"type_day_personal"}')
+    local token=$(echo "$response" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
+    local guest_id=$(echo "$response" | grep -o '"id":"guest_[^"]*"' | head -1 | cut -d'"' -f4)
+    admin_curl -X PATCH "$BASE_URL/admin-api/guest-types/type_day_personal" \
+        -H "Content-Type: application/json" \
+        -d "$restore_body" > /dev/null
+    if [[ -z "$token" ]]; then
+        fail "Day personal optional event registration" "registration token" "$response"
+        return
+    fi
+    if [[ "$response" == *'"eventName":null'* ]] || [[ "$response" != *'"eventName":'* ]]; then
+        pass "Day personal registers without an event when requiresEvent is off"
+    else
+        fail "Day personal registers without an event when requiresEvent is off" 'eventName null' "$response"
+    fi
+    if [[ -n "$guest_id" ]]; then
+        admin_curl -X DELETE "$BASE_URL/admin-api/guest-sessions/$guest_id" > /dev/null
     fi
 }
 
@@ -3062,6 +3147,7 @@ test_event_upload_photos_before_event_field
 test_multi_upload_same_original_name
 test_legacy_session
 test_day_personal_registration
+test_day_personal_requires_event_toggle
 test_overnight_optional_registration_event
 test_delete_forbidden
 test_scoped_delete

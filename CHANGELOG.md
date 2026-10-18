@@ -36,6 +36,7 @@ All notable changes to this project will be documented here.
 - Event create/rename now rejects names that share an upload folder slug with another event (e.g. `Hello World` vs `Hello-World`); merge also refuses when a sibling event already shares the source slug, so admin merge cannot move another event's photos.
 
 ### Added
+- Guest type **Requires event at registration** lets hosts require an event or leave it optional. Day Visitor — Personal still requires one by default; uncheck the setting for guests who are just visiting. Overnight stays stay optional. Existing types keep their previous requirement until the host changes it.
 - Landing page **Already registered?** reopens this phone's visit when the UniFi hotspot sent a client MAC, or accepts a device link code. Name-only lookup is not used, so two guests with the same name cannot take each other's stay.
 - Admin **Rooms & Portal** can edit a room's dashboard URL. Guests already in that room get the new link the next time they open the welcome hub.
 - Admin Sign out clears the session cookie on HTTPS and returns to the sign-in form. A password saved by the old browser prompt no longer keeps the page signed in.

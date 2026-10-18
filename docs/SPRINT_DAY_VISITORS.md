@@ -43,6 +43,7 @@ Each guest type defines:
 | `defaultStayDays` | For overnight types only (1–30; used as registration default) |
 | `defaultDayVisitHours` | For day types only (session length in hours, or end-of-day — pick one and document) |
 | `requiresRoom` | Whether room selection is shown/required at registration |
+| `requiresEvent` | Whether an event must be selected at registration (independent of showing the picker) |
 | `permissions` | Object of booleans (see below) |
 | `enabled` | Whether the type appears in registration pickers |
 
@@ -57,7 +58,7 @@ Each guest type defines:
 | `linkDevice` | Show device link code section; allow `POST /guest/link-code` and link-device flow | ✓ | ✓ | optional |
 | `extendStay` | Guest can request/view extend UI (if built); admin extend still always available | ✗ | ✗ | ✗ |
 | `selectStayLength` | Show stay-days input at registration | ✓ | ✗ | ✗ |
-| `selectEventAtRegistration` | Show event picker during registration | optional | ✓ | optional |
+| `selectEventAtRegistration` | Show event picker during registration (optional unless `requiresEvent`) | optional | ✓ | optional |
 | `tagPhotosToEvent` | Show event picker when uploading (overnight) | ✓ | ✓ | ✗ |
 | `createEventNames` | Allow guest to add a new event name to the shared list | ✓ | ✓ | ✗ |
 | `viewWelcomeHub` | Access `welcome.html` after registration (baseline; disable only for minimal kiosk types) | ✓ | ✓ | ✓ |
@@ -84,7 +85,7 @@ Each guest type defines:
 ### Event names and photo grouping
 
 - **Event name** (free text, sanitized): "Birthday Party", "Graduation", "Retirement", etc.
-- Types with `selectEventAtRegistration` prompt during registration; types with `tagPhotosToEvent` prompt at upload time.
+- Types with `selectEventAtRegistration` or `tagPhotosToEvent` show the event picker during registration; `requiresEvent` makes that selection mandatory. Types with `tagPhotosToEvent` also prompt at upload time.
 - Types with `createEventNames` may add new events; otherwise pick from existing list only.
 - **Event list** in `storage.json` → `events: [{ id, name, createdAt, createdBy }]`.
 - **Gallery grouping** on `photo.html` by event subfolder; "General" for legacy flat files.
@@ -124,6 +125,7 @@ Each guest type defines:
       "visitMode": "overnight",
       "defaultStayDays": 7,
       "requiresRoom": true,
+      "requiresEvent": false,
       "enabled": true,
       "permissions": {
         "uploadPhotos": true,
@@ -147,6 +149,7 @@ Each guest type defines:
       "visitMode": "day",
       "defaultDayVisitHours": 8,
       "requiresRoom": false,
+      "requiresEvent": true,
       "enabled": true,
       "permissions": {
         "uploadPhotos": true,
@@ -170,6 +173,7 @@ Each guest type defines:
       "visitMode": "day",
       "defaultDayVisitHours": 4,
       "requiresRoom": false,
+      "requiresEvent": false,
       "enabled": true,
       "permissions": {
         "uploadPhotos": false,
@@ -216,7 +220,7 @@ Resolve permissions at request time: load guest type from `storage.json` by `gue
 2. **Guest types storage + admin UI** — `guestTypes` in `storage.json`, seed defaults, admin CRUD with permission checkboxes and visit-mode-aware field visibility.
 3. **Permission resolver + API flags** — server helper `getGuestPermissions(guest)`, enforce on upload/delete/link/smart-home-related routes; extend `/guest/validate` and registration responses with permissions + guest type metadata.
 4. **Event list + folder helpers** — events array, event slug helper, multer destination `{stayFolder}/{eventSlug}/`, legacy-safe listing.
-5. **Registration flows** — public `index.html` and admin guest registration use guest type picker; fields shown/hidden by type (`requiresRoom`, stay length, event).
+5. **Registration flows** — public `index.html` and admin guest registration use guest type picker; fields shown/hidden by type (`requiresRoom`, `requiresEvent`, stay length, event).
 6. **Guest UI by permissions** — `welcome.html` / `photo.html` show/hide sections (upload, gallery nav, Smart Home, link device) from API flags.
 7. **Admin session type controls** — change guest type on active session; show type in lists and CSV.
 8. **Hero landing page** — conditional hero on `index.html` when background is set.
