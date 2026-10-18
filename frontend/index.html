@@ -36,7 +36,7 @@
   <div class="container" id="browserHandoff" hidden>
     <h1>Open your browser</h1>
     <p>Tap the button. Safari or Chrome opens this same visit, so you do not register again. This window can close after that.</p>
-    <a id="openBrowserLink" class="browser-open-link" href="#" rel="noopener">Open in Safari or Chrome</a>
+    <a id="openBrowserLink" class="browser-open-link" href="#" target="_blank" rel="noopener">Open in Safari or Chrome</a>
     <button type="button" id="continueHereBtn" class="btn-secondary">Continue in this window</button>
     <p id="handoffError" class="guest-error" hidden></p>
   </div>
@@ -122,6 +122,18 @@
       const next = window.location.pathname + (remaining ? `?${remaining}` : '') + window.location.hash;
       window.history.replaceState(null, '', next);
     })();
+
+    function continueCodeFromPage() {
+      const params = new URLSearchParams(window.location.search);
+      const fromQuery = params.get('c') || params.get('linkCode') || '';
+      return fromQuery.trim().toUpperCase();
+    }
+
+    const pendingContinueCode = continueCodeFromPage();
+    if (pendingContinueCode) {
+      document.getElementById('mainContainer').hidden = true;
+      document.getElementById('heroView').hidden = true;
+    }
 
     let guestTypes = [];
     let events = [];
@@ -412,7 +424,9 @@
         window.location.href = 'welcome.html';
       }
     }
-    checkExistingSession();
+    if (!pendingContinueCode) {
+      checkExistingSession();
+    }
 
     async function linkDeviceWithCode(code) {
       try {
@@ -513,7 +527,7 @@
           sessionStorage.setItem('guestArrival', 'new');
           sessionStorage.setItem('showTutorial', '1');
           if (data.browserUrl && isCaptiveBrowser()) {
-            showBrowserHandoff(data.browserUrl);
+            showBrowserHandoff(handoffOpenUrl(data));
           } else if (data.browserUrl) {
             await stayForInternet();
           } else {
@@ -555,11 +569,15 @@
       return false;
     }
 
-    function androidBrowserIntent(url) {
-      const parsed = new URL(url);
-      const fallback = encodeURIComponent(url);
-      const scheme = parsed.protocol.replace(':', '');
-      return `intent://${parsed.host}${parsed.pathname}#Intent;scheme=${scheme};action=android.intent.action.VIEW;category=android.intent.category.BROWSABLE;S.browser_fallback_url=${fallback};end`;
+    function handoffOpenUrl(data) {
+      const code = (data.continueCode || '').toUpperCase();
+      const path = code ? `/guest/continue/${code}?c=${encodeURIComponent(code)}` : '';
+      const host = window.location.hostname || '';
+      const ipHost = /^\d{1,3}(?:\.\d{1,3}){3}$/.test(host);
+      if (path && !ipHost) {
+        return `${window.location.origin}${path}`;
+      }
+      return data.browserUrl || (path ? `${window.location.origin}${path}` : '#');
     }
 
     async function stayForInternet() {
@@ -598,13 +616,9 @@
       modal.setAttribute('aria-hidden', 'true');
       document.body.classList.remove('registration-modal-open');
       const link = document.getElementById('openBrowserLink');
-      if (/Android/i.test(navigator.userAgent || '')) {
-        link.removeAttribute('target');
-        link.href = androidBrowserIntent(url);
-      } else {
-        link.target = '_blank';
-        link.href = url;
-      }
+      link.target = '_blank';
+      link.rel = 'noopener';
+      link.href = url;
       document.getElementById('browserHandoff').hidden = false;
     }
 
@@ -633,15 +647,11 @@
       }
     });
 
-    const linkCodeParam = new URLSearchParams(window.location.search).get('linkCode');
-    if (linkCodeParam) {
-      const code = linkCodeParam.trim().toUpperCase();
-      document.getElementById('mainContainer').hidden = true;
-      document.getElementById('heroView').hidden = true;
-      document.getElementById('sessionCode').value = code;
+    if (pendingContinueCode) {
+      document.getElementById('sessionCode').value = pendingContinueCode;
       const heroCode = document.getElementById('heroSessionCode');
-      if (heroCode) heroCode.value = code;
-      linkDeviceWithCode(code).then(opened => {
+      if (heroCode) heroCode.value = pendingContinueCode;
+      linkDeviceWithCode(pendingContinueCode).then(opened => {
         if (!opened) {
           document.getElementById('mainContainer').hidden = false;
         }

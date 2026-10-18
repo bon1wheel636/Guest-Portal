@@ -11,6 +11,7 @@ All notable changes to this project will be documented here.
 - UniFi and Home Assistant setup notes now match Network 10.6 on UniFi OS 5.1 and Home Assistant Core 2026.10: external portal pre-authorization to the reverse proxy only, local dashboard links, and guest-only Kiosk Mode. Live hostnames and VLAN addresses stay in the gitignored site note.
 
 ### Fixed
+- **Open in Safari or Chrome** now carries a visit code in the URL (`/guest/continue/...` and `?c=`). Captive browsers were dropping the path, so the real browser opened registration again. The registration page claims that code instead of showing the form. Android no longer uses an `intent://` URL.
 - Admin Check Out now turns off UniFi internet before it ends the visit. A missing client used to count as success, so the portal session disappeared while the phone kept access. Checkout stops if UniFi cannot unauthorize that MAC, and the panel says so.
 - Dashboard URL checks request the page with GET, the same method a browser uses. A HEAD probe was treated as success for any status under 500, so Home Assistant's 405 Method Not Allowed showed as reachable.
 - **Open in Safari or Chrome** keeps the guest session that was just created. The new browser opens `/guest/continue/...` and signs into that visit instead of showing registration again. A phone that is already in Safari or Chrome authorizes in place.

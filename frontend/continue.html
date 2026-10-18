@@ -13,7 +13,8 @@
   </div>
   <script>
     const match = window.location.pathname.match(/\/guest\/continue\/([A-Za-z0-9]+)/);
-    const code = match ? match[1].toUpperCase() : '';
+    const queryCode = new URLSearchParams(window.location.search).get('c') || '';
+    const code = (match ? match[1] : queryCode).toUpperCase();
     const status = document.getElementById('continueStatus');
 
     function rememberInternet(internet) {
@@ -29,7 +30,7 @@
 
     async function openVisit() {
       if (!code) {
-        window.location.replace('/');
+        status.textContent = 'This visit link is missing. Go back and tap Open in Safari or Chrome again.';
         return;
       }
       try {

@@ -306,6 +306,25 @@ function createBrowserHandoff(token, guest) {
   return code;
 }
 
+function browserHandoffUrl(req, code) {
+  return `${publicBaseUrl(req)}/guest/continue/${code}?c=${encodeURIComponent(code)}`;
+}
+
+function sessionCodeKey(code) {
+  if (!code || typeof code !== 'string') return null;
+  const trimmed = code.trim();
+  if (!trimmed) return null;
+  if (Object.prototype.hasOwnProperty.call(sessionCodes, trimmed)) return trimmed;
+  const upper = trimmed.toUpperCase();
+  if (upper !== trimmed && Object.prototype.hasOwnProperty.call(sessionCodes, upper)) return upper;
+  return null;
+}
+
+function sessionCodeEntry(code) {
+  const key = sessionCodeKey(code);
+  return key ? sessionCodes[key] : null;
+}
+
 function rememberUnifiClient(guest, result) {
   const clientId = normalizeClientId(result && result.clientId);
   const siteId = result && result.siteId ? String(result.siteId) : '';
@@ -2121,19 +2140,21 @@ app.post('/register', (req, res) => {
   }
 
   let browserUrl = null;
+  let continueCode = null;
   if (clientMac) {
     const stored = guestTokens[registration.token];
     stored.unifiClientMac = clientMac;
     saveGuestTokens();
-    const linkCode = createBrowserHandoff(registration.token, stored);
-    browserUrl = `${publicBaseUrl(req)}/guest/continue/${linkCode}`;
+    continueCode = createBrowserHandoff(registration.token, stored);
+    browserUrl = browserHandoffUrl(req, continueCode);
   }
 
   res.json({
     token: registration.token,
     guest: registration.guest,
     returningDevice: false,
-    browserUrl
+    browserUrl,
+    continueCode
   });
 });
 
@@ -2200,7 +2221,7 @@ app.post('/guest/link-code', async (req, res) => {
 
 app.post('/guest/link-device', async (req, res) => {
   const { code } = req.body;
-  const entry = sessionCodes[code];
+  const entry = sessionCodeEntry(code);
 
   if (!entry || entry.expires < Date.now() || entry.type !== 'device-link') {
     return res.status(404).send('Invalid or expired link code');
@@ -2227,7 +2248,8 @@ app.post('/guest/link-device', async (req, res) => {
   }
 
   if (!entry.reuse) {
-    delete sessionCodes[code];
+    const key = sessionCodeKey(code);
+    if (key) delete sessionCodes[key];
     saveSessions();
   }
 
