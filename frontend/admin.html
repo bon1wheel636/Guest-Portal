@@ -180,6 +180,7 @@
             <input type="number" id="guestTypeDefaultDayHours" min="1" max="24" value="8" />
           </div>
           <label><input type="checkbox" id="guestTypeRequiresRoom" checked /> Requires room assignment</label>
+          <label><input type="checkbox" id="guestTypeRequiresEvent" /> Requires event at registration</label>
           <label><input type="checkbox" id="guestTypeEnabled" checked /> Enabled for registration</label>
 
           <fieldset class="admin-permissions-fieldset">
@@ -301,7 +302,7 @@
       linkDevice: 'Link device',
       extendStay: 'Extend stay (future guest self-service)',
       selectStayLength: 'Select stay length at registration',
-      selectEventAtRegistration: 'Select event at registration',
+      selectEventAtRegistration: 'Show event picker at registration',
       tagPhotosToEvent: 'Tag photos to event on upload',
       createEventNames: 'Create new event names',
       viewWelcomeHub: 'View welcome hub',
@@ -493,7 +494,10 @@
         const select = document.getElementById('adminGuestEventSelect');
         if (!select) return;
         const previous = select.value;
-        select.innerHTML = '<option value="">Select an event...</option>';
+        const requireEvent = Boolean(getSelectedAdminGuestType()?.requiresEvent);
+        select.innerHTML = requireEvent
+          ? '<option value="">Select an event...</option>'
+          : '<option value="">No event (just visiting)</option>';
         adminEvents.forEach(event => {
           const option = document.createElement('option');
           option.value = event.id;
@@ -695,9 +699,17 @@
       stayField.hidden = !type.permissions?.selectStayLength;
       stayInput.required = Boolean(type.permissions?.selectStayLength);
       if (type.defaultStayDays) stayInput.value = type.defaultStayDays;
-      const showEvent = Boolean(type.permissions?.selectEventAtRegistration || type.permissions?.tagPhotosToEvent);
+      const showEvent = Boolean(
+        type.requiresEvent ||
+        type.permissions?.selectEventAtRegistration ||
+        type.permissions?.tagPhotosToEvent
+      );
       eventField.hidden = !showEvent;
-      eventSelect.required = Boolean(type.permissions?.selectEventAtRegistration);
+      eventSelect.required = Boolean(type.requiresEvent);
+      const placeholder = eventSelect.options[0];
+      if (placeholder && placeholder.value === '') {
+        placeholder.textContent = type.requiresEvent ? 'Select an event...' : 'No event (just visiting)';
+      }
     }
 
     function renderPermissionCheckboxes(selected = {}, visitMode = 'overnight') {
@@ -736,6 +748,7 @@
       document.getElementById('guestTypeForm').reset();
       document.getElementById('guestTypeVisitMode').value = 'overnight';
       document.getElementById('guestTypeRequiresRoom').checked = true;
+      document.getElementById('guestTypeRequiresEvent').checked = false;
       document.getElementById('guestTypeEnabled').checked = true;
       document.getElementById('guestTypeOvernightFields').hidden = false;
       document.getElementById('guestTypeDayFields').hidden = true;
@@ -835,6 +848,7 @@
       document.getElementById('guestTypeDefaultStayDays').value = type.defaultStayDays || 7;
       document.getElementById('guestTypeDefaultDayHours').value = type.defaultDayVisitHours || 8;
       document.getElementById('guestTypeRequiresRoom').checked = Boolean(type.requiresRoom);
+      document.getElementById('guestTypeRequiresEvent').checked = Boolean(type.requiresEvent);
       document.getElementById('guestTypeEnabled').checked = Boolean(type.enabled);
       updateGuestTypeFormMode();
       renderPermissionCheckboxes(type.permissions || {}, type.visitMode);
@@ -853,6 +867,7 @@
         description: document.getElementById('guestTypeDescription').value.trim(),
         visitMode,
         requiresRoom: document.getElementById('guestTypeRequiresRoom').checked,
+        requiresEvent: document.getElementById('guestTypeRequiresEvent').checked,
         enabled: document.getElementById('guestTypeEnabled').checked,
         permissions: readPermissionCheckboxes()
       };
@@ -1285,7 +1300,7 @@
           payload.stayDays = parseInt(document.getElementById('adminGuestStayDays').value, 10) || type.defaultStayDays || 7;
         }
         const eventName = getAdminRegistrationEventName();
-        if (type.permissions?.selectEventAtRegistration) {
+        if (type.requiresEvent) {
           if (!eventName) {
             resultBox.innerHTML = '<p class="admin-error-text">Select or enter an event.</p>';
             return;

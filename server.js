@@ -56,6 +56,7 @@ const DEFAULT_GUEST_TYPES = [
     visitMode: 'overnight',
     defaultStayDays: 7,
     requiresRoom: true,
+    requiresEvent: false,
     enabled: true,
     permissions: {
       uploadPhotos: true,
@@ -80,6 +81,7 @@ const DEFAULT_GUEST_TYPES = [
     visitMode: 'day',
     defaultDayVisitHours: 8,
     requiresRoom: false,
+    requiresEvent: true,
     enabled: true,
     permissions: {
       uploadPhotos: true,
@@ -104,6 +106,7 @@ const DEFAULT_GUEST_TYPES = [
     visitMode: 'day',
     defaultDayVisitHours: 4,
     requiresRoom: false,
+    requiresEvent: false,
     enabled: true,
     permissions: {
       uploadPhotos: false,
@@ -172,6 +175,11 @@ function ensureStorageDefaults() {
     guestData.guestTypes.forEach(type => {
       if (type.permissions && !Object.prototype.hasOwnProperty.call(type.permissions, 'leaveGuestNote')) {
         type.permissions.leaveGuestNote = true;
+        changed = true;
+      }
+      if (!Object.prototype.hasOwnProperty.call(type, 'requiresEvent')) {
+        // Preserve previous behavior: selectEventAtRegistration also required an event.
+        type.requiresEvent = Boolean(type.permissions && type.permissions.selectEventAtRegistration);
         changed = true;
       }
     });
@@ -616,6 +624,7 @@ function resolveGuestType(guest) {
     description: '',
     visitMode: guest.visitMode || 'overnight',
     requiresRoom: false,
+    requiresEvent: false,
     enabled: false,
     permissions: getGuestPermissions(guest)
   };
@@ -667,6 +676,9 @@ function sanitizeGuestTypeInput(body, existing = null) {
     description: typeof body.description === 'string' ? body.description.trim().substring(0, 500) : '',
     visitMode,
     requiresRoom: Boolean(body.requiresRoom),
+    requiresEvent: Object.prototype.hasOwnProperty.call(body, 'requiresEvent')
+      ? Boolean(body.requiresEvent)
+      : Boolean(existing && existing.requiresEvent),
     enabled: body.enabled !== false,
     permissions: normalizeGuestTypePermissions(body.permissions || {}, visitMode)
   };
@@ -693,6 +705,7 @@ function formatGuestTypeForPublic(type) {
     defaultStayDays: type.defaultStayDays,
     defaultDayVisitHours: type.defaultDayVisitHours,
     requiresRoom: Boolean(type.requiresRoom),
+    requiresEvent: Boolean(type.requiresEvent),
     permissions: {
       selectStayLength: Boolean(type.permissions.selectStayLength),
       selectEventAtRegistration: Boolean(type.permissions.selectEventAtRegistration),
@@ -1458,15 +1471,18 @@ function createGuestRegistration(name, guestTypeId, options = {}, userAgent) {
     checkoutDate.setDate(checkoutDate.getDate() + days);
   }
 
-  // Overnight guests may optionally tag a stay to an event when
-  // tagPhotosToEvent is set (registration UI sends eventName). Day-personal
-  // requires selectEventAtRegistration. Persist in both cases — previously
-  // optional eventName was dropped, so welcome prefill / history / notes lost
-  // the association and "+ Add new event" names were never created.
+  // Guest types can require an event (`requiresEvent`) or only offer an
+  // optional picker (`selectEventAtRegistration` / `tagPhotosToEvent`).
+  // Persist a provided name in both cases — previously optional eventName
+  // was dropped, so welcome prefill / history / notes lost the association
+  // and "+ Add new event" names were never created.
   let eventName = null;
   const requestedEvent = typeof options.eventName === 'string' ? options.eventName.trim() : '';
-  const requireEvent = Boolean(guestType.permissions.selectEventAtRegistration);
-  const allowOptionalEvent = Boolean(guestType.permissions.tagPhotosToEvent);
+  const requireEvent = Boolean(guestType.requiresEvent);
+  const allowOptionalEvent = Boolean(
+    guestType.permissions.selectEventAtRegistration ||
+    guestType.permissions.tagPhotosToEvent
+  );
   if (requireEvent && !requestedEvent) {
     return { error: 'Event name is required for this guest type' };
   }

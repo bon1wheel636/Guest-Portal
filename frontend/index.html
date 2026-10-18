@@ -253,7 +253,10 @@
       const eventHelp = document.getElementById('eventHelp');
       const previous = eventSelect.value;
 
-      eventSelect.innerHTML = '<option value="">Select an event...</option>';
+      const requireEvent = Boolean(type?.requiresEvent);
+      eventSelect.innerHTML = requireEvent
+        ? '<option value="">Select an event...</option>'
+        : '<option value="">No event (just visiting)</option>';
       events.forEach(event => {
         const opt = document.createElement('option');
         opt.value = event.id;
@@ -274,14 +277,14 @@
 
       const showNew = eventSelect.value === '__new__';
       eventNewField.hidden = !showNew;
-      document.getElementById('eventName').required = showNew && Boolean(type?.permissions?.selectEventAtRegistration);
+      document.getElementById('eventName').required = showNew;
 
       if (events.length === 0 && !type?.permissions?.createEventNames) {
         eventHelp.textContent = 'No events are available yet. Ask your host to add events in the admin Events tab.';
-      } else if (type?.permissions?.selectEventAtRegistration) {
+      } else if (requireEvent) {
         eventHelp.textContent = 'Select the event you are visiting for.';
       } else {
-        eventHelp.textContent = 'Optional: tag your stay to an event for photo grouping.';
+        eventHelp.textContent = 'Optional: tag your stay to an event, or leave as just visiting.';
       }
     }
 
@@ -311,14 +314,18 @@
         stayDaysInput.value = type.defaultStayDays;
       }
 
-      const showEvent = Boolean(type.permissions.selectEventAtRegistration || type.permissions.tagPhotosToEvent);
+      const showEvent = Boolean(
+        type.requiresEvent ||
+        type.permissions.selectEventAtRegistration ||
+        type.permissions.tagPhotosToEvent
+      );
       eventField.hidden = !showEvent;
-      eventSelect.required = Boolean(type.permissions.selectEventAtRegistration);
+      eventSelect.required = Boolean(type.requiresEvent);
       populateEventSelect(type);
     }
 
     function getRegistrationEventName(type) {
-      if (!type.permissions.selectEventAtRegistration && !type.permissions.tagPhotosToEvent) {
+      if (!type.requiresEvent && !type.permissions.selectEventAtRegistration && !type.permissions.tagPhotosToEvent) {
         return null;
       }
 
@@ -542,7 +549,7 @@
       }
 
       const eventName = getRegistrationEventName(type);
-      if (type.permissions.selectEventAtRegistration) {
+      if (type.requiresEvent) {
         if (!eventName) {
           alert('Please select or enter an event.');
           return;

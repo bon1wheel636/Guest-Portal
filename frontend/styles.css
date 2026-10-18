@@ -440,6 +440,11 @@ a:hover {
   color: #666;
 }
 
+#eventHelp {
+  display: block;
+  margin-top: 0.35rem;
+}
+
 .guest-validation {
   margin-top: 8px;
   font-size: 0.9em;
