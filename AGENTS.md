@@ -48,8 +48,8 @@ Track high-level items in [ROADMAP.md](ROADMAP.md) under **Sprint queue**.
 - After setup, `/admin.html` and admin API routes use browser HTTP Basic Auth. The configured username is stored in `config.json` as `adminUser` (default `admin`).
 
 ### Lint / test / build
-- No linter is configured. `npm test` is a no-op stub (`echo "No tests configured"`).
-- `bash test-suite.sh` is an HTTP integration suite that runs against an already-running server on port 3000.
+- No linter is configured. `npm test` runs the Node scripts in `scripts/test-*.js`. GitHub Actions (`.github/workflows/ci.yml`) runs those tests, shellcheck, and `test-suite.sh` on pull requests and on pushes to `main`.
+- `bash test-suite.sh` is an HTTP integration suite that runs against an already-running server on port 3000. CI starts that server and creates a throwaway admin account in the job.
 - Admin mutation tests require credentials:
   ```bash
   ADMIN_USER=admin ADMIN_PASS='<password>' bash test-suite.sh

@@ -57,7 +57,8 @@ cleanup() {
 trap cleanup EXIT
 
 WORKSPACE="$(cd "$(dirname "$0")/.." && pwd)"
-# shellcheck source=/dev/null
+# Follow the updater so APP_PATH and DRY_RUN count as used.
+# shellcheck source=updateguest.sh
 source "${WORKSPACE}/scripts/updateguest.sh"
 
 run_as_app_user() {

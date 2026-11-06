@@ -1,0 +1,105 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  node:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          # Debian 13 (the installer's preferred template) ships Node 20.
+          # package.json engines accept Node 18 and newer.
+          node-version: "20"
+          cache: npm
+      - run: npm ci
+      - run: npm test
+
+  shell:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install shellcheck
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends shellcheck
+      - name: Run shellcheck
+        run: shellcheck -x --source-path=SCRIPTDIR setup.sh setup-local.sh install.sh test-suite.sh scripts/*.sh
+
+  integration:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "20"
+          cache: npm
+      - run: npm ci
+      - name: HTTP suite with a throwaway admin account
+        run: |
+          set -euo pipefail
+          sudo mkdir -p /etc/guest-portal
+          sudo chown "$(id -u):$(id -g)" /etc/guest-portal
+          cp storage.template.json /etc/guest-portal/storage.json
+          printf '%s\n' '{}' > /etc/guest-portal/sessions.json
+          printf '%s\n' '{}' > /etc/guest-portal/guest-tokens.json
+          printf '%s\n' '{}' > /etc/guest-portal/admin-sessions.json
+          mkdir -p uploads
+
+          ADMIN_USER="ciadmin"
+          ADMIN_PASS="$(node -e "process.stdout.write(require('crypto').randomBytes(24).toString('hex'))")"
+          export ADMIN_USER ADMIN_PASS
+          echo "::add-mask::${ADMIN_PASS}"
+
+          node << 'NODE'
+          const fs = require('fs');
+          const bcrypt = require('bcrypt');
+          bcrypt.hash(process.env.ADMIN_PASS, 10).then((hash) => {
+            fs.writeFileSync('/etc/guest-portal/config.json', JSON.stringify({
+              adminUser: process.env.ADMIN_USER,
+              adminHash: hash,
+              uploadDir: '',
+              sessionExpirationMinutes: 10
+            }, null, 2));
+          }).catch((err) => {
+            console.error(err);
+            process.exit(1);
+          });
+          NODE
+
+          node server.js > /tmp/guest-portal.log 2>&1 &
+          server_pid=$!
+          cleanup() {
+            if [[ -n "${server_pid:-}" ]]; then
+              kill "$server_pid" 2>/dev/null || true
+              wait "$server_pid" 2>/dev/null || true
+            fi
+          }
+          trap cleanup EXIT
+
+          ready=0
+          for _ in $(seq 1 30); do
+            if curl -sf http://127.0.0.1:3000/health >/dev/null; then
+              ready=1
+              break
+            fi
+            sleep 1
+          done
+          if [[ "$ready" != "1" ]]; then
+            echo "Server did not become ready"
+            cat /tmp/guest-portal.log
+            exit 1
+          fi
+
+          if ! bash test-suite.sh http://127.0.0.1:3000; then
+            echo "---- server log ----"
+            cat /tmp/guest-portal.log
+            exit 1
+          fi

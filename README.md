@@ -2,7 +2,7 @@
 
 A self-hosted, mobile-friendly landing portal for guest Wi-Fi networks. Provides Smart Home access, secure photo uploads, and cross-device session continuity.
 
-[![Version](https://img.shields.io/badge/version-1.3.0-blue.svg)](https://github.com/bon1wheel636/guest-portal/releases/tag/v1.3.0)
+[![Version](https://img.shields.io/badge/version-1.3.1-blue.svg)](CHANGELOG.md)
 
 ---
 
@@ -137,15 +137,33 @@ bash setup.sh
 
 ---
 
-## 🧪 Testing
+## Tests and CI
 
-Run the comprehensive test suite to validate all endpoints:
+GitHub Actions runs on every pull request and on pushes to `main`. The workflow (`.github/workflows/ci.yml`) grants `contents: read` and does not use repository secrets. It has three jobs:
+
+- **node** — Node.js 20, `npm ci`, and `npm test`
+- **shell** — shellcheck on the installer and test scripts
+- **integration** — `test-suite.sh` against a server started in the job
+
+Node.js 20 is the `nodejs` package on Debian 13, the template the installer prefers. The app targets Node.js 18 or newer.
+
+```bash
+npm test
+```
+
+`npm test` runs the Node scripts in `scripts/test-*.js`.
+
+```bash
+shellcheck -x --source-path=SCRIPTDIR setup.sh setup-local.sh install.sh test-suite.sh scripts/*.sh
+```
+
+The HTTP suite needs a running server and admin credentials. CI creates a throwaway admin account for that job. Locally, with the server already running:
 
 ```bash
 ADMIN_USER=admin ADMIN_PASS='<password>' bash test-suite.sh
 ```
 
-This tests registration, token-authenticated uploads, admin authentication, session management, admin features, and more. Without `ADMIN_PASS`, admin mutation tests are skipped and unauthenticated admin rejection is still tested.
+This covers registration, token-authenticated uploads, admin authentication, session management, and admin features. Without `ADMIN_PASS`, admin mutation tests are skipped and unauthenticated admin rejection is still tested.
 
 ---
 

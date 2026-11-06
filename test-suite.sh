@@ -78,7 +78,8 @@ wait_for_server() {
 section "1. HEALTH CHECK"
 
 test_health() {
-    local response=$(curl -s "$BASE_URL/health")
+    local response
+    response=$(curl -s "$BASE_URL/health")
     if [[ "$response" == '{"status":"ok"}' ]]; then
         pass "Health endpoint returns ok"
     else
@@ -89,7 +90,8 @@ test_health() {
 section "2. GUEST REGISTRATION"
 
 test_register_valid() {
-    local response=$(curl -s -X POST "$BASE_URL/register" \
+    local response
+    response=$(curl -s -X POST "$BASE_URL/register" \
         -H "Content-Type: application/json" \
         -d '{"name":"Test User","room":"Room 1","stayDays":7}')
     if [[ "$response" == *"token"* ]] && [[ "$response" == *"guest"* ]] && [[ "$response" == *'"returningDevice":false'* ]]; then
@@ -101,7 +103,8 @@ test_register_valid() {
 }
 
 test_register_invalid_name() {
-    local response=$(curl -s -X POST "$BASE_URL/register" \
+    local response
+    response=$(curl -s -X POST "$BASE_URL/register" \
         -H "Content-Type: application/json" \
         -d '{"name":"<script>alert(1)</script>","room":"Room 1"}')
     if [[ "$response" == *"Invalid"* ]]; then
@@ -112,7 +115,8 @@ test_register_invalid_name() {
 }
 
 test_register_empty() {
-    local response=$(curl -s -X POST "$BASE_URL/register" \
+    local response
+    response=$(curl -s -X POST "$BASE_URL/register" \
         -H "Content-Type: application/json" \
         -d '{"name":"","room":""}')
     if [[ "$response" == *"Invalid"* ]]; then
@@ -125,7 +129,8 @@ test_register_empty() {
 section "3. ROOM MANAGEMENT"
 
 test_get_rooms() {
-    local response=$(curl -s "$BASE_URL/guest/rooms")
+    local response
+    response=$(curl -s "$BASE_URL/guest/rooms")
     if [[ "$response" == "["* ]]; then
         pass "Get guest rooms returns array"
     else
@@ -135,7 +140,8 @@ test_get_rooms() {
 
 test_add_room_valid() {
     require_admin_creds "Add valid room" || return
-    local response=$(admin_curl -X POST "$BASE_URL/admin-api/rooms" \
+    local response
+    response=$(admin_curl -X POST "$BASE_URL/admin-api/rooms" \
         -H "Content-Type: application/json" \
         -d '{"name":"Test Suite Room","dashboardUrl":"http://example.com/test"}')
     if [[ "$response" == "OK" ]]; then
@@ -187,7 +193,8 @@ test_public_rooms_hide_dashboard_url() {
 
 test_add_room_invalid_name() {
     require_admin_creds "Rejects XSS in room name" || return
-    local response=$(admin_curl -X POST "$BASE_URL/admin-api/rooms" \
+    local response
+    response=$(admin_curl -X POST "$BASE_URL/admin-api/rooms" \
         -H "Content-Type: application/json" \
         -d '{"name":"<script>","dashboardUrl":"http://example.com"}')
     if [[ "$response" == *"Invalid"* ]]; then
@@ -199,7 +206,8 @@ test_add_room_invalid_name() {
 
 test_add_room_invalid_url() {
     require_admin_creds "Rejects invalid URL" || return
-    local response=$(admin_curl -X POST "$BASE_URL/admin-api/rooms" \
+    local response
+    response=$(admin_curl -X POST "$BASE_URL/admin-api/rooms" \
         -H "Content-Type: application/json" \
         -d '{"name":"Valid Room","dashboardUrl":"not-a-url"}')
     if [[ "$response" == *"Invalid"* ]]; then
@@ -266,7 +274,8 @@ test_update_room_dashboard_url() {
 
 test_delete_room() {
     require_admin_creds "Delete room" || return
-    local response=$(admin_curl -X DELETE "$BASE_URL/admin-api/rooms/Test%20Suite%20Room")
+    local response
+    response=$(admin_curl -X DELETE "$BASE_URL/admin-api/rooms/Test%20Suite%20Room")
     if [[ "$response" == "OK" ]]; then
         pass "Delete room"
     else
@@ -277,7 +286,8 @@ test_delete_room() {
 section "4. SESSION CODE SYSTEM"
 
 test_create_session() {
-    local response=$(curl -s -X POST "$BASE_URL/session" \
+    local response
+    response=$(curl -s -X POST "$BASE_URL/session" \
         -H "Content-Type: application/json" \
         -d '{"name":"Session Test User","room":"Room 1"}')
     if [[ "$response" == *"code"* ]]; then
@@ -293,7 +303,8 @@ test_retrieve_session() {
         fail "Retrieve session" "Needs session code" "No code available"
         return
     fi
-    local response=$(curl -s "$BASE_URL/session/$SESSION_CODE")
+    local response
+    response=$(curl -s "$BASE_URL/session/$SESSION_CODE")
     if [[ "$response" == *"Session Test User"* ]]; then
         pass "Retrieve session by code"
     else
@@ -302,7 +313,8 @@ test_retrieve_session() {
 }
 
 test_invalid_session() {
-    local response=$(curl -s "$BASE_URL/session/INVALID")
+    local response
+    response=$(curl -s "$BASE_URL/session/INVALID")
     if [[ "$response" == *"Invalid"* ]] || [[ "$response" == *"expired"* ]]; then
         pass "Invalid session code rejected"
     else
@@ -312,7 +324,8 @@ test_invalid_session() {
 
 test_list_sessions() {
     require_admin_creds "List active sessions" || return
-    local response=$(admin_curl "$BASE_URL/admin-api/sessions")
+    local response
+    response=$(admin_curl "$BASE_URL/admin-api/sessions")
     if [[ "$response" == "["* ]]; then
         pass "List active sessions"
     else
@@ -326,7 +339,8 @@ test_revoke_session() {
         fail "Revoke session" "Needs session code" "No code available"
         return
     fi
-    local response=$(admin_curl -X DELETE "$BASE_URL/admin-api/sessions/$SESSION_CODE")
+    local response
+    response=$(admin_curl -X DELETE "$BASE_URL/admin-api/sessions/$SESSION_CODE")
     if [[ "$response" == "OK" ]]; then
         pass "Revoke session code"
     else
@@ -337,7 +351,8 @@ test_revoke_session() {
 section "5. ADMIN AUTHENTICATION"
 
 test_admin_setup_required() {
-    local response=$(curl -s "$BASE_URL/admin-api/setup-required")
+    local response
+    response=$(curl -s "$BASE_URL/admin-api/setup-required")
     if [[ "$response" == *"setupRequired"* ]]; then
         pass "Check setup required endpoint"
     else
@@ -489,7 +504,8 @@ test_admin_sign_out() {
 
 test_deployment_status() {
     require_admin_creds "Deployment status" || return
-    local response=$(admin_curl "$BASE_URL/admin-api/deployment-status")
+    local response
+    response=$(admin_curl "$BASE_URL/admin-api/deployment-status")
     if [[ "$response" == *'"app"'* ]] && [[ "$response" == *'"storage"'* ]] && [[ "$response" == *'"reverseProxy"'* ]]; then
         pass "Deployment status endpoint"
     else
@@ -519,7 +535,8 @@ test_deployment_status() {
 
 test_portal_url_setting() {
     require_admin_creds "Portal URL setting" || return
-    local response=$(admin_curl -X POST "$BASE_URL/admin-api/portal-url" \
+    local response
+    response=$(admin_curl -X POST "$BASE_URL/admin-api/portal-url" \
         -H "Content-Type: application/json" \
         -d '{"portalPublicUrl":"https://guestportal.example.test/"}')
     if [[ "$response" == *'"portalPublicUrl":"https://guestportal.example.test"'* ]]; then
@@ -531,7 +548,8 @@ test_portal_url_setting() {
 
 test_link_code_expiration_setting() {
     require_admin_creds "Link code expiration setting" || return
-    local set_response=$(admin_curl -X POST "$BASE_URL/admin-api/session-expiration" \
+    local set_response
+    set_response=$(admin_curl -X POST "$BASE_URL/admin-api/session-expiration" \
         -H "Content-Type: application/json" \
         -d '{"minutes":7}')
     if [[ "$set_response" != *'"minutes":7'* ]]; then
@@ -540,7 +558,8 @@ test_link_code_expiration_setting() {
     fi
     pass "Link code expiration setting updates"
 
-    local get_response=$(admin_curl "$BASE_URL/admin-api/session-expiration")
+    local get_response
+    get_response=$(admin_curl "$BASE_URL/admin-api/session-expiration")
     if [[ "$get_response" == *'"minutes":7'* ]]; then
         pass "Link code expiration setting reads back"
     else
@@ -551,7 +570,8 @@ test_link_code_expiration_setting() {
         fail "Guest link code uses configured expiration" "Needs guest token" "No token available"
         return
     fi
-    local link_response=$(curl -s -X POST "$BASE_URL/guest/link-code" \
+    local link_response
+    link_response=$(curl -s -X POST "$BASE_URL/guest/link-code" \
         -H "Content-Type: application/json" \
         -d "{\"token\":\"$GUEST_TOKEN\"}")
     if [[ "$link_response" == *'"expiresIn":"7 minutes"'* ]]; then
@@ -565,7 +585,8 @@ section "5b. GUEST ADMIN MANAGEMENT"
 
 test_list_guest_history() {
     require_admin_creds "List registration history" || return
-    local response=$(admin_curl "$BASE_URL/admin-api/guests")
+    local response
+    response=$(admin_curl "$BASE_URL/admin-api/guests")
     if [[ "$response" == "["* ]] && [[ "$response" == *"hasActiveSession"* ]]; then
         pass "List registration history"
     else
@@ -578,7 +599,8 @@ test_admin_register_guest() {
     admin_curl -X POST "$BASE_URL/admin-api/rooms" \
         -H "Content-Type: application/json" \
         -d '{"name":"Test Suite Room","dashboardUrl":"http://example.com/test"}' > /dev/null
-    local response=$(admin_curl -X POST "$BASE_URL/admin-api/guests" \
+    local response
+    response=$(admin_curl -X POST "$BASE_URL/admin-api/guests" \
         -H "Content-Type: application/json" \
         -d '{"name":"Admin Registered Guest","room":"Test Suite Room","stayDays":3}')
     if [[ "$response" == *'"success":true'* ]] && [[ "$response" == *'"token"'* ]]; then
@@ -598,7 +620,8 @@ test_update_guest_room() {
     admin_curl -X POST "$BASE_URL/admin-api/rooms" \
         -H "Content-Type: application/json" \
         -d '{"name":"Admin Room Two","dashboardUrl":"http://example.com/admin-room-2"}' > /dev/null
-    local response=$(admin_curl -X PATCH "$BASE_URL/admin-api/guest-sessions/$ADMIN_GUEST_ID" \
+    local response
+    response=$(admin_curl -X PATCH "$BASE_URL/admin-api/guest-sessions/$ADMIN_GUEST_ID" \
         -H "Content-Type: application/json" \
         -d '{"room":"Admin Room Two"}')
     if [[ "$response" == *'"success":true'* ]] && [[ "$response" == *"Admin Room Two"* ]]; then
@@ -614,7 +637,8 @@ test_clear_guest_devices() {
         fail "Clear guest devices" "Needs admin guest id" "No guest id available"
         return
     fi
-    local response=$(admin_curl -X DELETE "$BASE_URL/admin-api/guest-sessions/$ADMIN_GUEST_ID/devices")
+    local response
+    response=$(admin_curl -X DELETE "$BASE_URL/admin-api/guest-sessions/$ADMIN_GUEST_ID/devices")
     if [[ "$response" == *'"devicesCleared":true'* ]]; then
         pass "Clear guest devices"
     else
@@ -628,7 +652,8 @@ test_admin_guest_link_code_qr() {
         fail "Admin guest link code QR" "Needs admin guest id" "No guest id available"
         return
     fi
-    local response=$(admin_curl -X POST "$BASE_URL/admin-api/guest-sessions/$ADMIN_GUEST_ID/link-code")
+    local response
+    response=$(admin_curl -X POST "$BASE_URL/admin-api/guest-sessions/$ADMIN_GUEST_ID/link-code")
     if [[ "$response" == *'"code"'* ]] && [[ "$response" == *'"linkUrl"'* ]] && [[ "$response" == *'"qrSvg"'* ]] && [[ "$response" == *"<svg"* ]] && [[ "$response" == *"https://guestportal.example.test"* ]]; then
         pass "Admin guest link code includes QR"
     else
@@ -638,14 +663,16 @@ test_admin_guest_link_code_qr() {
 
 test_csv_exports() {
     require_admin_creds "CSV exports" || return
-    local sessions_csv=$(admin_curl "$BASE_URL/admin-api/guest-sessions.csv")
+    local sessions_csv
+    sessions_csv=$(admin_curl "$BASE_URL/admin-api/guest-sessions.csv")
     if [[ "$sessions_csv" == *"Guest Type ID"* ]] && [[ "$sessions_csv" == *"Visit Mode"* ]]; then
         pass "Active sessions CSV export"
     else
         fail "Active sessions CSV export" "Guest Type columns" "$sessions_csv"
     fi
 
-    local history_csv=$(admin_curl "$BASE_URL/admin-api/guests.csv")
+    local history_csv
+    history_csv=$(admin_curl "$BASE_URL/admin-api/guests.csv")
     if [[ "$history_csv" == *"Guest Type"* ]] && [[ "$history_csv" == *"Visit Mode"* ]]; then
         pass "Registration history CSV export"
     else
@@ -659,7 +686,8 @@ test_checkout_admin_guest() {
         fail "Check out admin guest" "Needs admin guest id" "No guest id available"
         return
     fi
-    local response=$(admin_curl -X DELETE "$BASE_URL/admin-api/guest-sessions/$ADMIN_GUEST_ID")
+    local response
+    response=$(admin_curl -X DELETE "$BASE_URL/admin-api/guest-sessions/$ADMIN_GUEST_ID")
     if [[ "$response" == *'"success":true'* && "$response" == *'"internet"'* ]]; then
         pass "Check out admin guest session"
     else
@@ -673,7 +701,8 @@ test_remove_guest_history() {
         fail "Remove guest history entry" "Needs admin guest id" "No guest id available"
         return
     fi
-    local response=$(admin_curl -X DELETE "$BASE_URL/admin-api/guests/$ADMIN_GUEST_ID")
+    local response
+    response=$(admin_curl -X DELETE "$BASE_URL/admin-api/guests/$ADMIN_GUEST_ID")
     if [[ "$response" == *'"success":true'* ]]; then
         pass "Remove guest history entry"
     else
@@ -689,7 +718,8 @@ test_upload() {
         return
     fi
     printf '%s\n' '%PDF-1.4' '1 0 obj <<>> endobj' '%%EOF' > /tmp/test-upload.pdf
-    local response=$(curl -s -X POST "$BASE_URL/upload" \
+    local response
+    response=$(curl -s -X POST "$BASE_URL/upload" \
         -H "X-Guest-Token: $GUEST_TOKEN" \
         -F "photos=@/tmp/test-upload.pdf;type=application/pdf")
     if [[ "$response" == "OK" ]]; then
@@ -708,7 +738,8 @@ test_path_traversal() {
         return
     fi
     printf '%s\n' '%PDF-1.4' '1 0 obj <<>> endobj' '%%EOF' > /tmp/evil.pdf
-    local response=$(curl -s -X POST "$BASE_URL/upload" \
+    local response
+    response=$(curl -s -X POST "$BASE_URL/upload" \
         -H "X-Guest-Token: $GUEST_TOKEN" \
         -F "photos=@/tmp/evil.pdf;type=application/pdf" \
         -F "guestName=../../../etc/passwd")
@@ -727,7 +758,8 @@ test_path_traversal() {
 }
 
 test_admin_requires_auth() {
-    local http_code=$(curl -s -o /dev/null -w "%{http_code}" \
+    local http_code
+    http_code=$(curl -s -o /dev/null -w "%{http_code}" \
         -X POST "$BASE_URL/admin-api/rooms" \
         -H "Content-Type: application/json" \
         -d '{"name":"Unauthorized Room","dashboardUrl":"http://example.com"}')
@@ -740,7 +772,8 @@ test_admin_requires_auth() {
 
 test_upload_requires_token() {
     printf '%s\n' '%PDF-1.4' '1 0 obj <<>> endobj' '%%EOF' > /tmp/no-token.pdf
-    local http_code=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$BASE_URL/upload" \
+    local http_code
+    http_code=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$BASE_URL/upload" \
         -F "photos=@/tmp/no-token.pdf;type=application/pdf")
     if [[ "$http_code" == "401" ]]; then
         pass "Upload requires guest token (401)"
@@ -756,7 +789,8 @@ test_upload_rejects_code() {
         return
     fi
     echo "console.log('blocked');" > /tmp/payload.js
-    local http_code=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$BASE_URL/upload" \
+    local http_code
+    http_code=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$BASE_URL/upload" \
         -H "X-Guest-Token: $GUEST_TOKEN" \
         -F "photos=@/tmp/payload.js;type=application/javascript")
     if [[ "$http_code" == "400" ]]; then
@@ -769,17 +803,20 @@ test_upload_rejects_code() {
 
 test_validate_returning_device() {
     local ua="GuestPortalTestSuite/1.0"
-    local response=$(curl -s -X POST "$BASE_URL/register" \
+    local response
+    response=$(curl -s -X POST "$BASE_URL/register" \
         -H "Content-Type: application/json" \
         -H "User-Agent: $ua" \
         -d '{"name":"Return Device User","room":"Room 1","stayDays":3}')
-    local token=$(echo "$response" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
+    local token
+    token=$(echo "$response" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
     if [[ -z "$token" ]]; then
         fail "Validate returning device" "Registration token" "Missing token"
         return
     fi
 
-    local validate=$(curl -s -X POST "$BASE_URL/guest/validate" \
+    local validate
+    validate=$(curl -s -X POST "$BASE_URL/guest/validate" \
         -H "Content-Type: application/json" \
         -H "User-Agent: $ua" \
         -d "{\"token\":\"$token\"}")
@@ -795,7 +832,8 @@ test_guest_uploads_list() {
         fail "Guest uploads list" "Needs guest token" "No token available"
         return
     fi
-    local response=$(curl -s "$BASE_URL/guest/uploads" -H "X-Guest-Token: $GUEST_TOKEN")
+    local response
+    response=$(curl -s "$BASE_URL/guest/uploads" -H "X-Guest-Token: $GUEST_TOKEN")
     if [[ "$response" == *'"files"'* ]] && [[ "$response" == *'"eventSlug"'* ]]; then
         GUEST_UPLOAD_FILENAME=$(echo "$response" | grep -o '"name":"[^"]*"' | head -1 | cut -d'"' -f4)
         GUEST_UPLOAD_EVENT_SLUG=$(echo "$response" | grep -o '"eventSlug":"[^"]*"' | head -1 | cut -d'"' -f4)
@@ -810,7 +848,8 @@ test_guest_link_code_qr() {
         fail "Guest link code QR" "Needs guest token" "No token available"
         return
     fi
-    local response=$(curl -s -X POST "$BASE_URL/guest/link-code" \
+    local response
+    response=$(curl -s -X POST "$BASE_URL/guest/link-code" \
         -H "Content-Type: application/json" \
         -d "{\"token\":\"$GUEST_TOKEN\"}")
     if [[ "$response" == *'"code"'* ]] && [[ "$response" == *'"linkUrl"'* ]] && [[ "$response" == *'"qrSvg"'* ]] && [[ "$response" == *"<svg"* ]]; then
@@ -828,24 +867,29 @@ test_device_link_code_not_consumed_by_legacy_session_get() {
         fail "Device-link code survives legacy session GET" "Needs guest token" "No token available"
         return
     fi
-    local link_response=$(curl -s -X POST "$BASE_URL/guest/link-code" \
+    local link_response
+    link_response=$(curl -s -X POST "$BASE_URL/guest/link-code" \
         -H "Content-Type: application/json" \
         -d "{\"token\":\"$GUEST_TOKEN\"}")
-    local code=$(echo "$link_response" | grep -o '"code":"[^"]*"' | head -1 | cut -d'"' -f4)
+    local code
+    code=$(echo "$link_response" | grep -o '"code":"[^"]*"' | head -1 | cut -d'"' -f4)
     if [[ -z "$code" ]]; then
         fail "Device-link code survives legacy session GET" "link code in response" "$link_response"
         return
     fi
 
-    local legacy_http=$(curl -s -o /tmp/gp-legacy-session-get.txt -w "%{http_code}" "$BASE_URL/session/$code")
-    local legacy_body=$(cat /tmp/gp-legacy-session-get.txt)
+    local legacy_http
+    legacy_http=$(curl -s -o /tmp/gp-legacy-session-get.txt -w "%{http_code}" "$BASE_URL/session/$code")
+    local legacy_body
+    legacy_body=$(cat /tmp/gp-legacy-session-get.txt)
     rm -f /tmp/gp-legacy-session-get.txt
     if [[ "$legacy_http" != "404" ]]; then
         fail "Device-link code survives legacy session GET" "404 from GET /session/:code" "http=$legacy_http body=$legacy_body"
         return
     fi
 
-    local redeem=$(curl -s -X POST "$BASE_URL/guest/link-device" \
+    local redeem
+    redeem=$(curl -s -X POST "$BASE_URL/guest/link-device" \
         -H "Content-Type: application/json" \
         -d "{\"code\":\"$code\"}")
     if [[ "$redeem" == *'"token"'* ]] && [[ "$redeem" == *'"guest"'* ]]; then
@@ -857,7 +901,8 @@ test_device_link_code_not_consumed_by_legacy_session_get() {
 
 test_admin_uploads_metadata() {
     require_admin_creds "Admin upload preview metadata" || return
-    local response=$(admin_curl "$BASE_URL/admin-api/uploads")
+    local response
+    response=$(admin_curl "$BASE_URL/admin-api/uploads")
     if [[ "$response" == *'"uploadedAt"'* ]] && [[ "$response" == *'"url"'* ]]; then
         pass "Admin uploads include preview metadata"
     else
@@ -868,8 +913,10 @@ test_admin_uploads_metadata() {
 test_admin_upload_folder_path_traversal() {
     require_admin_creds "Admin upload folder path traversal" || return
 
-    local path_info=$(admin_curl "$BASE_URL/admin-api/upload-path")
-    local uploads_dir=$(python3 -c "import json,sys; print(json.load(sys.stdin).get('path',''))" <<<"$path_info")
+    local path_info
+    path_info=$(admin_curl "$BASE_URL/admin-api/upload-path")
+    local uploads_dir
+    uploads_dir=$(python3 -c "import json,sys; print(json.load(sys.stdin).get('path',''))" <<<"$path_info")
     if [[ -z "$uploads_dir" ]]; then
         fail "Admin upload folder path traversal" "uploads path from /admin-api/upload-path" "$path_info"
         return
@@ -880,11 +927,14 @@ test_admin_upload_folder_path_traversal() {
     echo "keep-uploads" > "$uploads_dir/.traversal-canary"
     echo "keep-sibling" > "$sibling_dir/secret.txt"
 
-    local del_sibling_code=$(curl -s -o /tmp/admin-trav-del-sibling.txt -w "%{http_code}" \
+    local del_sibling_code
+    del_sibling_code=$(curl -s -o /tmp/admin-trav-del-sibling.txt -w "%{http_code}" \
         -u "$ADMIN_USER:$ADMIN_PASS" -X DELETE "$BASE_URL/admin-api/uploads/..%2F$(basename "$sibling_dir")")
-    local del_root_code=$(curl -s -o /tmp/admin-trav-del-root.txt -w "%{http_code}" \
+    local del_root_code
+    del_root_code=$(curl -s -o /tmp/admin-trav-del-root.txt -w "%{http_code}" \
         -u "$ADMIN_USER:$ADMIN_PASS" -X DELETE "$BASE_URL/admin-api/uploads/..%2F$(basename "$uploads_dir")")
-    local dl_sibling_code=$(curl -s -o /tmp/admin-trav-dl-sibling.zip -w "%{http_code}" \
+    local dl_sibling_code
+    dl_sibling_code=$(curl -s -o /tmp/admin-trav-dl-sibling.zip -w "%{http_code}" \
         -u "$ADMIN_USER:$ADMIN_PASS" "$BASE_URL/admin-api/uploads/download/..%2F$(basename "$sibling_dir")")
 
     local sibling_ok=0
@@ -905,7 +955,8 @@ test_admin_upload_folder_path_traversal() {
 }
 
 test_guest_uploads_requires_token() {
-    local http_code=$(curl -s -o /dev/null -w "%{http_code}" "$BASE_URL/guest/uploads")
+    local http_code
+    http_code=$(curl -s -o /dev/null -w "%{http_code}" "$BASE_URL/guest/uploads")
     if [[ "$http_code" == "401" ]]; then
         pass "Guest uploads list requires token (401)"
     else
@@ -919,9 +970,12 @@ test_guest_upload_delete() {
         return
     fi
     local slug="${GUEST_UPLOAD_EVENT_SLUG:-General}"
-    local encoded_slug=$(python3 -c "import urllib.parse; print(urllib.parse.quote('$slug'))")
-    local encoded_name=$(python3 -c "import urllib.parse; print(urllib.parse.quote('$GUEST_UPLOAD_FILENAME'))")
-    local response=$(curl -s -X DELETE "$BASE_URL/guest/uploads/$encoded_slug/$encoded_name" \
+    local encoded_slug
+    encoded_slug=$(python3 -c "import urllib.parse; print(urllib.parse.quote('$slug'))")
+    local encoded_name
+    encoded_name=$(python3 -c "import urllib.parse; print(urllib.parse.quote('$GUEST_UPLOAD_FILENAME'))")
+    local response
+    response=$(curl -s -X DELETE "$BASE_URL/guest/uploads/$encoded_slug/$encoded_name" \
         -H "X-Guest-Token: $GUEST_TOKEN")
     if [[ "$response" == *'"success":true'* ]]; then
         pass "Guest upload delete"
@@ -931,7 +985,8 @@ test_guest_upload_delete() {
 }
 
 test_guest_upload_delete_requires_token() {
-    local http_code=$(curl -s -o /dev/null -w "%{http_code}" -X DELETE "$BASE_URL/guest/uploads/example.pdf")
+    local http_code
+    http_code=$(curl -s -o /dev/null -w "%{http_code}" -X DELETE "$BASE_URL/guest/uploads/example.pdf")
     if [[ "$http_code" == "401" ]]; then
         pass "Guest upload delete requires token (401)"
     else
@@ -940,10 +995,12 @@ test_guest_upload_delete_requires_token() {
 }
 
 test_rate_limiting() {
-    # Make 65 rapid requests (limit is 60/min)
+    # Sends 65 requests. The server allows 200/minute, so this does not prove
+    # the limiter. The suite calls it only when RUN_RATE_LIMIT_PROBE=1.
     local blocked=false
     for i in {1..65}; do
-        local http_code=$(curl -s -o /dev/null -w "%{http_code}" "$BASE_URL/health")
+        local http_code
+        http_code=$(curl -s -o /dev/null -w "%{http_code}" "$BASE_URL/health")
         if [[ "$http_code" == "429" ]]; then
             blocked=true
             break
@@ -961,7 +1018,8 @@ section "7b. GUEST TYPES AND PERMISSIONS"
 
 test_guest_types_seeded() {
     require_admin_creds "Guest types seeded" || return
-    local response=$(admin_curl "$BASE_URL/admin-api/guest-types")
+    local response
+    response=$(admin_curl "$BASE_URL/admin-api/guest-types")
     if [[ "$response" == *"type_overnight"* ]] && [[ "$response" == *"type_day_personal"* ]] && [[ "$response" == *"type_day_business"* ]]; then
         pass "Default guest types seeded"
     else
@@ -970,14 +1028,16 @@ test_guest_types_seeded() {
 }
 
 test_guest_types_public() {
-    local response=$(curl -s "$BASE_URL/guest/guest-types")
+    local response
+    response=$(curl -s "$BASE_URL/guest/guest-types")
     if [[ "$response" == *"type_overnight"* ]] && [[ "$response" == *'"visitMode":"day"'* ]]; then
         pass "Public guest types endpoint"
     else
         fail "Public guest types endpoint" "enabled guest types" "$response"
         return
     fi
-    local flags=$(echo "$response" | python3 -c "
+    local flags
+    flags=$(echo "$response" | python3 -c "
 import json, sys
 types = json.load(sys.stdin)
 by_id = {t['id']: t for t in types}
@@ -993,15 +1053,18 @@ print('business', by_id.get('type_day_business', {}).get('requiresEvent'))
 }
 
 test_validate_permissions() {
-    local response=$(curl -s -X POST "$BASE_URL/register" \
+    local response
+    response=$(curl -s -X POST "$BASE_URL/register" \
         -H "Content-Type: application/json" \
         -d '{"name":"Perm Test","room":"Room 1","stayDays":2}')
-    local token=$(echo "$response" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
+    local token
+    token=$(echo "$response" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
     if [[ -z "$token" ]]; then
         fail "Validate permissions" "registration token" "$response"
         return
     fi
-    local validate=$(curl -s -X POST "$BASE_URL/guest/validate" \
+    local validate
+    validate=$(curl -s -X POST "$BASE_URL/guest/validate" \
         -H "Content-Type: application/json" \
         -d "{\"token\":\"$token\"}")
     if [[ "$validate" == *'"permissions"'* ]] && [[ "$validate" == *'"uploadPhotos":true'* ]] && [[ "$validate" == *'"leaveGuestNote":true'* ]] && [[ "$validate" == *'"guestTypeId"'* ]]; then
@@ -1016,16 +1079,19 @@ test_business_day_upload_forbidden() {
     admin_curl -X POST "$BASE_URL/admin-api/rooms" \
         -H "Content-Type: application/json" \
         -d '{"name":"Business Room","dashboardUrl":"http://example.com/business"}' > /dev/null
-    local response=$(curl -s -X POST "$BASE_URL/register" \
+    local response
+    response=$(curl -s -X POST "$BASE_URL/register" \
         -H "Content-Type: application/json" \
         -d '{"name":"Biz Visitor","guestTypeId":"type_day_business"}')
-    local token=$(echo "$response" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
+    local token
+    token=$(echo "$response" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
     if [[ -z "$token" ]]; then
         fail "Business day upload forbidden" "business registration token" "$response"
         return
     fi
     printf '%s\n' '%PDF-1.4' '1 0 obj <<>> endobj' '%%EOF' > /tmp/test-business-upload.pdf
-    local http_code=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$BASE_URL/upload" \
+    local http_code
+    http_code=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$BASE_URL/upload" \
         -H "X-Guest-Token: $token" \
         -F "photos=@/tmp/test-business-upload.pdf;type=application/pdf")
     rm -f /tmp/test-business-upload.pdf
@@ -1037,15 +1103,18 @@ test_business_day_upload_forbidden() {
 }
 
 test_business_day_link_forbidden() {
-    local response=$(curl -s -X POST "$BASE_URL/register" \
+    local response
+    response=$(curl -s -X POST "$BASE_URL/register" \
         -H "Content-Type: application/json" \
         -d '{"name":"Biz Link Test","guestTypeId":"type_day_business"}')
-    local token=$(echo "$response" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
+    local token
+    token=$(echo "$response" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
     if [[ -z "$token" ]]; then
         fail "Business day link forbidden" "business registration token" "$response"
         return
     fi
-    local http_code=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$BASE_URL/guest/link-code" \
+    local http_code
+    http_code=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$BASE_URL/guest/link-code" \
         -H "Content-Type: application/json" \
         -d "{\"token\":\"$token\"}")
     if [[ "$http_code" == "403" ]]; then
@@ -1060,22 +1129,26 @@ test_change_guest_type_permissions() {
     admin_curl -X POST "$BASE_URL/admin-api/rooms" \
         -H "Content-Type: application/json" \
         -d '{"name":"Type Change Room","dashboardUrl":"http://example.com/type-change"}' > /dev/null
-    local reg=$(admin_curl -X POST "$BASE_URL/admin-api/guests" \
+    local reg
+    reg=$(admin_curl -X POST "$BASE_URL/admin-api/guests" \
         -H "Content-Type: application/json" \
         -d '{"name":"Type Change Guest","room":"Type Change Room","stayDays":2}')
-    local guest_id=$(echo "$reg" | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4)
+    local guest_id
+    guest_id=$(echo "$reg" | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4)
     if [[ -z "$guest_id" ]]; then
         fail "Change guest type permissions" "admin guest id" "$reg"
         return
     fi
-    local patch=$(admin_curl -X PATCH "$BASE_URL/admin-api/guest-sessions/$guest_id" \
+    local patch
+    patch=$(admin_curl -X PATCH "$BASE_URL/admin-api/guest-sessions/$guest_id" \
         -H "Content-Type: application/json" \
         -d '{"guestTypeId":"type_day_business"}')
     if [[ "$patch" != *'"success":true'* ]]; then
         fail "Change guest type permissions" "successful patch" "$patch"
         return
     fi
-    local entry=$(admin_curl "$BASE_URL/admin-api/guest-sessions")
+    local entry
+    entry=$(admin_curl "$BASE_URL/admin-api/guest-sessions")
     if [[ "$entry" == *'"guestTypeId":"type_day_business"'* ]] && [[ "$entry" == *'"uploadPhotos":false'* ]]; then
         pass "Changing guest type updates effective permissions"
     else
@@ -1093,8 +1166,10 @@ test_disabled_guest_type_uses_restricted_fallback() {
         -H "Content-Type: application/json" \
         -d '{"name":"Snapshot Lock Room","dashboardUrl":"http://example.com/snapshot-lock"}' > /dev/null
 
-    local types=$(admin_curl "$BASE_URL/admin-api/guest-types")
-    local overnight_body=$(echo "$types" | python3 -c "
+    local types
+    types=$(admin_curl "$BASE_URL/admin-api/guest-types")
+    local overnight_body
+    overnight_body=$(echo "$types" | python3 -c "
 import json, sys
 types = json.load(sys.stdin)
 t = next(x for x in types if x['id'] == 'type_overnight')
@@ -1108,7 +1183,8 @@ print(json.dumps({
     'permissions': t['permissions']
 }))
 ")
-    local tightened_body=$(echo "$types" | python3 -c "
+    local tightened_body
+    tightened_body=$(echo "$types" | python3 -c "
 import json, sys
 types = json.load(sys.stdin)
 t = next(x for x in types if x['id'] == 'type_overnight')
@@ -1132,10 +1208,12 @@ print(json.dumps({
         -H "Content-Type: application/json" \
         -d "$overnight_body" > /dev/null
 
-    local response=$(curl -s -X POST "$BASE_URL/register" \
+    local response
+    response=$(curl -s -X POST "$BASE_URL/register" \
         -H "Content-Type: application/json" \
         -d '{"name":"Snapshot Lock Guest","room":"Snapshot Lock Room","stayDays":2,"guestTypeId":"type_overnight"}')
-    local token=$(echo "$response" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
+    local token
+    token=$(echo "$response" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
     if [[ -z "$token" ]]; then
         fail "Disabled guest type restricted fallback" "registration token" "$response"
         admin_curl -X PATCH "$BASE_URL/admin-api/guest-types/type_overnight" \
@@ -1148,7 +1226,8 @@ print(json.dumps({
         -H "Content-Type: application/json" \
         -d "$tightened_body" > /dev/null
 
-    local tightened=$(curl -s -X POST "$BASE_URL/guest/validate" \
+    local tightened
+    tightened=$(curl -s -X POST "$BASE_URL/guest/validate" \
         -H "Content-Type: application/json" \
         -d "{\"token\":\"$token\"}")
     if [[ "$tightened" != *'"uploadPhotos":false'* ]] || [[ "$tightened" != *'"smartHomeControls":false'* ]]; then
@@ -1161,11 +1240,13 @@ print(json.dumps({
 
     admin_curl -X DELETE "$BASE_URL/admin-api/guest-types/type_overnight" > /dev/null
 
-    local disabled=$(curl -s -X POST "$BASE_URL/guest/validate" \
+    local disabled
+    disabled=$(curl -s -X POST "$BASE_URL/guest/validate" \
         -H "Content-Type: application/json" \
         -d "{\"token\":\"$token\"}")
     printf '%s\n' '%PDF-1.4' 'snapshot-lock' '%%EOF' > /tmp/snapshot-lock.pdf
-    local upload_code=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$BASE_URL/upload" \
+    local upload_code
+    upload_code=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$BASE_URL/upload" \
         -H "X-Guest-Token: $token" \
         -F "photos=@/tmp/snapshot-lock.pdf;type=application/pdf")
     rm -f /tmp/snapshot-lock.pdf
@@ -1191,14 +1272,16 @@ print(json.dumps({
 
 test_guest_types_reorder_rejects_duplicates() {
     require_admin_creds "Guest types reorder rejects duplicates" || return
-    local before=$(admin_curl "$BASE_URL/admin-api/guest-types")
-    local count_before=$(python3 -c "import json,sys; print(len(json.load(sys.stdin)))" <<< "$before")
+    local before
+    before=$(admin_curl "$BASE_URL/admin-api/guest-types")
+    local count_before
+    count_before=$(python3 -c "import json,sys; print(len(json.load(sys.stdin)))" <<< "$before")
     if [[ -z "$count_before" || "$count_before" -lt 2 ]]; then
         fail "Guest types reorder rejects duplicates" "at least 2 guest types" "$before"
         return
     fi
-    local first_id=$(python3 -c "import json,sys; print(json.load(sys.stdin)[0]['id'])" <<< "$before")
-    local second_id=$(python3 -c "import json,sys; print(json.load(sys.stdin)[1]['id'])" <<< "$before")
+    local second_id
+    second_id=$(python3 -c "import json,sys; print(json.load(sys.stdin)[1]['id'])" <<< "$before")
     # Same length as type list, but duplicates one id and omits another — previously
     # passed validation and hard-deleted the omitted type from storage.json.
     local bad_order
@@ -1209,15 +1292,20 @@ ids=[t['id'] for t in types]
 ids[-1]=ids[0]
 print(json.dumps({'order': ids}))
 " <<< "$before")
-    local http_code=$(admin_curl -o /tmp/guest-type-reorder-dup.txt -w "%{http_code}" -X POST \
+    local http_code
+    http_code=$(admin_curl -o /tmp/guest-type-reorder-dup.txt -w "%{http_code}" -X POST \
         "$BASE_URL/admin-api/guest-types/reorder" \
         -H "Content-Type: application/json" \
         -d "$bad_order")
-    local body=$(cat /tmp/guest-type-reorder-dup.txt)
+    local body
+    body=$(cat /tmp/guest-type-reorder-dup.txt)
     rm -f /tmp/guest-type-reorder-dup.txt
-    local after=$(admin_curl "$BASE_URL/admin-api/guest-types")
-    local count_after=$(python3 -c "import json,sys; print(len(json.load(sys.stdin)))" <<< "$after")
-    local still_has_second=$(python3 -c "
+    local after
+    after=$(admin_curl "$BASE_URL/admin-api/guest-types")
+    local count_after
+    count_after=$(python3 -c "import json,sys; print(len(json.load(sys.stdin)))" <<< "$after")
+    local still_has_second
+    still_has_second=$(python3 -c "
 import json,sys
 ids=[t['id'] for t in json.load(sys.stdin)]
 print('yes' if '$second_id' in ids else 'no')
@@ -1239,7 +1327,8 @@ ids=[t['id'] for t in types]
 ids[0], ids[1] = ids[1], ids[0]
 print(json.dumps({'order': ids}))
 " <<< "$before")
-    local ok=$(admin_curl -X POST "$BASE_URL/admin-api/guest-types/reorder" \
+    local ok
+    ok=$(admin_curl -X POST "$BASE_URL/admin-api/guest-types/reorder" \
         -H "Content-Type: application/json" \
         -d "$good_order")
     # Restore original order
@@ -1257,16 +1346,19 @@ print(json.dumps({'order': ids}))
 
 test_event_subfolder_upload() {
     require_admin_creds "Event subfolder upload" || return
-    local response=$(curl -s -X POST "$BASE_URL/register" \
+    local response
+    response=$(curl -s -X POST "$BASE_URL/register" \
         -H "Content-Type: application/json" \
         -d '{"name":"Event Upload Guest","room":"Room 1","stayDays":3,"guestTypeId":"type_overnight"}')
-    local token=$(echo "$response" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
+    local token
+    token=$(echo "$response" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
     if [[ -z "$token" ]]; then
         fail "Event subfolder upload" "registration token" "$response"
         return
     fi
     printf '%s\n' '%PDF-1.4' '1 0 obj <<>> endobj' '%%EOF' > /tmp/test-event-upload.pdf
-    local http_code=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$BASE_URL/upload" \
+    local http_code
+    http_code=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$BASE_URL/upload" \
         -H "X-Guest-Token: $token" \
         -F "eventName=Birthday Party" \
         -F "photos=@/tmp/test-event-upload.pdf;type=application/pdf")
@@ -1275,7 +1367,8 @@ test_event_subfolder_upload() {
         fail "Event subfolder upload" "200 upload" "$http_code"
         return
     fi
-    local admin_uploads=$(admin_curl "$BASE_URL/admin-api/uploads")
+    local admin_uploads
+    admin_uploads=$(admin_curl "$BASE_URL/admin-api/uploads")
     if [[ "$admin_uploads" == *"Birthday-Party"* ]] || [[ "$admin_uploads" == *'"event":"Birthday Party"'* ]]; then
         pass "Event subfolder upload lands under event folder"
     else
@@ -1288,16 +1381,19 @@ test_event_upload_photos_before_event_field() {
     # destination callback runs per file part, so req.body.eventName was still
     # empty and photos silently landed in General instead of the tagged event.
     require_admin_creds "Event upload with photos-before-eventName field order" || return
-    local response=$(curl -s -X POST "$BASE_URL/register" \
+    local response
+    response=$(curl -s -X POST "$BASE_URL/register" \
         -H "Content-Type: application/json" \
         -d '{"name":"Field Order Guest","room":"Room 1","stayDays":3,"guestTypeId":"type_overnight"}')
-    local token=$(echo "$response" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
+    local token
+    token=$(echo "$response" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
     if [[ -z "$token" ]]; then
         fail "Event upload photos-before-eventName" "registration token" "$response"
         return
     fi
     printf '%s\n' '%PDF-1.4' '1 0 obj <<>> endobj' '%%EOF' > /tmp/test-field-order-upload.pdf
-    local http_code=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$BASE_URL/upload" \
+    local http_code
+    http_code=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$BASE_URL/upload" \
         -H "X-Guest-Token: $token" \
         -F "photos=@/tmp/test-field-order-upload.pdf;type=application/pdf" \
         -F "eventName=Field Order Party")
@@ -1306,7 +1402,8 @@ test_event_upload_photos_before_event_field() {
         fail "Event upload photos-before-eventName" "200 upload" "$http_code"
         return
     fi
-    local list=$(curl -s "$BASE_URL/guest/uploads" -H "X-Guest-Token: $token")
+    local list
+    list=$(curl -s "$BASE_URL/guest/uploads" -H "X-Guest-Token: $token")
     if [[ "$list" == *'"eventSlug":"Field-Order-Party"'* ]] || [[ "$list" == *'"event":"Field Order Party"'* ]]; then
         pass "Event upload honors eventName when file parts precede the field"
     else
@@ -1317,10 +1414,12 @@ test_event_upload_photos_before_event_field() {
 test_multi_upload_same_original_name() {
     # Multer used `${Date.now()}-${safeName}` for staging. Same-ms + same original
     # name overwrote siblings in .incoming; finalize then failed and wiped the batch.
-    local response=$(curl -s -X POST "$BASE_URL/register" \
+    local response
+    response=$(curl -s -X POST "$BASE_URL/register" \
         -H "Content-Type: application/json" \
         -d '{"name":"Same Name Upload Guest","room":"Room 1","stayDays":3,"guestTypeId":"type_overnight"}')
-    local token=$(echo "$response" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
+    local token
+    token=$(echo "$response" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
     if [[ -z "$token" ]]; then
         fail "Multi-upload same original name" "registration token" "$response"
         return
@@ -1331,11 +1430,14 @@ test_multi_upload_same_original_name() {
         printf '%s\n' '%PDF-1.4' "obj $i" '%%EOF' > "/tmp/same-name-upload-$i.pdf"
         files+=(-F "photos=@/tmp/same-name-upload-$i.pdf;filename=vacation.pdf;type=application/pdf")
     done
-    local http_code=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$BASE_URL/upload" \
+    local http_code
+    http_code=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$BASE_URL/upload" \
         -H "X-Guest-Token: $token" \
         "${files[@]}")
-    local list=$(curl -s "$BASE_URL/guest/uploads" -H "X-Guest-Token: $token")
-    local count=$(python3 -c "import json,sys; print(len(json.load(sys.stdin).get('files',[])))" <<<"$list")
+    local list
+    list=$(curl -s "$BASE_URL/guest/uploads" -H "X-Guest-Token: $token")
+    local count
+    count=$(python3 -c "import json,sys; print(len(json.load(sys.stdin).get('files',[])))" <<<"$list")
     for i in $(seq 1 10); do
         rm -f "/tmp/same-name-upload-$i.pdf"
     done
@@ -1351,23 +1453,28 @@ test_legacy_session() {
     admin_curl -X POST "$BASE_URL/admin-api/rooms" \
         -H "Content-Type: application/json" \
         -d '{"name":"Legacy Room","dashboardUrl":"http://example.com/legacy"}' > /dev/null
-    local reg=$(admin_curl -X POST "$BASE_URL/admin-api/guests" \
+    local reg
+    reg=$(admin_curl -X POST "$BASE_URL/admin-api/guests" \
         -H "Content-Type: application/json" \
         -d '{"name":"Legacy Guest","room":"Legacy Room","stayDays":2}')
-    local guest_id=$(echo "$reg" | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4)
-    local token=$(echo "$reg" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
+    local guest_id
+    guest_id=$(echo "$reg" | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4)
+    local token
+    token=$(echo "$reg" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
     if [[ -z "$guest_id" || -z "$token" ]]; then
         fail "Legacy session without guestTypeId" "guest id + token" "$reg"
         return
     fi
-    local patch=$(admin_curl -X PATCH "$BASE_URL/admin-api/guest-sessions/$guest_id" \
+    local patch
+    patch=$(admin_curl -X PATCH "$BASE_URL/admin-api/guest-sessions/$guest_id" \
         -H "Content-Type: application/json" \
         -d '{"guestTypeId":null}')
     if [[ "$patch" != *'"success":true'* ]]; then
         fail "Legacy session without guestTypeId" "clear guestTypeId patch" "$patch"
         return
     fi
-    local validate=$(curl -s -X POST "$BASE_URL/guest/validate" \
+    local validate
+    validate=$(curl -s -X POST "$BASE_URL/guest/validate" \
         -H "Content-Type: application/json" \
         -d "{\"token\":\"$token\"}")
     if [[ "$validate" == *'"uploadPhotos":true'* ]] && [[ "$validate" == *'"guestTypeId":"type_overnight"'* || "$validate" == *'"guestTypeName":"Overnight Guest"'* ]]; then
@@ -1376,7 +1483,8 @@ test_legacy_session() {
         fail "Legacy session maps to overnight permissions" "overnight uploadPhotos true" "$validate"
     fi
     printf '%s\n' '%PDF-1.4' '1 0 obj <<>> endobj' '%%EOF' > /tmp/test-legacy-upload.pdf
-    local upload_code=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$BASE_URL/upload" \
+    local upload_code
+    upload_code=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$BASE_URL/upload" \
         -H "X-Guest-Token: $token" \
         -F "photos=@/tmp/test-legacy-upload.pdf;type=application/pdf")
     rm -f /tmp/test-legacy-upload.pdf
@@ -1389,10 +1497,12 @@ test_legacy_session() {
 }
 
 test_day_personal_registration() {
-    local response=$(curl -s -X POST "$BASE_URL/register" \
+    local response
+    response=$(curl -s -X POST "$BASE_URL/register" \
         -H "Content-Type: application/json" \
         -d '{"name":"Day Personal Guest","guestTypeId":"type_day_personal","eventName":"Family BBQ"}')
-    local token=$(echo "$response" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
+    local token
+    token=$(echo "$response" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
     if [[ -z "$token" ]]; then
         fail "Day personal registration" "registration token" "$response"
         return
@@ -1403,10 +1513,12 @@ test_day_personal_registration() {
         fail "Day personal registration includes event" "eventName + day visitMode" "$response"
         return
     fi
-    local validate=$(curl -s -X POST "$BASE_URL/guest/validate" \
+    local validate
+    validate=$(curl -s -X POST "$BASE_URL/guest/validate" \
         -H "Content-Type: application/json" \
         -d "{\"token\":\"$token\"}")
-    local checkout_ms=$(echo "$validate" | python3 -c "
+    local checkout_ms
+    checkout_ms=$(echo "$validate" | python3 -c "
 import json, sys
 from datetime import datetime, timezone
 data = json.load(sys.stdin)
@@ -1424,7 +1536,8 @@ print(int((checkout - now).total_seconds() / 3600))
 test_day_personal_requires_event_toggle() {
     # Default Day Visitor — Personal requires an event. Hosts can turn that
     # off per type so guests who are just visiting can skip the picker.
-    local missing_body=$(curl -s -X POST "$BASE_URL/register" \
+    local missing_body
+    missing_body=$(curl -s -X POST "$BASE_URL/register" \
         -H "Content-Type: application/json" \
         -d '{"name":"Just Visiting Rejected","guestTypeId":"type_day_personal"}')
     if [[ "$missing_body" == *"Event name is required for this guest type"* ]]; then
@@ -1435,8 +1548,10 @@ test_day_personal_requires_event_toggle() {
     fi
 
     require_admin_creds "Day personal requiresEvent toggle" || return
-    local types=$(admin_curl "$BASE_URL/admin-api/guest-types")
-    local optional_body=$(echo "$types" | python3 -c "
+    local types
+    types=$(admin_curl "$BASE_URL/admin-api/guest-types")
+    local optional_body
+    optional_body=$(echo "$types" | python3 -c "
 import json, sys
 types = json.load(sys.stdin)
 t = next(x for x in types if x['id'] == 'type_day_personal')
@@ -1451,7 +1566,8 @@ print(json.dumps({
     'permissions': t['permissions']
 }))
 ")
-    local restore_body=$(echo "$types" | python3 -c "
+    local restore_body
+    restore_body=$(echo "$types" | python3 -c "
 import json, sys
 types = json.load(sys.stdin)
 t = next(x for x in types if x['id'] == 'type_day_personal')
@@ -1470,11 +1586,14 @@ print(json.dumps({
         -H "Content-Type: application/json" \
         -d "$optional_body" > /dev/null
 
-    local response=$(curl -s -X POST "$BASE_URL/register" \
+    local response
+    response=$(curl -s -X POST "$BASE_URL/register" \
         -H "Content-Type: application/json" \
         -d '{"name":"Just Visiting Guest","guestTypeId":"type_day_personal"}')
-    local token=$(echo "$response" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
-    local guest_id=$(echo "$response" | grep -o '"id":"guest_[^"]*"' | head -1 | cut -d'"' -f4)
+    local token
+    token=$(echo "$response" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
+    local guest_id
+    guest_id=$(echo "$response" | grep -o '"id":"guest_[^"]*"' | head -1 | cut -d'"' -f4)
     admin_curl -X PATCH "$BASE_URL/admin-api/guest-types/type_day_personal" \
         -H "Content-Type: application/json" \
         -d "$restore_body" > /dev/null
@@ -1502,11 +1621,14 @@ test_overnight_optional_registration_event() {
         -H "Content-Type: application/json" \
         -d '{"name":"Optional Event Room","dashboardUrl":"http://example.com/optional-event"}' > /dev/null
 
-    local response=$(curl -s -X POST "$BASE_URL/register" \
+    local response
+    response=$(curl -s -X POST "$BASE_URL/register" \
         -H "Content-Type: application/json" \
         -d '{"name":"Optional Event Guest","room":"Optional Event Room","stayDays":3,"guestTypeId":"type_overnight","eventName":"Optional Stay Tag"}')
-    local token=$(echo "$response" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
-    local guest_id=$(echo "$response" | grep -o '"id":"guest_[^"]*"' | head -1 | cut -d'"' -f4)
+    local token
+    token=$(echo "$response" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
+    local guest_id
+    guest_id=$(echo "$response" | grep -o '"id":"guest_[^"]*"' | head -1 | cut -d'"' -f4)
     if [[ -z "$token" ]]; then
         fail "Overnight optional registration event" "registration token" "$response"
         return
@@ -1518,14 +1640,16 @@ test_overnight_optional_registration_event() {
         return
     fi
 
-    local events=$(curl -s "$BASE_URL/guest/events")
+    local events
+    events=$(curl -s "$BASE_URL/guest/events")
     if [[ "$events" == *'"name":"Optional Stay Tag"'* ]]; then
         pass "Overnight optional eventName creates event record"
     else
         fail "Overnight optional eventName creates event record" 'name":"Optional Stay Tag"' "$events"
     fi
 
-    local validate=$(curl -s -X POST "$BASE_URL/guest/validate" \
+    local validate
+    validate=$(curl -s -X POST "$BASE_URL/guest/validate" \
         -H "Content-Type: application/json" \
         -d "{\"token\":\"$token\"}")
     if [[ "$validate" == *'"eventName":"Optional Stay Tag"'* ]]; then
@@ -1544,11 +1668,14 @@ test_delete_forbidden() {
     admin_curl -X POST "$BASE_URL/admin-api/rooms" \
         -H "Content-Type: application/json" \
         -d '{"name":"Delete Forbidden Room","dashboardUrl":"http://example.com/delete-forbidden"}' > /dev/null
-    local reg=$(admin_curl -X POST "$BASE_URL/admin-api/guests" \
+    local reg
+    reg=$(admin_curl -X POST "$BASE_URL/admin-api/guests" \
         -H "Content-Type: application/json" \
         -d '{"name":"Delete Forbidden Guest","room":"Delete Forbidden Room","stayDays":2}')
-    local guest_id=$(echo "$reg" | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4)
-    local token=$(echo "$reg" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
+    local guest_id
+    guest_id=$(echo "$reg" | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4)
+    local token
+    token=$(echo "$reg" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
     if [[ -z "$guest_id" || -z "$token" ]]; then
         fail "Delete own photos forbidden" "guest id + token" "$reg"
         return
@@ -1558,16 +1685,22 @@ test_delete_forbidden() {
         -H "X-Guest-Token: $token" \
         -F "photos=@/tmp/test-delete-forbidden.pdf;type=application/pdf" > /dev/null
     rm -f /tmp/test-delete-forbidden.pdf
-    local list=$(curl -s "$BASE_URL/guest/uploads" -H "X-Guest-Token: $token")
-    local filename=$(echo "$list" | grep -o '"name":"[^"]*"' | head -1 | cut -d'"' -f4)
-    local slug=$(echo "$list" | grep -o '"eventSlug":"[^"]*"' | head -1 | cut -d'"' -f4)
+    local list
+    list=$(curl -s "$BASE_URL/guest/uploads" -H "X-Guest-Token: $token")
+    local filename
+    filename=$(echo "$list" | grep -o '"name":"[^"]*"' | head -1 | cut -d'"' -f4)
+    local slug
+    slug=$(echo "$list" | grep -o '"eventSlug":"[^"]*"' | head -1 | cut -d'"' -f4)
     slug="${slug:-General}"
     admin_curl -X PATCH "$BASE_URL/admin-api/guest-sessions/$guest_id" \
         -H "Content-Type: application/json" \
         -d '{"guestTypeId":"type_day_business"}' > /dev/null
-    local encoded_slug=$(python3 -c "import urllib.parse; print(urllib.parse.quote('$slug'))")
-    local encoded_name=$(python3 -c "import urllib.parse; print(urllib.parse.quote('$filename'))")
-    local http_code=$(curl -s -o /dev/null -w "%{http_code}" -X DELETE "$BASE_URL/guest/uploads/$encoded_slug/$encoded_name" \
+    local encoded_slug
+    encoded_slug=$(python3 -c "import urllib.parse; print(urllib.parse.quote('$slug'))")
+    local encoded_name
+    encoded_name=$(python3 -c "import urllib.parse; print(urllib.parse.quote('$filename'))")
+    local http_code
+    http_code=$(curl -s -o /dev/null -w "%{http_code}" -X DELETE "$BASE_URL/guest/uploads/$encoded_slug/$encoded_name" \
         -H "X-Guest-Token: $token")
     if [[ "$http_code" == "403" ]]; then
         pass "Delete own photos forbidden for business type (403)"
@@ -1579,16 +1712,20 @@ test_delete_forbidden() {
 
 test_scoped_delete() {
     require_admin_creds "Scoped delete with duplicate basename" || return
-    local reg=$(curl -s -X POST "$BASE_URL/register" \
+    local reg
+    reg=$(curl -s -X POST "$BASE_URL/register" \
         -H "Content-Type: application/json" \
         -d '{"name":"Scoped Delete Guest","room":"Room 1","stayDays":2,"guestTypeId":"type_overnight"}')
-    local token=$(echo "$reg" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
-    local guest_id=$(echo "$reg" | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4)
+    local token
+    token=$(echo "$reg" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
+    local guest_id
+    guest_id=$(echo "$reg" | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4)
     if [[ -z "$token" || -z "$guest_id" ]]; then
         fail "Scoped delete with duplicate basename" "token + guest id" "$reg"
         return
     fi
-    local folder=$(python3 -c "import datetime,re; name='Scoped Delete Guest'; slug=re.sub(r'\\s+','-',re.sub(r'[^\\w\\s-]','',name))[:100]; print(f'{slug}-$guest_id-{datetime.date.today().isoformat()}')")
+    local folder
+    folder=$(python3 -c "import datetime,re; name='Scoped Delete Guest'; slug=re.sub(r'\\s+','-',re.sub(r'[^\\w\\s-]','',name))[:100]; print(f'{slug}-$guest_id-{datetime.date.today().isoformat()}')")
     python3 - <<'PY' "$folder"
 import os, pathlib, sys
 folder = sys.argv[1]
@@ -1598,10 +1735,13 @@ root = pathlib.Path("uploads") / folder
 (root / "Event-A" / "duplicate-test.pdf").write_text("%PDF-1.4 duplicate A")
 (root / "Event-B" / "duplicate-test.pdf").write_text("%PDF-1.4 duplicate B")
 PY
-    local encoded_slug=$(python3 -c "import urllib.parse; print(urllib.parse.quote('Event-A'))")
-    local http_code=$(curl -s -o /dev/null -w "%{http_code}" -X DELETE "$BASE_URL/guest/uploads/$encoded_slug/duplicate-test.pdf" \
+    local encoded_slug
+    encoded_slug=$(python3 -c "import urllib.parse; print(urllib.parse.quote('Event-A'))")
+    local http_code
+    http_code=$(curl -s -o /dev/null -w "%{http_code}" -X DELETE "$BASE_URL/guest/uploads/$encoded_slug/duplicate-test.pdf" \
         -H "X-Guest-Token: $token")
-    local remaining=$(curl -s "$BASE_URL/guest/uploads" -H "X-Guest-Token: $token")
+    local remaining
+    remaining=$(curl -s "$BASE_URL/guest/uploads" -H "X-Guest-Token: $token")
     if [[ "$http_code" == "200" ]] && [[ "$remaining" == *"duplicate-test.pdf"* ]] && [[ "$remaining" == *'"eventSlug":"Event-B"'* ]]; then
         pass "Scoped delete removes only the targeted duplicate basename"
     else
@@ -1620,18 +1760,22 @@ test_guest_upload_folder_id_isolation() {
         -H "Content-Type: application/json" \
         -d '{"name":"Isolation Room","dashboardUrl":"http://example.com/isolation"}' > /dev/null
 
-    local victim_reg=$(curl -s -X POST "$BASE_URL/register" \
+    local victim_reg
+    victim_reg=$(curl -s -X POST "$BASE_URL/register" \
         -H "Content-Type: application/json" \
         -d '{"name":"Victim Guest","room":"Isolation Room","stayDays":3,"guestTypeId":"type_overnight"}')
-    local victim_token=$(echo "$victim_reg" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
-    local victim_id=$(echo "$victim_reg" | grep -o '"id":"guest_[^"]*"' | head -1 | cut -d'"' -f4)
+    local victim_token
+    victim_token=$(echo "$victim_reg" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
+    local victim_id
+    victim_id=$(echo "$victim_reg" | grep -o '"id":"guest_[^"]*"' | head -1 | cut -d'"' -f4)
     if [[ -z "$victim_token" || -z "$victim_id" ]]; then
         fail "Guest upload folder id isolation" "victim registration" "$victim_reg"
         return
     fi
 
     printf '%s\n' '%PDF-1.4' 'victim secret photo' '%%EOF' > /tmp/victim-isolation.pdf
-    local upload_code=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$BASE_URL/upload" \
+    local upload_code
+    upload_code=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$BASE_URL/upload" \
         -H "X-Guest-Token: $victim_token" \
         -F "photos=@/tmp/victim-isolation.pdf;filename=victim-secret.pdf;type=application/pdf")
     rm -f /tmp/victim-isolation.pdf
@@ -1646,11 +1790,14 @@ test_guest_upload_folder_id_isolation() {
     local attacker_name="Mallory ${victim_id}"
     local attacker_payload
     attacker_payload=$(python3 -c "import json,sys; print(json.dumps({'name':sys.argv[1],'room':'Isolation Room','stayDays':3,'guestTypeId':'type_overnight'}))" "$attacker_name")
-    local attacker_reg=$(curl -s -X POST "$BASE_URL/register" \
+    local attacker_reg
+    attacker_reg=$(curl -s -X POST "$BASE_URL/register" \
         -H "Content-Type: application/json" \
         -d "$attacker_payload")
-    local attacker_token=$(echo "$attacker_reg" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
-    local attacker_id=$(echo "$attacker_reg" | grep -o '"id":"guest_[^"]*"' | head -1 | cut -d'"' -f4)
+    local attacker_token
+    attacker_token=$(echo "$attacker_reg" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
+    local attacker_id
+    attacker_id=$(echo "$attacker_reg" | grep -o '"id":"guest_[^"]*"' | head -1 | cut -d'"' -f4)
     if [[ -z "$attacker_token" || -z "$attacker_id" ]]; then
         fail "Guest upload folder id isolation" "attacker registration" "$attacker_reg"
         admin_curl -X DELETE "$BASE_URL/admin-api/guest-sessions/$victim_id" > /dev/null
@@ -1658,7 +1805,8 @@ test_guest_upload_folder_id_isolation() {
     fi
 
     printf '%s\n' '%PDF-1.4' 'planted into victim gallery' '%%EOF' > /tmp/planted-isolation.pdf
-    local plant_code=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$BASE_URL/upload" \
+    local plant_code
+    plant_code=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$BASE_URL/upload" \
         -H "X-Guest-Token: $attacker_token" \
         -F "photos=@/tmp/planted-isolation.pdf;filename=planted-by-attacker.pdf;type=application/pdf")
     rm -f /tmp/planted-isolation.pdf
@@ -1669,7 +1817,8 @@ test_guest_upload_folder_id_isolation() {
         return
     fi
 
-    local victim_list=$(curl -s "$BASE_URL/guest/uploads" -H "X-Guest-Token: $victim_token")
+    local victim_list
+    victim_list=$(curl -s "$BASE_URL/guest/uploads" -H "X-Guest-Token: $victim_token")
     if [[ "$victim_list" == *"planted-by-attacker.pdf"* ]]; then
         fail "Guest upload folder id isolation" "victim gallery must not include planted file" "$victim_list"
     elif [[ "$victim_list" != *"victim-secret.pdf"* ]]; then
@@ -1678,7 +1827,8 @@ test_guest_upload_folder_id_isolation() {
         pass "Guest upload folder id isolation blocks gallery planting via embedded id"
     fi
 
-    local attacker_list=$(curl -s "$BASE_URL/guest/uploads" -H "X-Guest-Token: $attacker_token")
+    local attacker_list
+    attacker_list=$(curl -s "$BASE_URL/guest/uploads" -H "X-Guest-Token: $attacker_token")
     if [[ "$attacker_list" == *"planted-by-attacker.pdf"* ]] && [[ "$attacker_list" != *"victim-secret.pdf"* ]]; then
         pass "Attacker still sees only own uploads"
     else
@@ -1689,8 +1839,10 @@ test_guest_upload_folder_id_isolation() {
     local planted_name
     planted_name=$(python3 -c "import json,sys; files=json.load(sys.stdin).get('files',[]); print(next((f['name'] for f in files if 'planted-by-attacker' in f['name']),''))" <<<"$attacker_list")
     if [[ -n "$planted_name" ]]; then
-        local encoded_name=$(python3 -c "import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1]))" "$planted_name")
-        local delete_code=$(curl -s -o /dev/null -w "%{http_code}" -X DELETE \
+        local encoded_name
+        encoded_name=$(python3 -c "import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1]))" "$planted_name")
+        local delete_code
+        delete_code=$(curl -s -o /dev/null -w "%{http_code}" -X DELETE \
             "$BASE_URL/guest/uploads/General/$encoded_name" \
             -H "X-Guest-Token: $victim_token")
         if [[ "$delete_code" == "404" ]]; then
@@ -1698,7 +1850,8 @@ test_guest_upload_folder_id_isolation() {
         else
             fail "Victim cannot delete attacker file via embedded-id match" "404" "http=$delete_code"
         fi
-        local attacker_list_after=$(curl -s "$BASE_URL/guest/uploads" -H "X-Guest-Token: $attacker_token")
+        local attacker_list_after
+        attacker_list_after=$(curl -s "$BASE_URL/guest/uploads" -H "X-Guest-Token: $attacker_token")
         if [[ "$attacker_list_after" == *"planted-by-attacker"* ]]; then
             pass "Attacker file remains after victim delete attempt"
         else
@@ -1716,22 +1869,26 @@ test_guest_upload_folder_id_isolation() {
 
 test_admin_events_crud() {
     require_admin_creds "Admin events CRUD" || return
-    local create=$(admin_curl -X POST "$BASE_URL/admin-api/events" \
+    local create
+    create=$(admin_curl -X POST "$BASE_URL/admin-api/events" \
         -H "Content-Type: application/json" \
         -d '{"name":"Admin Test Event"}')
-    local event_id=$(echo "$create" | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4)
+    local event_id
+    event_id=$(echo "$create" | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4)
     if [[ -z "$event_id" ]]; then
         fail "Admin events CRUD" "create event id" "$create"
         return
     fi
-    local list=$(admin_curl "$BASE_URL/admin-api/events")
+    local list
+    list=$(admin_curl "$BASE_URL/admin-api/events")
     if [[ "$list" == *'"name":"Admin Test Event"'* ]]; then
         pass "Admin events list includes created event"
     else
         fail "Admin events list includes created event" "Admin Test Event" "$list"
         return
     fi
-    local rename=$(admin_curl -X PATCH "$BASE_URL/admin-api/events/$event_id" \
+    local rename
+    rename=$(admin_curl -X PATCH "$BASE_URL/admin-api/events/$event_id" \
         -H "Content-Type: application/json" \
         -d '{"name":"Admin Test Event Renamed"}')
     if [[ "$rename" == *'"name":"Admin Test Event Renamed"'* ]]; then
@@ -1739,13 +1896,15 @@ test_admin_events_crud() {
     else
         fail "Admin event rename" "renamed event" "$rename"
     fi
-    local del=$(admin_curl -X DELETE "$BASE_URL/admin-api/events/$event_id")
+    local del
+    del=$(admin_curl -X DELETE "$BASE_URL/admin-api/events/$event_id")
     if [[ "$del" == *'"success":true'* ]]; then
         pass "Admin event delete"
     else
         fail "Admin event delete" '{"success":true}' "$del"
     fi
-    local guest_events=$(curl -s "$BASE_URL/guest/events")
+    local guest_events
+    guest_events=$(curl -s "$BASE_URL/guest/events")
     if [[ "$guest_events" != *"Admin Test Event Renamed"* ]]; then
         pass "Guest events list reflects admin delete"
     else
@@ -1755,26 +1914,32 @@ test_admin_events_crud() {
 
 test_admin_event_merge() {
     require_admin_creds "Admin event merge" || return
-    local create_a=$(admin_curl -X POST "$BASE_URL/admin-api/events" \
+    local create_a
+    create_a=$(admin_curl -X POST "$BASE_URL/admin-api/events" \
         -H "Content-Type: application/json" \
         -d '{"name":"Merge Source Event"}')
-    local create_b=$(admin_curl -X POST "$BASE_URL/admin-api/events" \
+    local create_b
+    create_b=$(admin_curl -X POST "$BASE_URL/admin-api/events" \
         -H "Content-Type: application/json" \
         -d '{"name":"Merge Target Event"}')
-    local source_id=$(echo "$create_a" | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4)
-    local target_id=$(echo "$create_b" | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4)
+    local source_id
+    source_id=$(echo "$create_a" | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4)
+    local target_id
+    target_id=$(echo "$create_b" | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4)
     if [[ -z "$source_id" || -z "$target_id" ]]; then
         fail "Admin event merge" "source and target ids" "source=$create_a target=$create_b"
         return
     fi
-    local merge=$(admin_curl -X PATCH "$BASE_URL/admin-api/events/$source_id" \
+    local merge
+    merge=$(admin_curl -X PATCH "$BASE_URL/admin-api/events/$source_id" \
         -H "Content-Type: application/json" \
         -d "{\"mergeIntoId\":\"$target_id\"}")
     if [[ "$merge" != *'"success":true'* ]] || [[ "$merge" != *'"name":"Merge Target Event"'* ]]; then
         fail "Admin event merge" "success + survivor event" "$merge"
         return
     fi
-    local list=$(admin_curl "$BASE_URL/admin-api/events")
+    local list
+    list=$(admin_curl "$BASE_URL/admin-api/events")
     if [[ "$list" == *'"name":"Merge Target Event"'* ]] && [[ "$list" != *'"name":"Merge Source Event"'* ]]; then
         pass "Admin event merge removes source and keeps target"
     else
@@ -1785,23 +1950,29 @@ test_admin_event_merge() {
 
 test_admin_event_merge_preserves_filename_conflicts() {
     require_admin_creds "Admin event merge preserves conflicts" || return
-    local create_a=$(admin_curl -X POST "$BASE_URL/admin-api/events" \
+    local create_a
+    create_a=$(admin_curl -X POST "$BASE_URL/admin-api/events" \
         -H "Content-Type: application/json" \
         -d '{"name":"Merge Conflict Source"}')
-    local create_b=$(admin_curl -X POST "$BASE_URL/admin-api/events" \
+    local create_b
+    create_b=$(admin_curl -X POST "$BASE_URL/admin-api/events" \
         -H "Content-Type: application/json" \
         -d '{"name":"Merge Conflict Target"}')
-    local source_id=$(echo "$create_a" | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4)
-    local target_id=$(echo "$create_b" | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4)
+    local source_id
+    source_id=$(echo "$create_a" | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4)
+    local target_id
+    target_id=$(echo "$create_b" | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4)
     if [[ -z "$source_id" || -z "$target_id" ]]; then
         fail "Admin event merge preserves conflicts" "source and target ids" "source=$create_a target=$create_b"
         return
     fi
 
-    local response=$(curl -s -X POST "$BASE_URL/register" \
+    local response
+    response=$(curl -s -X POST "$BASE_URL/register" \
         -H "Content-Type: application/json" \
         -d '{"name":"Merge Conflict Guest","room":"Room 1","stayDays":2,"guestTypeId":"type_overnight"}')
-    local token=$(echo "$response" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
+    local token
+    token=$(echo "$response" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
     if [[ -z "$token" ]]; then
         fail "Admin event merge preserves conflicts" "registration token" "$response"
         return
@@ -1819,8 +1990,10 @@ test_admin_event_merge_preserves_filename_conflicts() {
         -F "photos=@/tmp/test-merge-conflict-b.pdf;type=application/pdf" > /dev/null
     rm -f /tmp/test-merge-conflict-a.pdf /tmp/test-merge-conflict-b.pdf
 
-    local list=$(curl -s "$BASE_URL/guest/uploads" -H "X-Guest-Token: $token")
-    local source_name=$(echo "$list" | python3 -c "
+    local list
+    list=$(curl -s "$BASE_URL/guest/uploads" -H "X-Guest-Token: $token")
+    local source_name
+    source_name=$(echo "$list" | python3 -c "
 import json, sys
 payload = json.load(sys.stdin)
 files = payload.get('files', payload if isinstance(payload, list) else [])
@@ -1855,7 +2028,8 @@ print(upload)
     cp "$stay_dir/Merge-Conflict-Source/$source_name" "$stay_dir/Merge-Conflict-Target/$source_name"
     printf '%s\n' 'source-unique-marker' > "$stay_dir/Merge-Conflict-Source/$source_name"
 
-    local merge=$(admin_curl -X PATCH "$BASE_URL/admin-api/events/$source_id" \
+    local merge
+    merge=$(admin_curl -X PATCH "$BASE_URL/admin-api/events/$source_id" \
         -H "Content-Type: application/json" \
         -d "{\"mergeIntoId\":\"$target_id\"}")
     if [[ "$merge" != *'"success":true'* ]]; then
@@ -1863,8 +2037,10 @@ print(upload)
         return
     fi
 
-    local after=$(curl -s "$BASE_URL/guest/uploads" -H "X-Guest-Token: $token")
-    local target_count=$(echo "$after" | python3 -c "
+    local after
+    after=$(curl -s "$BASE_URL/guest/uploads" -H "X-Guest-Token: $token")
+    local target_count
+    target_count=$(echo "$after" | python3 -c "
 import json, sys
 payload = json.load(sys.stdin)
 files = payload.get('files', payload if isinstance(payload, list) else [])
@@ -1874,9 +2050,12 @@ print(len(target_files))
 print(len(source_files))
 print(','.join(target_files))
 ")
-    local target_count_n=$(echo "$target_count" | sed -n '1p')
-    local source_count_n=$(echo "$target_count" | sed -n '2p')
-    local target_names=$(echo "$target_count" | sed -n '3p')
+    local target_count_n
+    target_count_n=$(echo "$target_count" | sed -n '1p')
+    local source_count_n
+    source_count_n=$(echo "$target_count" | sed -n '2p')
+    local target_names
+    target_names=$(echo "$target_count" | sed -n '3p')
     local marker_found=0
     if grep -rq "source-unique-marker" "$stay_dir/Merge-Conflict-Target" 2>/dev/null; then
         marker_found=1
@@ -1894,10 +2073,12 @@ print(','.join(target_files))
 
 test_admin_event_slug_collision_rejected() {
     require_admin_creds "Admin event slug collision rejected" || return
-    local create_base=$(admin_curl -X POST "$BASE_URL/admin-api/events" \
+    local create_base
+    create_base=$(admin_curl -X POST "$BASE_URL/admin-api/events" \
         -H "Content-Type: application/json" \
         -d '{"name":"Slug Collision Party"}')
-    local base_id=$(echo "$create_base" | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4)
+    local base_id
+    base_id=$(echo "$create_base" | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4)
     if [[ -z "$base_id" ]]; then
         fail "Admin event slug collision rejected" "base event id" "$create_base"
         return
@@ -1938,10 +2119,12 @@ test_admin_event_slug_collision_rejected() {
             "code=$create_case_conflict_code body=$create_case_conflict_body"
     fi
 
-    local create_other=$(admin_curl -X POST "$BASE_URL/admin-api/events" \
+    local create_other
+    create_other=$(admin_curl -X POST "$BASE_URL/admin-api/events" \
         -H "Content-Type: application/json" \
         -d '{"name":"Slug Collision Other"}')
-    local other_id=$(echo "$create_other" | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4)
+    local other_id
+    other_id=$(echo "$create_other" | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4)
     if [[ -z "$other_id" ]]; then
         fail "Admin event slug collision rejected" "other event id" "$create_other"
         admin_curl -X DELETE "$BASE_URL/admin-api/events/$base_id" > /dev/null || true
@@ -1990,10 +2173,12 @@ test_admin_event_reserved_general_slug() {
     done
     pass "Admin event create rejects reserved General slug names"
 
-    local create_ok=$(admin_curl -X POST "$BASE_URL/admin-api/events" \
+    local create_ok
+    create_ok=$(admin_curl -X POST "$BASE_URL/admin-api/events" \
         -H "Content-Type: application/json" \
         -d '{"name":"Reserved Slug Rename Target"}')
-    local rename_id=$(echo "$create_ok" | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4)
+    local rename_id
+    rename_id=$(echo "$create_ok" | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4)
     if [[ -z "$rename_id" ]]; then
         fail "Admin event rename rejects reserved General slug" "create id" "$create_ok"
         return
@@ -2047,7 +2232,8 @@ events=json.load(sys.stdin)
 print(next((e['id'] for e in events if e.get('name')=='General Slug Safe Target'),''))
 " 2>/dev/null
     )" > /dev/null 2>&1 || true
-    local create_target=$(admin_curl -X POST "$BASE_URL/admin-api/events" \
+    local create_target
+    create_target=$(admin_curl -X POST "$BASE_URL/admin-api/events" \
         -H "Content-Type: application/json" \
         -d '{"name":"General Slug Safe Target"}')
     local target_id
@@ -2103,10 +2289,12 @@ PY
         return
     fi
 
-    local response=$(curl -s -X POST "$BASE_URL/register" \
+    local response
+    response=$(curl -s -X POST "$BASE_URL/register" \
         -H "Content-Type: application/json" \
         -d '{"name":"General Slug Victim","room":"Room 1","stayDays":2,"guestTypeId":"type_overnight"}')
-    local token=$(echo "$response" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
+    local token
+    token=$(echo "$response" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
     if [[ -z "$token" ]]; then
         fail "Admin event General-slug merge preserves untagged photos" "registration token" "$response"
         return
@@ -2137,7 +2325,8 @@ print(upload)
         return
     fi
 
-    local merge=$(admin_curl -X PATCH "$BASE_URL/admin-api/events/$legacy_id" \
+    local merge
+    merge=$(admin_curl -X PATCH "$BASE_URL/admin-api/events/$legacy_id" \
         -H "Content-Type: application/json" \
         -d "{\"mergeIntoId\":\"$target_id\"}")
     local general_after
@@ -2188,7 +2377,8 @@ PY
         return
     fi
     general_before=$(find "$uploads_root" -type f -path '*/General/*' 2>/dev/null | wc -l | tr -d ' ')
-    local rename=$(admin_curl -X PATCH "$BASE_URL/admin-api/events/$legacy_rename_id" \
+    local rename
+    rename=$(admin_curl -X PATCH "$BASE_URL/admin-api/events/$legacy_rename_id" \
         -H "Content-Type: application/json" \
         -d '{"name":"Recovered From General Slug"}')
     general_after=$(find "$uploads_root" -type f -path '*/General/*' 2>/dev/null | wc -l | tr -d ' ')
@@ -2212,10 +2402,12 @@ test_admin_event_rename_away_from_slug_collision() {
 
     # Create the folder-owning event via API, then seed a legacy sibling that
     # shares the same slug (create API rejects new collisions).
-    local create_owner=$(admin_curl -X POST "$BASE_URL/admin-api/events" \
+    local create_owner
+    create_owner=$(admin_curl -X POST "$BASE_URL/admin-api/events" \
         -H "Content-Type: application/json" \
         -d '{"name":"Rename Collision Party"}')
-    local owner_id=$(echo "$create_owner" | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4)
+    local owner_id
+    owner_id=$(echo "$create_owner" | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4)
     if [[ -z "$owner_id" ]]; then
         fail "Admin event rename away from slug collision" "owner event id" "$create_owner"
         return
@@ -2262,10 +2454,12 @@ PY
         return
     fi
 
-    local response=$(curl -s -X POST "$BASE_URL/register" \
+    local response
+    response=$(curl -s -X POST "$BASE_URL/register" \
         -H "Content-Type: application/json" \
         -d '{"name":"Slug Rename Victim","room":"Room 1","stayDays":2,"guestTypeId":"type_overnight"}')
-    local token=$(echo "$response" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
+    local token
+    token=$(echo "$response" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
     if [[ -z "$token" ]]; then
         fail "Admin event rename away from slug collision" "registration token" "$response"
         return
@@ -2305,7 +2499,8 @@ print(upload)
 
     # Rename the API-created event away from the shared slug. Previously this
     # moved the shared folder and left the sibling event without photos.
-    local rename=$(admin_curl -X PATCH "$BASE_URL/admin-api/events/$owner_id" \
+    local rename
+    rename=$(admin_curl -X PATCH "$BASE_URL/admin-api/events/$owner_id" \
         -H "Content-Type: application/json" \
         -d '{"name":"Rename Collision Disambiguated"}')
     local after_old
@@ -2440,16 +2635,19 @@ test_guest_upload_retag() {
     admin_curl -X POST "$BASE_URL/admin-api/events" \
         -H "Content-Type: application/json" \
         -d '{"name":"Retag Event B"}' > /dev/null
-    local response=$(curl -s -X POST "$BASE_URL/register" \
+    local response
+    response=$(curl -s -X POST "$BASE_URL/register" \
         -H "Content-Type: application/json" \
         -d '{"name":"Retag Guest","room":"Room 1","stayDays":2,"guestTypeId":"type_overnight"}')
-    local token=$(echo "$response" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
+    local token
+    token=$(echo "$response" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
     if [[ -z "$token" ]]; then
         fail "Guest upload re-tag" "registration token" "$response"
         return
     fi
     printf '%s\n' '%PDF-1.4' '1 0 obj <<>> endobj' '%%EOF' > /tmp/test-retag-upload.pdf
-    local upload_code=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$BASE_URL/upload" \
+    local upload_code
+    upload_code=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$BASE_URL/upload" \
         -H "X-Guest-Token: $token" \
         -F "eventName=Retag Event A" \
         -F "photos=@/tmp/test-retag-upload.pdf;type=application/pdf")
@@ -2458,22 +2656,29 @@ test_guest_upload_retag() {
         fail "Guest upload re-tag" "200 upload" "$upload_code"
         return
     fi
-    local list=$(curl -s "$BASE_URL/guest/uploads" -H "X-Guest-Token: $token")
-    local filename=$(echo "$list" | grep -o '"name":"[^"]*"' | head -1 | cut -d'"' -f4)
-    local source_slug=$(echo "$list" | grep -o '"eventSlug":"[^"]*"' | head -1 | cut -d'"' -f4)
+    local list
+    list=$(curl -s "$BASE_URL/guest/uploads" -H "X-Guest-Token: $token")
+    local filename
+    filename=$(echo "$list" | grep -o '"name":"[^"]*"' | head -1 | cut -d'"' -f4)
+    local source_slug
+    source_slug=$(echo "$list" | grep -o '"eventSlug":"[^"]*"' | head -1 | cut -d'"' -f4)
     if [[ -z "$filename" || -z "$source_slug" ]]; then
         fail "Guest upload re-tag" "upload filename + slug" "$list"
         return
     fi
-    local target_id=$(curl -s "$BASE_URL/guest/events" | python3 -c "
+    local target_id
+    target_id=$(curl -s "$BASE_URL/guest/events" | python3 -c "
 import json, sys
 events = json.load(sys.stdin)
 match = next((e['id'] for e in events if e['name'] == 'Retag Event B'), '')
 print(match)
 ")
-    local encoded_slug=$(python3 -c "import urllib.parse; print(urllib.parse.quote('$source_slug'))")
-    local encoded_name=$(python3 -c "import urllib.parse; print(urllib.parse.quote('$filename'))")
-    local patch=$(curl -s -X PATCH "$BASE_URL/guest/uploads/$encoded_slug/$encoded_name" \
+    local encoded_slug
+    encoded_slug=$(python3 -c "import urllib.parse; print(urllib.parse.quote('$source_slug'))")
+    local encoded_name
+    encoded_name=$(python3 -c "import urllib.parse; print(urllib.parse.quote('$filename'))")
+    local patch
+    patch=$(curl -s -X PATCH "$BASE_URL/guest/uploads/$encoded_slug/$encoded_name" \
         -H "Content-Type: application/json" \
         -H "X-Guest-Token: $token" \
         -d "{\"eventId\":\"$target_id\"}")
@@ -2481,7 +2686,8 @@ print(match)
         fail "Guest upload re-tag" "Retag Event B response" "$patch"
         return
     fi
-    local after=$(curl -s "$BASE_URL/guest/uploads" -H "X-Guest-Token: $token")
+    local after
+    after=$(curl -s "$BASE_URL/guest/uploads" -H "X-Guest-Token: $token")
     if [[ "$after" == *'"eventSlug":"Retag-Event-B"'* ]] && [[ "$after" != *'"eventSlug":"Retag-Event-A"'* ]]; then
         pass "Guest upload re-tag moves file between events"
     else
@@ -2494,11 +2700,14 @@ test_guest_upload_retag_forbidden() {
     admin_curl -X POST "$BASE_URL/admin-api/rooms" \
         -H "Content-Type: application/json" \
         -d '{"name":"Retag Forbidden Room","dashboardUrl":"http://example.com/retag-forbidden"}' > /dev/null
-    local reg=$(admin_curl -X POST "$BASE_URL/admin-api/guests" \
+    local reg
+    reg=$(admin_curl -X POST "$BASE_URL/admin-api/guests" \
         -H "Content-Type: application/json" \
         -d '{"name":"Retag Forbidden Guest","room":"Retag Forbidden Room","stayDays":2}')
-    local guest_id=$(echo "$reg" | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4)
-    local token=$(echo "$reg" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
+    local guest_id
+    guest_id=$(echo "$reg" | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4)
+    local token
+    token=$(echo "$reg" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
     if [[ -z "$guest_id" || -z "$token" ]]; then
         fail "Guest upload re-tag forbidden" "guest id + token" "$reg"
         return
@@ -2508,19 +2717,24 @@ test_guest_upload_retag_forbidden() {
         -H "X-Guest-Token: $token" \
         -F "photos=@/tmp/test-retag-forbidden.pdf;type=application/pdf" > /dev/null
     rm -f /tmp/test-retag-forbidden.pdf
-    local list=$(curl -s "$BASE_URL/guest/uploads" -H "X-Guest-Token: $token")
-    local filename=$(echo "$list" | grep -o '"name":"[^"]*"' | head -1 | cut -d'"' -f4)
-    local slug=$(echo "$list" | grep -o '"eventSlug":"[^"]*"' | head -1 | cut -d'"' -f4)
+    local list
+    list=$(curl -s "$BASE_URL/guest/uploads" -H "X-Guest-Token: $token")
+    local filename
+    filename=$(echo "$list" | grep -o '"name":"[^"]*"' | head -1 | cut -d'"' -f4)
+    local slug
+    slug=$(echo "$list" | grep -o '"eventSlug":"[^"]*"' | head -1 | cut -d'"' -f4)
     slug="${slug:-General}"
     admin_curl -X PATCH "$BASE_URL/admin-api/guest-sessions/$guest_id" \
         -H "Content-Type: application/json" \
         -d '{"guestTypeId":"type_day_business"}' > /dev/null
-    local target_id=$(curl -s "$BASE_URL/guest/events" | python3 -c "
+    local target_id
+    target_id=$(curl -s "$BASE_URL/guest/events" | python3 -c "
 import json, sys
 events = json.load(sys.stdin)
 print(events[0]['id'] if events else '')
 ")
-    local http_code=$(curl -s -o /dev/null -w "%{http_code}" -X PATCH "$BASE_URL/guest/uploads/$slug/$filename" \
+    local http_code
+    http_code=$(curl -s -o /dev/null -w "%{http_code}" -X PATCH "$BASE_URL/guest/uploads/$slug/$filename" \
         -H "Content-Type: application/json" \
         -H "X-Guest-Token: $token" \
         -d "{\"eventId\":\"$target_id\"}")
@@ -2537,16 +2751,19 @@ test_guest_upload_clear_event_tag() {
     admin_curl -X POST "$BASE_URL/admin-api/events" \
         -H "Content-Type: application/json" \
         -d '{"name":"Clear Tag Event"}' > /dev/null
-    local response=$(curl -s -X POST "$BASE_URL/register" \
+    local response
+    response=$(curl -s -X POST "$BASE_URL/register" \
         -H "Content-Type: application/json" \
         -d '{"name":"Clear Tag Guest","room":"Room 1","stayDays":2,"guestTypeId":"type_overnight"}')
-    local token=$(echo "$response" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
+    local token
+    token=$(echo "$response" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
     if [[ -z "$token" ]]; then
         fail "Guest upload clear event tag" "registration token" "$response"
         return
     fi
     printf '%s\n' '%PDF-1.4' '1 0 obj <<>> endobj' '%%EOF' > /tmp/test-clear-tag-upload.pdf
-    local upload_code=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$BASE_URL/upload" \
+    local upload_code
+    upload_code=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$BASE_URL/upload" \
         -H "X-Guest-Token: $token" \
         -F "eventName=Clear Tag Event" \
         -F "photos=@/tmp/test-clear-tag-upload.pdf;type=application/pdf")
@@ -2555,16 +2772,22 @@ test_guest_upload_clear_event_tag() {
         fail "Guest upload clear event tag" "200 upload" "$upload_code"
         return
     fi
-    local list=$(curl -s "$BASE_URL/guest/uploads" -H "X-Guest-Token: $token")
-    local filename=$(echo "$list" | grep -o '"name":"[^"]*"' | head -1 | cut -d'"' -f4)
-    local source_slug=$(echo "$list" | grep -o '"eventSlug":"[^"]*"' | head -1 | cut -d'"' -f4)
+    local list
+    list=$(curl -s "$BASE_URL/guest/uploads" -H "X-Guest-Token: $token")
+    local filename
+    filename=$(echo "$list" | grep -o '"name":"[^"]*"' | head -1 | cut -d'"' -f4)
+    local source_slug
+    source_slug=$(echo "$list" | grep -o '"eventSlug":"[^"]*"' | head -1 | cut -d'"' -f4)
     if [[ -z "$filename" || -z "$source_slug" || "$source_slug" == "General" ]]; then
         fail "Guest upload clear event tag" "upload in event folder" "$list"
         return
     fi
-    local encoded_slug=$(python3 -c "import urllib.parse; print(urllib.parse.quote('$source_slug'))")
-    local encoded_name=$(python3 -c "import urllib.parse; print(urllib.parse.quote('$filename'))")
-    local patch=$(curl -s -X PATCH "$BASE_URL/guest/uploads/$encoded_slug/$encoded_name" \
+    local encoded_slug
+    encoded_slug=$(python3 -c "import urllib.parse; print(urllib.parse.quote('$source_slug'))")
+    local encoded_name
+    encoded_name=$(python3 -c "import urllib.parse; print(urllib.parse.quote('$filename'))")
+    local patch
+    patch=$(curl -s -X PATCH "$BASE_URL/guest/uploads/$encoded_slug/$encoded_name" \
         -H "Content-Type: application/json" \
         -H "X-Guest-Token: $token" \
         -d '{"clearEvent":true}')
@@ -2572,7 +2795,8 @@ test_guest_upload_clear_event_tag() {
         fail "Guest upload clear event tag" 'General event response' "$patch"
         return
     fi
-    local after=$(curl -s "$BASE_URL/guest/uploads" -H "X-Guest-Token: $token")
+    local after
+    after=$(curl -s "$BASE_URL/guest/uploads" -H "X-Guest-Token: $token")
     if [[ "$after" == *'"eventSlug":"General"'* ]] && [[ "$after" != *'"eventSlug":"Clear-Tag-Event"'* && "$after" != *'"eventSlug":"Clear Tag Event"'* ]]; then
         pass "Guest upload clear event tag moves file to General"
     else
@@ -2581,7 +2805,8 @@ test_guest_upload_clear_event_tag() {
 }
 
 test_index_hero_markup() {
-    local response=$(curl -s "$BASE_URL/")
+    local response
+    response=$(curl -s "$BASE_URL/")
     if [[ "$response" == *"hero-view"* ]] && [[ "$response" == *"heroRegisterBtn"* ]] && [[ "$response" == *"registrationModal"* ]]; then
         pass "Index page includes hero landing markup"
     else
@@ -2592,7 +2817,8 @@ test_index_hero_markup() {
 section "8. STATIC FILES"
 
 test_index_html() {
-    local response=$(curl -s "$BASE_URL/")
+    local response
+    response=$(curl -s "$BASE_URL/")
     if [[ "$response" == *"Guest Portal"* ]]; then
         pass "Index page loads"
     else
@@ -2664,7 +2890,7 @@ test_unifi_browser_handoff() {
     local lower
     lower=$(curl -s -X POST "$BASE_URL/guest/link-device" \
         -H "Content-Type: application/json" \
-        -d "{\"code\":\"$(echo "$code" | tr 'A-Z' 'a-z')\"}")
+        -d "{\"code\":\"$(echo "$code" | tr '[:upper:]' '[:lower:]')\"}")
     local lower_token
     lower_token=$(echo "$lower" | sed -n 's/.*"token":"\([^"]*\)".*/\1/p')
     if [[ "$linked" == *'"skipped":true'* && "$linked" == *'not-configured'* && -n "$first_token" && "$first_token" == "$second_token" && "$lower_token" == "$first_token" ]]; then
@@ -2786,26 +3012,37 @@ test_dashboard_proxy_home() {
     admin_curl -X POST "$BASE_URL/admin-api/rooms" \
         -H "Content-Type: application/json" \
         -d "{\"name\":\"Proxy Dash Room\",\"dashboardUrl\":\"$dash_url\"}" > /dev/null
-    local response=$(curl -s -X POST "$BASE_URL/register" \
+    local response
+    response=$(curl -s -X POST "$BASE_URL/register" \
         -H "Content-Type: application/json" \
         -d '{"name":"Proxy Dash Guest","room":"Proxy Dash Room","stayDays":2,"guestTypeId":"type_overnight"}')
-    local token=$(echo "$response" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
-    local guest_id=$(echo "$response" | grep -o '"id":"guest_[^"]*"' | head -1 | cut -d'"' -f4)
+    local token
+    token=$(echo "$response" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
+    local guest_id
+    guest_id=$(echo "$response" | grep -o '"id":"guest_[^"]*"' | head -1 | cut -d'"' -f4)
     if [[ -z "$token" || "$response" == *"127.0.0.1"* || "$response" != *'"dashboardUrl":"/guest/home"'* ]]; then
         kill "$mock_pid" 2>/dev/null || true
         fail "Dashboard proxy hides Home Assistant URL" "register returns /guest/home" "$response"
         return
     fi
-    local session=$(curl -s -D - -o /tmp/home-session.body -X POST "$BASE_URL/guest/home-session" \
+    local session
+    session=$(curl -s -D - -o /tmp/home-session.body -X POST "$BASE_URL/guest/home-session" \
         -H "Content-Type: application/json" \
         -H "X-Guest-Token: $token")
-    local cookie=$(echo "$session" | grep -i '^set-cookie:' | head -1 | sed 's/[Cc]ookie: //' | cut -d';' -f1)
-    local embed=$(curl -s -o /dev/null -w "%{http_code} %{redirect_url}" -H "X-Guest-Token: $token" "$BASE_URL/guest/ha")
-    local page=$(curl -s -H "X-Guest-Token: $token" "$BASE_URL/lovelace/guest-room?kiosk")
-    local blocked_code=$(curl -s -o /dev/null -w "%{http_code}" -H "X-Guest-Token: $token" "$BASE_URL/history")
-    local blocked_loc=$(curl -s -o /dev/null -w "%{redirect_url}" -H "X-Guest-Token: $token" "$BASE_URL/history")
-    local other_loc=$(curl -s -o /dev/null -w "%{redirect_url}" -H "X-Guest-Token: $token" "$BASE_URL/lovelace/other-room")
-    local anon_history=$(curl -s -o /dev/null -w "%{http_code}" "$BASE_URL/history")
+    local cookie
+    cookie=$(echo "$session" | grep -i '^set-cookie:' | head -1 | sed 's/[Cc]ookie: //' | cut -d';' -f1)
+    local embed
+    embed=$(curl -s -o /dev/null -w "%{http_code} %{redirect_url}" -H "X-Guest-Token: $token" "$BASE_URL/guest/ha")
+    local page
+    page=$(curl -s -H "X-Guest-Token: $token" "$BASE_URL/lovelace/guest-room?kiosk")
+    local blocked_code
+    blocked_code=$(curl -s -o /dev/null -w "%{http_code}" -H "X-Guest-Token: $token" "$BASE_URL/history")
+    local blocked_loc
+    blocked_loc=$(curl -s -o /dev/null -w "%{redirect_url}" -H "X-Guest-Token: $token" "$BASE_URL/history")
+    local other_loc
+    other_loc=$(curl -s -o /dev/null -w "%{redirect_url}" -H "X-Guest-Token: $token" "$BASE_URL/lovelace/other-room")
+    local anon_history
+    anon_history=$(curl -s -o /dev/null -w "%{http_code}" "$BASE_URL/history")
     kill "$mock_pid" 2>/dev/null || true
     if [[ -n "$guest_id" ]]; then
         admin_curl -X DELETE "$BASE_URL/admin-api/guest-sessions/$guest_id" > /dev/null
@@ -2826,7 +3063,8 @@ test_dashboard_proxy_home() {
 
 test_admin_html() {
     require_admin_creds "Admin page loads with Basic Auth" || return
-    local response=$(admin_curl "$BASE_URL/admin.html")
+    local response
+    response=$(admin_curl "$BASE_URL/admin.html")
     if [[ "$response" == *"Admin Panel"* ]]; then
         pass "Admin page loads with Basic Auth"
     else
@@ -2835,7 +3073,8 @@ test_admin_html() {
 }
 
 test_welcome_html() {
-    local response=$(curl -s "$BASE_URL/welcome.html")
+    local response
+    response=$(curl -s "$BASE_URL/welcome.html")
     if [[ "$response" == *"smartHomeLink"* && "$response" == *'target="_blank"'* && "$response" == *"/guest/home"* ]]; then
         pass "Welcome hub opens Smart Home on the portal hostname"
     else
@@ -2855,7 +3094,8 @@ test_welcome_html() {
 }
 
 test_photo_html() {
-    local response=$(curl -s "$BASE_URL/photo.html")
+    local response
+    response=$(curl -s "$BASE_URL/photo.html")
     if [[ "$response" == *"My Photos"* && "$response" == *"Welcome"* ]]; then
         pass "Photo gallery page loads"
     else
@@ -2872,15 +3112,18 @@ test_photo_html() {
 section "7c. GUEST TEXT NOTES"
 
 test_guest_note_crud() {
-    local response=$(curl -s -X POST "$BASE_URL/register" \
+    local response
+    response=$(curl -s -X POST "$BASE_URL/register" \
         -H "Content-Type: application/json" \
         -d '{"name":"Note Test Guest","room":"Room 1","stayDays":3}')
-    local token=$(echo "$response" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
+    local token
+    token=$(echo "$response" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
     if [[ -z "$token" ]]; then
         fail "Guest note CRUD" "registration token" "$response"
         return
     fi
-    local put=$(curl -s -X PUT "$BASE_URL/guest/note" \
+    local put
+    put=$(curl -s -X PUT "$BASE_URL/guest/note" \
         -H "Content-Type: application/json" \
         -H "X-Guest-Token: $token" \
         -d '{"text":"Thank you for a wonderful stay!"}')
@@ -2888,13 +3131,16 @@ test_guest_note_crud() {
         fail "Guest note save" "saved note payload" "$put"
         return
     fi
-    local note_id=$(echo "$put" | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4)
-    local get=$(curl -s "$BASE_URL/guest/note" -H "X-Guest-Token: $token")
+    local note_id
+    note_id=$(echo "$put" | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4)
+    local get
+    get=$(curl -s "$BASE_URL/guest/note" -H "X-Guest-Token: $token")
     if [[ "$get" != *'"text":"Thank you for a wonderful stay!"'* ]]; then
         fail "Guest note get" "saved note text" "$get"
         return
     fi
-    local update=$(curl -s -X PUT "$BASE_URL/guest/note" \
+    local update
+    update=$(curl -s -X PUT "$BASE_URL/guest/note" \
         -H "Content-Type: application/json" \
         -H "X-Guest-Token: $token" \
         -d '{"text":"Updated thank-you note"}')
@@ -2902,12 +3148,14 @@ test_guest_note_crud() {
         fail "Guest note update keeps same id" "same id + updated text" "$update"
         return
     fi
-    local del=$(curl -s -X DELETE "$BASE_URL/guest/note" -H "X-Guest-Token: $token")
+    local del
+    del=$(curl -s -X DELETE "$BASE_URL/guest/note" -H "X-Guest-Token: $token")
     if [[ "$del" != *'"success":true'* ]]; then
         fail "Guest note delete" '{"success":true}' "$del"
         return
     fi
-    local after=$(curl -s "$BASE_URL/guest/note" -H "X-Guest-Token: $token")
+    local after
+    after=$(curl -s "$BASE_URL/guest/note" -H "X-Guest-Token: $token")
     if [[ "$after" == *'"note":null'* ]]; then
         pass "Guest note CRUD (save, get, update, delete)"
     else
@@ -2916,22 +3164,26 @@ test_guest_note_crud() {
 }
 
 test_business_day_can_leave_note() {
-    local response=$(curl -s -X POST "$BASE_URL/register" \
+    local response
+    response=$(curl -s -X POST "$BASE_URL/register" \
         -H "Content-Type: application/json" \
         -d '{"name":"Biz Note Guest","guestTypeId":"type_day_business"}')
-    local token=$(echo "$response" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
+    local token
+    token=$(echo "$response" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
     if [[ -z "$token" ]]; then
         fail "Business visitor can leave note" "registration token" "$response"
         return
     fi
-    local validate=$(curl -s -X POST "$BASE_URL/guest/validate" \
+    local validate
+    validate=$(curl -s -X POST "$BASE_URL/guest/validate" \
         -H "Content-Type: application/json" \
         -d "{\"token\":\"$token\"}")
     if [[ "$validate" != *'"leaveGuestNote":true'* ]] || [[ "$validate" != *'"uploadPhotos":false'* ]]; then
         fail "Business visitor note permissions" "leaveGuestNote true + uploadPhotos false" "$validate"
         return
     fi
-    local http_code=$(curl -s -o /dev/null -w "%{http_code}" -X PUT "$BASE_URL/guest/note" \
+    local http_code
+    http_code=$(curl -s -o /dev/null -w "%{http_code}" -X PUT "$BASE_URL/guest/note" \
         -H "Content-Type: application/json" \
         -H "X-Guest-Token: $token" \
         -d '{"text":"Thanks for hosting our meeting."}')
@@ -2944,12 +3196,14 @@ test_business_day_can_leave_note() {
 
 test_guest_note_forbidden_without_permission() {
     require_admin_creds "Guest note forbidden without permission" || return
-    local types=$(admin_curl "$BASE_URL/admin-api/guest-types")
+    local types
+    types=$(admin_curl "$BASE_URL/admin-api/guest-types")
     if [[ "$types" != *"type_day_business"* ]]; then
         fail "Guest note forbidden without permission" "business guest type" "$types"
         return
     fi
-    local disable_body=$(echo "$types" | python3 -c "
+    local disable_body
+    disable_body=$(echo "$types" | python3 -c "
 import json, sys
 types = json.load(sys.stdin)
 t = next(x for x in types if x['id'] == 'type_day_business')
@@ -2964,7 +3218,8 @@ print(json.dumps({
     'permissions': t['permissions']
 }))
 ")
-    local restore_body=$(echo "$types" | python3 -c "
+    local restore_body
+    restore_body=$(echo "$types" | python3 -c "
 import json, sys
 types = json.load(sys.stdin)
 t = next(x for x in types if x['id'] == 'type_day_business')
@@ -2982,10 +3237,12 @@ print(json.dumps({
     admin_curl -X PATCH "$BASE_URL/admin-api/guest-types/type_day_business" \
         -H "Content-Type: application/json" \
         -d "$disable_body" > /dev/null
-    local response=$(curl -s -X POST "$BASE_URL/register" \
+    local response
+    response=$(curl -s -X POST "$BASE_URL/register" \
         -H "Content-Type: application/json" \
         -d '{"name":"Note Forbidden Guest","guestTypeId":"type_day_business"}')
-    local token=$(echo "$response" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
+    local token
+    token=$(echo "$response" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
     if [[ -z "$token" ]]; then
         admin_curl -X PATCH "$BASE_URL/admin-api/guest-types/type_day_business" \
             -H "Content-Type: application/json" \
@@ -2993,7 +3250,8 @@ print(json.dumps({
         fail "Guest note forbidden without permission" "registration token" "$response"
         return
     fi
-    local http_code=$(curl -s -o /dev/null -w "%{http_code}" -X PUT "$BASE_URL/guest/note" \
+    local http_code
+    http_code=$(curl -s -o /dev/null -w "%{http_code}" -X PUT "$BASE_URL/guest/note" \
         -H "Content-Type: application/json" \
         -H "X-Guest-Token: $token" \
         -d '{"text":"Should be blocked"}')
@@ -3018,34 +3276,41 @@ test_serialized_json_saver_write_time_snapshot() {
 
 test_admin_guest_notes_list_and_delete() {
     require_admin_creds "Admin guest notes list and delete" || return
-    local response=$(curl -s -X POST "$BASE_URL/register" \
+    local response
+    response=$(curl -s -X POST "$BASE_URL/register" \
         -H "Content-Type: application/json" \
         -d '{"name":"Admin Note Guest","room":"Room 2","stayDays":2}')
-    local token=$(echo "$response" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
+    local token
+    token=$(echo "$response" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
     if [[ -z "$token" ]]; then
         fail "Admin guest notes list and delete" "registration token" "$response"
         return
     fi
-    local put=$(curl -s -X PUT "$BASE_URL/guest/note" \
+    local put
+    put=$(curl -s -X PUT "$BASE_URL/guest/note" \
         -H "Content-Type: application/json" \
         -H "X-Guest-Token: $token" \
         -d '{"text":"Admin list test note"}')
-    local note_id=$(echo "$put" | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4)
+    local note_id
+    note_id=$(echo "$put" | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4)
     if [[ -z "$note_id" ]]; then
         fail "Admin guest notes list and delete" "note id" "$put"
         return
     fi
-    local list=$(admin_curl "$BASE_URL/admin-api/guest-notes")
+    local list
+    list=$(admin_curl "$BASE_URL/admin-api/guest-notes")
     if [[ "$list" != *'"text":"Admin list test note"'* ]] || [[ "$list" != *"\"id\":\"$note_id\""* ]]; then
         fail "Admin guest notes list" "saved note in list" "$list"
         return
     fi
-    local del=$(admin_curl -X DELETE "$BASE_URL/admin-api/guest-notes/$note_id")
+    local del
+    del=$(admin_curl -X DELETE "$BASE_URL/admin-api/guest-notes/$note_id")
     if [[ "$del" != *'"success":true'* ]]; then
         fail "Admin guest note delete" '{"success":true}' "$del"
         return
     fi
-    local after=$(admin_curl "$BASE_URL/admin-api/guest-notes")
+    local after
+    after=$(admin_curl "$BASE_URL/admin-api/guest-notes")
     if [[ "$after" != *"\"id\":\"$note_id\""* ]]; then
         pass "Admin guest notes list and delete"
     else
@@ -3058,15 +3323,18 @@ test_admin_guest_session_shows_event() {
     admin_curl -X POST "$BASE_URL/admin-api/events" \
         -H "Content-Type: application/json" \
         -d '{"name":"Session Event Label Test"}' > /dev/null
-    local reg=$(admin_curl -X POST "$BASE_URL/admin-api/guests" \
+    local reg
+    reg=$(admin_curl -X POST "$BASE_URL/admin-api/guests" \
         -H "Content-Type: application/json" \
         -d '{"name":"Session Event Guest","room":"Room 1","stayDays":2,"guestTypeId":"type_day_personal","eventName":"Session Event Label Test"}')
-    local guest_id=$(echo "$reg" | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4)
+    local guest_id
+    guest_id=$(echo "$reg" | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4)
     if [[ -z "$guest_id" ]]; then
         fail "Admin guest session shows event" "guest id" "$reg"
         return
     fi
-    local sessions=$(admin_curl "$BASE_URL/admin-api/guest-sessions")
+    local sessions
+    sessions=$(admin_curl "$BASE_URL/admin-api/guest-sessions")
     if [[ "$sessions" == *'"eventName":"Session Event Label Test"'* ]]; then
         pass "Admin guest sessions include registered event name"
     else
@@ -3077,12 +3345,18 @@ test_admin_guest_session_shows_event() {
 
 test_guest_entry_smoke_routes() {
     local failed=""
-    local health_code=$(curl -s -o /dev/null -w "%{http_code}" "$BASE_URL/health")
-    local index_code=$(curl -s -o /dev/null -w "%{http_code}" "$BASE_URL/")
-    local rooms_code=$(curl -s -o /dev/null -w "%{http_code}" "$BASE_URL/guest/rooms")
-    local welcome_code=$(curl -s -o /dev/null -w "%{http_code}" "$BASE_URL/welcome.html")
-    local photo_code=$(curl -s -o /dev/null -w "%{http_code}" "$BASE_URL/photo.html")
-    local home_code=$(curl -s -o /dev/null -w "%{http_code}" "$BASE_URL/guest/home")
+    local health_code
+    health_code=$(curl -s -o /dev/null -w "%{http_code}" "$BASE_URL/health")
+    local index_code
+    index_code=$(curl -s -o /dev/null -w "%{http_code}" "$BASE_URL/")
+    local rooms_code
+    rooms_code=$(curl -s -o /dev/null -w "%{http_code}" "$BASE_URL/guest/rooms")
+    local welcome_code
+    welcome_code=$(curl -s -o /dev/null -w "%{http_code}" "$BASE_URL/welcome.html")
+    local photo_code
+    photo_code=$(curl -s -o /dev/null -w "%{http_code}" "$BASE_URL/photo.html")
+    local home_code
+    home_code=$(curl -s -o /dev/null -w "%{http_code}" "$BASE_URL/guest/home")
 
     [[ "$health_code" == "200" ]] || failed+="/health=$health_code "
     [[ "$index_code" == "200" ]] || failed+="/=$index_code "
@@ -3263,6 +3537,11 @@ test_welcome_html
 test_photo_html
 test_admin_guest_session_shows_event
 test_guest_entry_smoke_routes
+# Opt-in only. The limiter allows 200 requests/minute and this probe sends 65,
+# so a default run would spend the shared window without proving the limit.
+if [[ "${RUN_RATE_LIMIT_PROBE:-}" == "1" ]]; then
+    test_rate_limiting
+fi
 test_frontend_script_syntax
 
 #######################

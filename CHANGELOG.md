@@ -6,6 +6,9 @@ All notable changes to this project will be documented here.
 
 ## [Unreleased]
 
+### Added
+- GitHub Actions CI on pull requests and pushes to `main` (`.github/workflows/ci.yml`). The `node` job runs `npm test` on Node.js 20. The `shell` job runs shellcheck. The `integration` job runs `test-suite.sh` against a server started in the job with a throwaway admin account. The workflow grants `contents: read` and does not use secrets.
+
 ### Changed
 - Guest Smart Home opens `/guest/home` on the portal hostname instead of the stored Home Assistant URL. That page proxies only the assigned dashboard, keeps kiosk on, and sends History, Map, and other Home Assistant UI paths back to the room dashboard. The real dashboard address stays in admin room settings and is not sent to the guest browser.
 - UniFi hotspot landing is the external portal redirect (`/guest/s/<site>/` to registration). Hotspot password or voucher success URLs authorize the phone first, and iOS and Android then close the temporary captive browser before a guest can open the page. Live hostnames and VLAN addresses stay in the gitignored site note.
