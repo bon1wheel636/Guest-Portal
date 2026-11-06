@@ -169,7 +169,7 @@ gp_prompt_install_recovery_menu() {
   echo -e "${TAB}  8)  Cancel"
   echo ""
   local choice
-  read -p "  Select [1-8] (default: 1): " choice
+  read -r -p "  Select [1-8] (default: 1): " choice
   choice=${choice:-1}
 
   case "$choice" in
@@ -191,12 +191,15 @@ gp_confirm_rebuild_install() {
   echo -e "${TAB}Uploaded photos are kept unless you choose to delete them."
   echo ""
   if ! prompt_yes_no "  Delete uploaded guest photos as well?" "n"; then
+    # setup-container.sh reads this after the prompt returns.
+    # shellcheck disable=SC2034
     GP_REBUILD_KEEP_UPLOADS=true
   else
+    # shellcheck disable=SC2034
     GP_REBUILD_KEEP_UPLOADS=false
   fi
   echo ""
-  read -p "  Type 'rebuild' to confirm a fresh install: " confirm_text
+  read -r -p "  Type 'rebuild' to confirm a fresh install: " confirm_text
   if [[ "$confirm_text" != "rebuild" ]]; then
     echo -e "${TAB}${RD}Rebuild cancelled.${CL}"
     return 1
@@ -339,9 +342,9 @@ gp_validate_admin_username() {
 
 gp_prompt_admin_password() {
   while true; do
-    read -sp "  Admin password: " ADMIN_PASS
+    read -r -sp "  Admin password: " ADMIN_PASS
     echo
-    read -sp "  Confirm password: " ADMIN_PASS_CONFIRM
+    read -r -sp "  Confirm password: " ADMIN_PASS_CONFIRM
     echo
     if [[ "$ADMIN_PASS" == "$ADMIN_PASS_CONFIRM" ]]; then
       break
@@ -356,7 +359,7 @@ gp_hash_admin_password() {
 }
 
 gp_prompt_new_admin_credentials() {
-  read -p "  Admin username (default: admin): " input_user
+  read -r -p "  Admin username (default: admin): " input_user
   input_user=${input_user:-admin}
   if ! gp_validate_admin_username "$input_user"; then
     echo -e "${TAB}${RD}Username must be 3-50 characters: letters, numbers, underscore, hyphen only.${CL}"
@@ -388,7 +391,7 @@ gp_prompt_admin_reset_only() {
   echo -e "${TAB}  2)  Reset for web UI setup on next visit"
   echo ""
   local admin_choice
-  read -p "  Select [1/2] (default: 2): " admin_choice
+  read -r -p "  Select [1/2] (default: 2): " admin_choice
   admin_choice=${admin_choice:-2}
 
   if [[ "$admin_choice" == "1" ]]; then
@@ -425,7 +428,7 @@ gp_prompt_room_configuration() {
     echo -e "${TAB}  2)  Reconfigure rooms now"
     echo ""
     local room_choice
-    read -p "  Select [1/2] (default: 1): " room_choice
+    read -r -p "  Select [1/2] (default: 1): " room_choice
     room_choice=${room_choice:-1}
 
     if [[ "$room_choice" == "1" ]]; then
@@ -442,14 +445,14 @@ gp_prompt_room_configuration() {
   fi
 
   local room_count
-  read -p "  Number of guest rooms to configure now (default: 2): " room_count
+  read -r -p "  Number of guest rooms to configure now (default: 2): " room_count
   room_count=${room_count:-2}
 
   local i room_name room_url room_json
   for (( i=1; i<=room_count; i++ )); do
     echo ""
-    read -p "  Room ${i} name: " room_name
-    read -p "  Room ${i} dashboard URL: " room_url
+    read -r -p "  Room ${i} name: " room_name
+    read -r -p "  Room ${i} dashboard URL: " room_url
     room_json=$(ROOM_NAME="$room_name" ROOM_URL="$room_url" node -e "console.log(JSON.stringify({name:process.env.ROOM_NAME,dashboardUrl:process.env.ROOM_URL}))")
     ROOMS+=("$room_json")
   done
@@ -474,7 +477,7 @@ gp_prompt_admin_configuration() {
     echo -e "${TAB}  3)  Reset — configure via web UI on next visit"
     echo ""
     local admin_choice
-    read -p "  Select [1/2/3] (default: 1): " admin_choice
+    read -r -p "  Select [1/2/3] (default: 1): " admin_choice
     admin_choice=${admin_choice:-1}
 
     case "$admin_choice" in
@@ -503,7 +506,7 @@ gp_prompt_admin_configuration() {
   echo -e "${TAB}  2)  Skip — configure via web UI later"
   echo ""
   local admin_choice
-  read -p "  Select [1/2] (default: 1): " admin_choice
+  read -r -p "  Select [1/2] (default: 1): " admin_choice
   admin_choice=${admin_choice:-1}
 
   if [[ "$admin_choice" == "1" ]]; then

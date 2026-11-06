@@ -68,7 +68,7 @@ prompt_yes_no() {
   local prompt="$1"
   local default="${2:-n}"
   local answer
-  read -p "${prompt} [y/n] (default: ${default}): " answer
+  read -r -p "${prompt} [y/n] (default: ${default}): " answer
   answer=${answer:-$default}
   [[ "${answer,,}" == "y" ]]
 }
@@ -182,7 +182,8 @@ load_setup_prompts() {
     msg_error "Missing setup prompts helper: ${prompts_file}"
     exit 1
   fi
-  # shellcheck source=/dev/null
+  # Follow the helper so assignments above are visible to its checks.
+  # shellcheck source=setup-prompts.sh
   source "$prompts_file"
 }
 
@@ -342,13 +343,13 @@ echo -e "${TAB}  2)  Mount an SMB/CIFS share"
 echo -e "${TAB}  3)  Use an existing mounted directory"
 echo -e "${TAB}  4)  Skip — use local storage (configure later in Admin panel)"
 echo ""
-read -p "  Select [1/2/3/4] (default: 4): " storage_choice
+read -r -p "  Select [1/2/3/4] (default: 4): " storage_choice
 storage_choice=${storage_choice:-4}
 
 if [[ "$CT_UNPRIVILEGED" == "1" && ( "$storage_choice" == "1" || "$storage_choice" == "2" ) ]]; then
   echo ""
   echo -e "${INFO}${YW}Container-managed NFS/SMB mounts often require privileged containers or extra Proxmox features.${CL}"
-  read -p "  Continue with container-managed mounting anyway? [y/n] (default: n): " mount_confirm
+  read -r -p "  Continue with container-managed mounting anyway? [y/n] (default: n): " mount_confirm
   mount_confirm=${mount_confirm:-n}
   if [[ "${mount_confirm,,}" != "y" ]]; then
     storage_choice=4
@@ -357,9 +358,9 @@ fi
 
 case "$storage_choice" in
   1)
-    read -p "  NFS server (e.g. 192.168.1.50): " nas_ip
-    read -p "  NFS export path (e.g. /volume1/guest-photos): " nas_export
-    read -p "  Mount point (default: /mnt/nas/guest-photos): " nas_mount
+    read -r -p "  NFS server (e.g. 192.168.1.50): " nas_ip
+    read -r -p "  NFS export path (e.g. /volume1/guest-photos): " nas_export
+    read -r -p "  Mount point (default: /mnt/nas/guest-photos): " nas_mount
     nas_mount=${nas_mount:-/mnt/nas/guest-photos}
 
     msg_info "Installing NFS client and mounting share"
@@ -382,12 +383,12 @@ case "$storage_choice" in
     fi
     ;;
   2)
-    read -p "  SMB server (e.g. 192.168.1.50): " nas_ip
-    read -p "  SMB share name (e.g. guest-photos): " nas_share
-    read -p "  SMB username: " nas_user
-    read -sp "  SMB password: " nas_pass
+    read -r -p "  SMB server (e.g. 192.168.1.50): " nas_ip
+    read -r -p "  SMB share name (e.g. guest-photos): " nas_share
+    read -r -p "  SMB username: " nas_user
+    read -r -sp "  SMB password: " nas_pass
     echo
-    read -p "  Mount point (default: /mnt/nas/guest-photos): " nas_mount
+    read -r -p "  Mount point (default: /mnt/nas/guest-photos): " nas_mount
     nas_mount=${nas_mount:-/mnt/nas/guest-photos}
 
     msg_info "Installing SMB client and mounting share"
@@ -412,7 +413,7 @@ case "$storage_choice" in
     fi
     ;;
   3)
-    read -p "  Existing mounted upload path (default: /mnt/nas/guest-photos): " nas_mount
+    read -r -p "  Existing mounted upload path (default: /mnt/nas/guest-photos): " nas_mount
     nas_mount=${nas_mount:-/mnt/nas/guest-photos}
     if [[ -d "${nas_mount}" ]] && su -s /bin/sh -c "test -w \"${nas_mount}\"" "${var_app_user}"; then
       su -s /bin/sh -c "mkdir -p \"${nas_mount}/backgrounds\"" "${var_app_user}"
@@ -433,7 +434,7 @@ esac
 
 NODEJS_IP=$(hostname -I 2>/dev/null | awk '{print $1}')
 if [[ -z "$NODEJS_IP" ]]; then
-  read -p "  Enter this container IP address: " NODEJS_IP
+  read -r -p "  Enter this container IP address: " NODEJS_IP
 fi
 
 header_info

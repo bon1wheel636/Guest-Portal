@@ -77,6 +77,9 @@ setup_ui_vars() {
   YW=""
   CM="${TAB}OK"
   INFO="${TAB}INFO"
+  # Installer msg_error prints this prefix. setup_test_env replaces msg_error,
+  # so the prefix is not expanded in this test. Kept beside the other UI variables.
+  # shellcheck disable=SC2034
   CROSS="${TAB}ERR"
 }
 
@@ -110,7 +113,8 @@ setup_test_env() {
   gp_app_group="$APP_GROUP"
   gp_repo="file://${WORKSPACE}"
 
-  # shellcheck source=/dev/null
+  # Follow the helper so the variables set above count as used.
+  # shellcheck source=setup-prompts.sh
   source "${WORKSPACE}/scripts/setup-prompts.sh"
 
   prompt_yes_no() {
@@ -194,7 +198,7 @@ test_option_reset_admin_web() {
   seed_existing_install
   GP_SETUP_MODE=reset_admin
   ADMIN_ACTION=reset
-  ADMIN_USER=admin
+  ADMIN_USER="admin"
   gp_write_setup_config_files
   if gp_admin_credentials_configured; then
     fail "reset admin web should clear configured credentials"
@@ -230,7 +234,6 @@ test_option_repair() {
 
 test_option_rebuild() {
   seed_existing_install
-  GP_REBUILD_KEEP_UPLOADS=true
   gp_wipe_install_state true
   gp_reset_application_code true true
   chown -R "$APP_USER:$APP_GROUP" "$APP_DIR" "$CONFIG_DIR"

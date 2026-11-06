@@ -27,18 +27,18 @@ if [ ! -d "node_modules" ]; then
 fi
 
 # Set admin username
-read -p "Enter admin username (default: admin): " ADMIN_USER
+read -r -p "Enter admin username (default: admin): " ADMIN_USER
 ADMIN_USER=${ADMIN_USER:-admin}
 
 # Set admin password
 while true; do
-    read -sp "Enter admin password: " ADMIN_PASS
+    read -r -sp "Enter admin password: " ADMIN_PASS
     echo
     if [ -z "$ADMIN_PASS" ]; then
         echo "Password cannot be empty. Try again."
         continue
     fi
-    read -sp "Confirm password: " ADMIN_PASS_CONFIRM
+    read -r -sp "Confirm password: " ADMIN_PASS_CONFIRM
     echo
     if [ "$ADMIN_PASS" == "$ADMIN_PASS_CONFIRM" ]; then
         break
@@ -59,7 +59,7 @@ else
     echo ""
     echo "Note: Cannot write to /etc. Using sudo..."
     sudo mkdir -p "$CONFIG_DIR"
-    sudo chown $(whoami) "$CONFIG_DIR"
+    sudo chown "$(whoami)" "$CONFIG_DIR"
 fi
 
 # Create config.json (use node to safely serialize values into JSON)

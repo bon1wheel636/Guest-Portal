@@ -27,6 +27,8 @@ BRIDGE_ICON="${TAB}🌉${TAB}"
 NETWORK="${TAB}📡${TAB}"
 GATEWAY="${TAB}🌐${TAB}"
 CREATING="${TAB}🚀${TAB}"
+# Icon prefix kept with the other status labels. Current prompts do not print it.
+# shellcheck disable=SC2034
 STORAGE="${TAB}📸${TAB}"
 PROXY="${TAB}🔒${TAB}"
 
@@ -111,6 +113,9 @@ var_cpu=1
 var_ram=512
 var_disk=4
 var_bridge="vmbr0"
+# Default kept beside the other container settings. The network prompt writes
+# CT_NET_STRING itself (dhcp or a static CIDR) and does not read this value.
+# shellcheck disable=SC2034
 var_net="dhcp"
 var_os_template=""
 var_rootfs_storage="local-lvm"
@@ -266,7 +271,7 @@ prompt_yes_no() {
   local prompt="$1"
   local default="${2:-n}"
   local answer
-  read -p "${prompt} [y/n] (default: ${default}): " answer
+  read -r -p "${prompt} [y/n] (default: ${default}): " answer
   answer=${answer:-$default}
   [[ "${answer,,}" == "y" ]]
 }
@@ -287,7 +292,7 @@ select_existing_ct() {
     return
   fi
 
-  read -p "  Existing container ID to update: " UPDATE_CT_ID
+  read -r -p "  Existing container ID to update: " UPDATE_CT_ID
   echo "$UPDATE_CT_ID"
 }
 
@@ -390,7 +395,7 @@ systemctl enable guest-portal >/dev/null 2>&1
   fi
 
   if prompt_yes_no "  Change upload path to an existing mounted directory?" "n"; then
-    read -p "  Existing mounted upload path (default: /mnt/nas/guest-photos): " update_mount
+    read -r -p "  Existing mounted upload path (default: /mnt/nas/guest-photos): " update_mount
     update_mount=${update_mount:-/mnt/nas/guest-photos}
 
     if pct exec "$target_ct" -- bash -c "[ -d '${update_mount}' ] && su -s /bin/sh -c 'test -w \"${update_mount}\"' '${var_app_user}'" 2>/dev/null; then
@@ -437,7 +442,7 @@ echo ""
 echo -e "${TAB}  1)  Use Default Settings"
 echo -e "${TAB}  2)  Advanced Settings (customize everything)"
 echo ""
-read -p "  Select [1/2] (default: 1): " SETTINGS_CHOICE
+read -r -p "  Select [1/2] (default: 1): " SETTINGS_CHOICE
 SETTINGS_CHOICE=${SETTINGS_CHOICE:-1}
 
 CT_ID="$NEXT_ID"
@@ -457,29 +462,29 @@ if [[ "$SETTINGS_CHOICE" == "2" ]]; then
   echo ""
 
   # CT ID
-  read -p "  Container ID (default: ${NEXT_ID}): " input
+  read -r -p "  Container ID (default: ${NEXT_ID}): " input
   CT_ID=${input:-$NEXT_ID}
 
   # Validate CT ID is not in use
   while pct status "$CT_ID" &>/dev/null; do
     echo -e "${TAB}${RD}CT ID ${CT_ID} is already in use.${CL}"
-    read -p "  Container ID: " CT_ID
+    read -r -p "  Container ID: " CT_ID
   done
 
   # Hostname
-  read -p "  Hostname (default: ${var_hostname}): " input
+  read -r -p "  Hostname (default: ${var_hostname}): " input
   CT_HOSTNAME=${input:-$var_hostname}
 
   # Disk Size
-  read -p "  Disk Size in GB (default: ${var_disk}): " input
+  read -r -p "  Disk Size in GB (default: ${var_disk}): " input
   CT_DISK=${input:-$var_disk}
 
   # CPU Cores
-  read -p "  CPU Cores (default: ${var_cpu}): " input
+  read -r -p "  CPU Cores (default: ${var_cpu}): " input
   CT_CPU=${input:-$var_cpu}
 
   # RAM
-  read -p "  RAM in MiB (default: ${var_ram}): " input
+  read -r -p "  RAM in MiB (default: ${var_ram}): " input
   CT_RAM=${input:-$var_ram}
 
   # Network Bridge
@@ -487,7 +492,7 @@ if [[ "$SETTINGS_CHOICE" == "2" ]]; then
   echo -e "${TAB}Available bridges:"
   brctl show 2>/dev/null | awk 'NR>1 && $1 != "" {print "    " $1}' || echo "    vmbr0"
   echo ""
-  read -p "  Network Bridge (default: ${var_bridge}): " input
+  read -r -p "  Network Bridge (default: ${var_bridge}): " input
   CT_BRIDGE=${input:-$var_bridge}
 
   # Network: DHCP vs Static
@@ -496,13 +501,13 @@ if [[ "$SETTINGS_CHOICE" == "2" ]]; then
   echo -e "${TAB}  1)  DHCP"
   echo -e "${TAB}  2)  Static IP"
   echo ""
-  read -p "  Select [1/2] (default: 1): " net_choice
+  read -r -p "  Select [1/2] (default: 1): " net_choice
   net_choice=${net_choice:-1}
 
   if [[ "$net_choice" == "2" ]]; then
-    read -p "  Static IP (CIDR, e.g. 192.168.1.100/24): " CT_STATIC_IP
-    read -p "  Gateway (e.g. 192.168.1.1): " CT_GATEWAY
-    read -p "  DNS Server (default: 1.1.1.1): " CT_DNS
+    read -r -p "  Static IP (CIDR, e.g. 192.168.1.100/24): " CT_STATIC_IP
+    read -r -p "  Gateway (e.g. 192.168.1.1): " CT_GATEWAY
+    read -r -p "  DNS Server (default: 1.1.1.1): " CT_DNS
     CT_DNS=${CT_DNS:-"1.1.1.1"}
     CT_NET_STRING="name=eth0,bridge=${CT_BRIDGE},ip=${CT_STATIC_IP},gw=${CT_GATEWAY}"
     CT_IP_DISPLAY="${CT_STATIC_IP}"
@@ -517,7 +522,7 @@ if [[ "$SETTINGS_CHOICE" == "2" ]]; then
   echo -e "${TAB}  1)  Unprivileged (recommended)"
   echo -e "${TAB}  2)  Privileged (only if container-managed NFS/SMB mounting requires it)"
   echo ""
-  read -p "  Select [1/2] (default: 1): " privilege_choice
+  read -r -p "  Select [1/2] (default: 1): " privilege_choice
   privilege_choice=${privilege_choice:-1}
   if [[ "$privilege_choice" == "2" ]]; then
     CT_UNPRIVILEGED=0
@@ -541,7 +546,7 @@ echo -e "${BRIDGE_ICON}${BOLD}${DGN}Bridge: ${BGN}${CT_BRIDGE}${CL}"
 echo -e "${NETWORK}${BOLD}${DGN}IPv4: ${BGN}${CT_IP_DISPLAY}${CL}"
 echo -e "${TAB}${BOLD}${DGN}Isolation: ${BGN}${CT_PRIVILEGE_DISPLAY}${CL}"
 echo ""
-read -p "  Continue with these settings? [y/n] (default: y): " confirm
+read -r -p "  Continue with these settings? [y/n] (default: y): " confirm
 confirm=${confirm:-y}
 if [[ "${confirm,,}" != "y" ]]; then
   echo "Setup cancelled."
@@ -632,14 +637,14 @@ echo -e "${INFO}${YW}Configure rooms with Home Assistant dashboard URLs.${CL}"
 echo -e "${TAB}  You can also add/remove rooms later from the Admin panel."
 echo ""
 
-read -p "  Number of guest rooms to configure now (default: 2): " ROOM_COUNT
+read -r -p "  Number of guest rooms to configure now (default: 2): " ROOM_COUNT
 ROOM_COUNT=${ROOM_COUNT:-2}
 
 declare -a ROOMS
 for (( i=1; i<=ROOM_COUNT; i++ )); do
   echo ""
-  read -p "  Room ${i} name: " ROOM_NAME
-  read -p "  Room ${i} dashboard URL: " ROOM_URL
+  read -r -p "  Room ${i} name: " ROOM_NAME
+  read -r -p "  Room ${i} dashboard URL: " ROOM_URL
   ROOM_JSON=$(ROOM_NAME="$ROOM_NAME" ROOM_URL="$ROOM_URL" node -e "console.log(JSON.stringify({name:process.env.ROOM_NAME,dashboardUrl:process.env.ROOM_URL}))")
   ROOMS+=("$ROOM_JSON")
 done
@@ -655,14 +660,14 @@ echo ""
 echo -e "${TAB}  1)  Set credentials now"
 echo -e "${TAB}  2)  Skip — configure via web UI later"
 echo ""
-read -p "  Select [1/2] (default: 1): " admin_choice
+read -r -p "  Select [1/2] (default: 1): " admin_choice
 admin_choice=${admin_choice:-1}
 
 ADMIN_USER=""
 ADMIN_HASH=""
 
 if [[ "$admin_choice" == "1" ]]; then
-  read -p "  Admin username (default: admin): " ADMIN_USER
+  read -r -p "  Admin username (default: admin): " ADMIN_USER
   ADMIN_USER=${ADMIN_USER:-admin}
   ADMIN_USER="${ADMIN_USER// /}"
 
@@ -672,9 +677,9 @@ if [[ "$admin_choice" == "1" ]]; then
   fi
 
   while true; do
-    read -sp "  Admin password: " ADMIN_PASS
+    read -r -sp "  Admin password: " ADMIN_PASS
     echo
-    read -sp "  Confirm password: " ADMIN_PASS_CONFIRM
+    read -r -sp "  Confirm password: " ADMIN_PASS_CONFIRM
     echo
     if [[ "$ADMIN_PASS" == "$ADMIN_PASS_CONFIRM" ]]; then
       break
@@ -786,7 +791,7 @@ echo -e "${TAB}  2)  Mount an SMB/CIFS share"
 echo -e "${TAB}  3)  Use an existing mounted directory"
 echo -e "${TAB}  4)  Skip — use local storage (configure later in Admin panel)"
 echo ""
-read -p "  Select [1/2/3/4] (default: 4): " storage_choice
+read -r -p "  Select [1/2/3/4] (default: 4): " storage_choice
 storage_choice=${storage_choice:-4}
 
 if [[ "$CT_UNPRIVILEGED" == "1" && ( "$storage_choice" == "1" || "$storage_choice" == "2" ) ]]; then
@@ -794,7 +799,7 @@ if [[ "$CT_UNPRIVILEGED" == "1" && ( "$storage_choice" == "1" || "$storage_choic
   echo -e "${INFO}${YW}Container-managed NFS/SMB mounts often require privileged containers or extra Proxmox features.${CL}"
   echo -e "${TAB}  Recommended: mount the NAS share on the Proxmox host, bind-mount it into this LXC,"
   echo -e "${TAB}  then rerun setup or configure option 3 with that in-container path."
-  read -p "  Continue with container-managed mounting anyway? [y/n] (default: n): " mount_confirm
+  read -r -p "  Continue with container-managed mounting anyway? [y/n] (default: n): " mount_confirm
   mount_confirm=${mount_confirm:-n}
   if [[ "${mount_confirm,,}" != "y" ]]; then
     storage_choice=4
@@ -804,9 +809,9 @@ fi
 case "$storage_choice" in
   1)
     echo ""
-    read -p "  NFS server (e.g. 192.168.1.50): " nas_ip
-    read -p "  NFS export path (e.g. /volume1/guest-photos): " nas_export
-    read -p "  Mount point (default: /mnt/nas/guest-photos): " nas_mount
+    read -r -p "  NFS server (e.g. 192.168.1.50): " nas_ip
+    read -r -p "  NFS export path (e.g. /volume1/guest-photos): " nas_export
+    read -r -p "  Mount point (default: /mnt/nas/guest-photos): " nas_mount
     nas_mount=${nas_mount:-/mnt/nas/guest-photos}
 
     msg_info "Installing NFS client and mounting share"
@@ -837,12 +842,12 @@ case "$storage_choice" in
     ;;
   2)
     echo ""
-    read -p "  SMB server (e.g. 192.168.1.50): " nas_ip
-    read -p "  SMB share name (e.g. guest-photos): " smb_share
-    read -p "  SMB username: " smb_user
-    read -sp "  SMB password: " smb_pass
+    read -r -p "  SMB server (e.g. 192.168.1.50): " nas_ip
+    read -r -p "  SMB share name (e.g. guest-photos): " smb_share
+    read -r -p "  SMB username: " smb_user
+    read -r -sp "  SMB password: " smb_pass
     echo
-    read -p "  Mount point (default: /mnt/nas/guest-photos): " nas_mount
+    read -r -p "  Mount point (default: /mnt/nas/guest-photos): " nas_mount
     nas_mount=${nas_mount:-/mnt/nas/guest-photos}
 
     msg_info "Installing CIFS client and mounting share"
@@ -882,7 +887,7 @@ case "$storage_choice" in
     ;;
   3)
     echo ""
-    read -p "  Existing mounted upload path (default: /mnt/nas/guest-photos): " nas_mount
+    read -r -p "  Existing mounted upload path (default: /mnt/nas/guest-photos): " nas_mount
     nas_mount=${nas_mount:-/mnt/nas/guest-photos}
 
     if pct exec "$CT_ID" -- bash -c "[ -d '${nas_mount}' ] && su -s /bin/sh -c 'test -w \"${nas_mount}\"' '${var_app_user}'" 2>/dev/null; then
@@ -916,7 +921,7 @@ NODEJS_IP=$(pct exec "$CT_ID" -- hostname -I 2>/dev/null | awk '{print $1}')
 if [[ -z "$NODEJS_IP" ]]; then
   echo ""
   echo -e "${INFO}${YW}Could not auto-detect container IP.${CL}"
-  read -p "  Enter the container IP address: " NODEJS_IP
+  read -r -p "  Enter the container IP address: " NODEJS_IP
 fi
 
 header_info
@@ -933,7 +938,7 @@ echo ""
 echo -e "${TAB}  3)  Skip / Manual"
 echo -e "${TAB}      ${DGN}Configure your own reverse proxy later${CL}"
 echo ""
-read -p "  Select [1/2/3] (default: 1): " proxy_choice
+read -r -p "  Select [1/2/3] (default: 1): " proxy_choice
 proxy_choice=${proxy_choice:-1}
 
 case "$proxy_choice" in
@@ -973,14 +978,14 @@ case "$proxy_choice" in
     echo ""
     echo -e "${TAB}${BOLD}NGINX Container Settings${CL}"
     echo ""
-    read -p "  NGINX hostname (default: guest-portal-nginx): " nginx_hostname
+    read -r -p "  NGINX hostname (default: guest-portal-nginx): " nginx_hostname
     nginx_hostname=${nginx_hostname:-"guest-portal-nginx"}
 
     NEXT_NGINX_ID=$((CT_ID + 1))
-    read -p "  NGINX container ID (default: ${NEXT_NGINX_ID}): " nginx_id
+    read -r -p "  NGINX container ID (default: ${NEXT_NGINX_ID}): " nginx_id
     nginx_id=${nginx_id:-$NEXT_NGINX_ID}
 
-    read -p "  Network bridge (default: ${CT_BRIDGE}): " nginx_bridge
+    read -r -p "  Network bridge (default: ${CT_BRIDGE}): " nginx_bridge
     nginx_bridge=${nginx_bridge:-$CT_BRIDGE}
 
     echo ""
@@ -988,13 +993,13 @@ case "$proxy_choice" in
     echo -e "${TAB}    1)  DHCP"
     echo -e "${TAB}    2)  Static IP"
     echo ""
-    read -p "  Select [1/2] (default: 2): " nginx_net_choice
+    read -r -p "  Select [1/2] (default: 2): " nginx_net_choice
     nginx_net_choice=${nginx_net_choice:-2}
 
     if [[ "$nginx_net_choice" == "2" ]]; then
-      read -p "  Static IP (CIDR, e.g. 192.168.1.101/24): " nginx_ip
-      read -p "  Gateway (e.g. 192.168.1.1): " nginx_gw
-      read -p "  DNS Server (default: 1.1.1.1): " nginx_dns
+      read -r -p "  Static IP (CIDR, e.g. 192.168.1.101/24): " nginx_ip
+      read -r -p "  Gateway (e.g. 192.168.1.1): " nginx_gw
+      read -r -p "  DNS Server (default: 1.1.1.1): " nginx_dns
       nginx_dns=${nginx_dns:-"1.1.1.1"}
       nginx_net="name=eth0,bridge=${nginx_bridge},ip=${nginx_ip},gw=${nginx_gw}"
     else
